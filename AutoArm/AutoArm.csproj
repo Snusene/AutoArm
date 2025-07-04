@@ -64,6 +64,7 @@
     <Content Include="About\About.xml" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
+    <Content Include="Def\GameComponents.xml" />
     <Content Include="Languages\Keyed\English\AutoArm.xml" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
