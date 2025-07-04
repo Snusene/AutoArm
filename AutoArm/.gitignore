@@ -1,0 +1,19 @@
+# Build folders
+bin/
+obj/
+Assemblies/*
+!Assemblies/.gitkeep
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.cache
+*.pdb
+
+# RimWorld specific
+*.rws
+
+# OS files
+Thumbs.db
+.DS_Store

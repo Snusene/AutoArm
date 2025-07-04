@@ -60,10 +60,11 @@
     <Compile Include="Source\WeaponThingFilterUtility.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include=".gitignore" />
     <Content Include="About\About.xml" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
-    <Content Include="Languages\Keyed\AutoArm.xml" />
+    <Content Include="Languages\Keyed\English\AutoArm.xml" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
     <Content Include="obj\Debug\AutoArm.pdb" />
@@ -76,7 +77,6 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="bin\Release\" />
-    <Folder Include="Defs\" />
     <Folder Include="obj\Debug\TempPE\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
@@ -85,20 +85,47 @@
 set "SRC=C:\Users\mohfl\source\repos\AutoArm\AutoArm"
 set "DST=C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\AutoArm"
 
-REM Remove previous mod
-rmdir /S /Q "%25DST%25"
+REM Copy About if exists
+if exist "%25SRC%25\About" (
+    xcopy "%25SRC%25\About\*" "%25DST%25\About\" /E /I /Y /Q
+)
 
-REM Recreate destination folder
-mkdir "%25DST%25"
+REM Copy Defs if exists
+if exist "%25SRC%25\Defs" (
+    xcopy "%25SRC%25\Defs\*" "%25DST%25\Defs\" /E /I /Y /Q
+)
 
-REM Copy everything except possibly missing Assemblies
-xcopy "%25SRC%25\*" "%25DST%25\" /E /I /Y /Q
+REM Copy Languages if exists
+if exist "%25SRC%25\Languages" (
+    xcopy "%25SRC%25\Languages\*" "%25DST%25\Languages\" /E /I /Y /Q
+)
 
-REM Ensure Assemblies folder exists
-if not exist "%25DST%25\Assemblies" mkdir "%25DST%25\Assemblies"
+REM Copy Textures if exists
+if exist "%25SRC%25\Textures" (
+    xcopy "%25SRC%25\Textures\*" "%25DST%25\Textures\" /E /I /Y /Q
+)
 
-REM Copy DLL (adjust path if you use Release or another config)
-copy /Y "%25SRC%25\bin\Debug\AutoArm.dll" "%25DST%25\Assemblies\AutoArm.dll"
+REM Make Assemblies folder if not exists
+if not exist "%25DST%25\Assemblies" (
+    mkdir "%25DST%25\Assemblies"
+)
+
+REM Copy DLL if exists
+if exist "%25SRC%25\bin\Debug\AutoArm.dll" (
+    copy /Y "%25SRC%25\bin\Debug\AutoArm.dll" "%25DST%25\Assemblies\AutoArm.dll"
+)
+
+REM Copy preview.png if present
+if exist "%25SRC%25\preview.png" (
+    copy /Y "%25SRC%25\preview.png" "%25DST%25\preview.png"
+)
+
+REM Copy thumbnail.png if present
+if exist "%25SRC%25\thumbnail.png" (
+    copy /Y "%25SRC%25\thumbnail.png" "%25DST%25\thumbnail.png"
+)
+
+exit /b 0
 </PostBuildEvent>
   </PropertyGroup>
 </Project>
