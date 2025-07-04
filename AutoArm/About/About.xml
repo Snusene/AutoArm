@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ModMetaData>
+	<name>AutoArm</name>
+	<author>Snues</author>
+	<url>https://github.com/Snusene/AutoArm</url>
+	<packageId>Snues.AutoArm</packageId>
+	<supportedVersions>
+		<li>1.6</li>
+	</supportedVersions>
+	<description>
+		Adds weapon filtering for outfits. Control which weapons your pawns can use per outfit. Auto equips weapons based on your preferences.
+	</description>
+</ModMetaData>
