@@ -64,7 +64,6 @@
     <Content Include="About\About.xml" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
-    <Content Include="Def\GameComponents.xml" />
     <Content Include="Languages\Keyed\English\AutoArm.xml" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
@@ -111,9 +110,18 @@ if not exist "%25DST%25\Assemblies" (
     mkdir "%25DST%25\Assemblies"
 )
 
-REM Copy DLL if exists
+REM Delete old DLL if it exists (prevents overwrite issues)
+if exist "%25DST%25\Assemblies\AutoArm.dll" (
+    del /F /Q "%25DST%25\Assemblies\AutoArm.dll"
+)
+
+REM Copy DLL if it exists
 if exist "%25SRC%25\bin\Debug\AutoArm.dll" (
+    echo Copying DLL...
     copy /Y "%25SRC%25\bin\Debug\AutoArm.dll" "%25DST%25\Assemblies\AutoArm.dll"
+    echo Done copying DLL.
+) else (
+    echo DLL not found: %25SRC%25\bin\Debug\AutoArm.dll
 )
 
 REM Copy preview.png if present
@@ -126,6 +134,8 @@ if exist "%25SRC%25\thumbnail.png" (
     copy /Y "%25SRC%25\thumbnail.png" "%25DST%25\thumbnail.png"
 )
 
+echo Done!
+pause
 exit /b 0
 </PostBuildEvent>
   </PropertyGroup>
