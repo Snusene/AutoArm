@@ -53,8 +53,16 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Compatibility\InfusionCompat.cs" />
+    <Compile Include="Compatibility\SimpleSidearmsCompat.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Source\AutoArmMod.cs" />
+    <Compile Include="Compatibility\CECompat.cs" />
+    <Compile Include="Source\ConflictDetection.cs" />
+    <Compile Include="Source\DebugCommands.cs" />
+    <Compile Include="Source\JobGiver_PickUpOpportunisticWeapon_Patch.cs" />
     <Compile Include="Source\ModInit.cs" />
+    <Compile Include="Source\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\WeaponAutoEquip.cs" />
     <Compile Include="Source\WeaponTabInjector.cs" />
     <Compile Include="Source\WeaponThingFilterUtility.cs" />
@@ -64,7 +72,7 @@
     <Content Include="About\About.xml" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
-    <Content Include="Languages\Keyed\English\AutoArm.xml" />
+    <Content Include="Languages\English\Keyed\AutoArm.xml" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
     <Content Include="obj\Debug\AutoArm.pdb" />
@@ -74,9 +82,12 @@
     <None Include="obj\Debug\AutoArm.csproj.CoreCompileInputs.cache" />
     <None Include="obj\Debug\DesignTimeResolveAssemblyReferencesInput.cache" />
     <None Include="obj\Release\AutoArm.csproj.AssemblyReference.cache" />
+    <None Include="PrioritySystem.md" />
+    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="bin\Release\" />
+    <Folder Include="Defs\" />
     <Folder Include="obj\Debug\TempPE\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
@@ -93,6 +104,11 @@ if exist "%25SRC%25\About" (
 REM Copy Defs if exists
 if exist "%25SRC%25\Defs" (
     xcopy "%25SRC%25\Defs\*" "%25DST%25\Defs\" /E /I /Y /Q
+)
+
+REM Copy Patches if exists
+if exist "%25SRC%25\Patches" (
+    xcopy "%25SRC%25\Patches\*" "%25DST%25\Patches\" /E /I /Y /Q
 )
 
 REM Copy Languages if exists

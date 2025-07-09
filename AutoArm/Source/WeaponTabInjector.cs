@@ -1,6 +1,6 @@
-﻿using HarmonyLib;
-using Verse;
+﻿using Verse;
 using RimWorld;
+using HarmonyLib;
 
 namespace AutoArm
 {
@@ -12,15 +12,80 @@ namespace AutoArm
             var apparel = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Apparel");
             var weapons = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
             var root = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Root");
-            if (root != null && weapons != null && root.childCategories.Contains(weapons))
+
+            if (apparel == null || weapons == null)
+            {
+                Log.Error("[AutoArm] Could not find Apparel or Weapons categories");
+                return;
+            }
+
+            // Remove weapons from root if it's there
+            if (root != null && root.childCategories.Contains(weapons))
             {
                 root.childCategories.Remove(weapons);
             }
-            if (apparel != null && weapons != null && !apparel.childCategories.Contains(weapons))
+
+            // Add weapons as a child of apparel
+            if (!apparel.childCategories.Contains(weapons))
             {
                 apparel.childCategories.Add(weapons);
                 weapons.parent = apparel;
-                Log.Message("[AutoArm] Weapons injected as a child of Apparel.");
+                Log.Message("<color=#4287f5>[AutoArm]</color> Weapons moved under Apparel category.");
+            }
+
+            // Report weapon counts
+            int rangedCount = WeaponThingFilterUtility.RangedWeapons.Count;
+            int meleeCount = WeaponThingFilterUtility.MeleeWeapons.Count;
+            Log.Message($"<color=#4287f5>[AutoArm]</color> Found {rangedCount} ranged and {meleeCount} melee weapon definitions.");
+        }
+    }
+
+    // Patch to add weapons to outfit filters when game loads
+    [HarmonyPatch(typeof(Game), "LoadGame")]
+    public static class Game_LoadGame_AddWeaponsToOutfits_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            OutfitWeaponHelper.AddWeaponsToOutfits();
+        }
+    }
+
+    // Patch to add weapons to outfit filters when new game starts
+    [HarmonyPatch(typeof(Game), "InitNewGame")]
+    public static class Game_InitNewGame_AddWeaponsToOutfits_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            OutfitWeaponHelper.AddWeaponsToOutfits();
+        }
+    }
+
+    public static class OutfitWeaponHelper
+    {
+        public static void AddWeaponsToOutfits()
+        {
+            var weaponsCat = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
+            if (weaponsCat == null || Current.Game?.outfitDatabase == null)
+                return;
+
+            foreach (var outfit in Current.Game.outfitDatabase.AllOutfits)
+            {
+                if (outfit.filter != null)
+                {
+                    // Check if this outfit should have weapons
+                    bool shouldHaveWeapons = outfit.label.ToLower().Contains("anything") ||
+                                           outfit.label.ToLower().Contains("soldier") ||
+                                           outfit.label.ToLower().Contains("worker");
+
+                    if (shouldHaveWeapons)
+                    {
+                        // Use SetAllow to enable the weapons category
+                        outfit.filter.SetAllow(weaponsCat, true);
+                        // Remove the log message for each outfit
+                    }
+                }
             }
         }
     }

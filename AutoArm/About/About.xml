@@ -5,6 +5,7 @@
 	<url>https://github.com/Snusene/AutoArm</url>
 	<packageId>Snues.AutoArm</packageId>
 	<supportedVersions>
+		<li>1.5</li>
 		<li>1.6</li>
 	</supportedVersions>
 	<modDependencies>
@@ -17,6 +18,87 @@
 	</modDependencies>
 	<loadAfter>
 		<li>brrainz.harmony</li>
+		<li>ludeon.rimworld</li>
+		<li>ludeon.rimworld.royalty</li>
+		<li>ludeon.rimworld.ideology</li>
+		<li>ludeon.rimworld.biotech</li>
+		<li>ludeon.rimworld.anomaly</li>
+		<!-- Compatibility mods -->
+		<li>PeteTimesSix.SimpleSidearms</li>
+		<li>CETeam.CombatExtended</li>
+		<li>NotFood.Infusion2</li>
+		<li>NotFood.InfusedTwo</li>
+		<li>Infusion.Core</li>
 	</loadAfter>
-	<description>Adds weapon filtering for outfits. Control which weapons your pawns can use per outfit. Auto equips weapons based on your preferences.</description>
+	<loadBefore>
+		<!-- Performance mods - we want to run before these -->
+		<li>Uuugggg.SmartSpeed</li>
+		<li>taranchuk.performanceoptimizer</li>
+		<li>Owlchemist.PerfectPathfinding</li>
+		<li>wvc.sergkart.rimthreaded</li>
+		<li>Kiame.RimThreaded</li>
+		<li>majorhoff.rimthreaded</li>
+		<li>Dubs.Performance.Analyzer</li>
+		<li>brrainz.rimpy</li>
+		<li>Krkr.RocketMan</li>
+		<li>notfood.BetterLoading</li>
+		<li>me.samboycoding.betterloading.dev</li>
+		<li>DubsBadHygiene.DBH</li>
+		<li>automatic.startupimpact</li>
+		<!-- AI/Behavior mods that might conflict -->
+		<li>killface.outfitted</li>
+		<li>Fluffy.WorkTab</li>
+		<li>UnlimitedHugs.AllowTool</li>
+		<li>Mehni.PickUpAndHaul</li>
+		<li>Roolo.RunAndGun</li>
+		<li>notfood.MendAndRecycle</li>
+		<li>Uuugggg.SmartMedicine</li>
+		<li>VouLT.BetterPawnControl</li>
+		<li>avilmask.CommonSense</li>
+		<li>Uuugggg.WhileYoureUp</li>
+		<li>Achtung.MainButton</li>
+		<li>FrozenSnowFox.ComplexJobs</li>
+		<!-- Inventory/Equipment system mods -->
+		<li>Mlie.AwesomeInventory</li>
+		<li>sandy.rpgstyleinventory</li>
+		<li>Sandy.RPGStyleInventory.avilmask.Revamped</li>
+		<li>dhultgren.smartstorage</li>
+		<li>lwm.deepstorage</li>
+		<li>Mlie.WeaponStorage</li>
+		<li>KiameV.ChangeDresser</li>
+		<!-- Combat/Weapon mods -->
+		<li>com.yayo.combat3</li>
+		<li>OskarPotocki.VanillaFactionsExpanded.Core</li>
+		<li>sarg.alphagenes</li>
+		<li>legodude17.combattraining</li>
+		<!-- Job system mods -->
+		<li>Fluffy.ColonyManager</li>
+		<li>Mlie.HaulToStack</li>
+		<li>Orion.Hospitality</li>
+		<li>avius.prisonlabor</li>
+		<li>PiTung.GuardsForMe</li>
+		<li>Mlie.JobSplitter</li>
+	</loadBefore>
+	<incompatibleWith>
+		<!-- Add any truly incompatible mods here if discovered -->
+	</incompatibleWith>
+	<description>
+		<![CDATA[<b>AutoArm</b>
+
+<b>Core features:</b>
+• Add weapons to outfit filters just like apparel
+• Colonists automatically equip better weapons based on their skills
+• Respects player choice - manually equipped weapons are remembered
+
+<b>How to Use:</b>
+1. Open a colonist's outfit policy
+2. You'll see a new "Weapons" category under Apparel
+3. Allow/disallow specific weapons or entire categories
+4. Colonists will automatically manage their weapons according to the policy
+
+<b>Load Order:</b>
+• Before: Performance mods and AI behavior mods. Auto-sort handles most cases.
+
+Report issues at the workshop]]>
+	</description>
 </ModMetaData>
