@@ -40,15 +40,10 @@ namespace AutoArm
             if (__instance.Drafted)
                 return;
 
-            if (__instance.equipment?.Primary == null && __instance.ageTracker.AgeBiologicalTicks < 100)
-            {
-                CheckMainWeaponUpgrade(__instance);
-            }
-
-            // Check unarmed pawns more frequently
+            // Main weapon checks
             if (__instance.equipment?.Primary == null)
             {
-                // Unarmed check every 60 ticks (1 second) with minimal staggering
+                // Unarmed - check frequently
                 if (__instance.IsHashIntervalTick(60 + __instance.thingIDNumber % 20))
                 {
                     CheckMainWeaponUpgrade(__instance);
@@ -56,25 +51,20 @@ namespace AutoArm
             }
             else
             {
-                // Armed pawns - check frequently for upgrades
+                // Armed - check based on colony size
                 int colonistCount = __instance.Map.mapPawns.FreeColonistsCount;
-                int baseInterval = colonistCount < 20 ? 300 : 600;  // 5s or 10s
+                int baseInterval = colonistCount < 20 ? 300 : 600;
 
                 if (__instance.IsHashIntervalTick(baseInterval + __instance.thingIDNumber % 100))
                 {
-                    CheckMainWeaponUpgrade(__instance);  // Skip ShouldCheckMainWeapon
+                    CheckMainWeaponUpgrade(__instance);
                 }
             }
 
-            // Sidearms check - different intervals based on need
+            // Sidearms check - normal priority only
             if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                bool needsSidearms = SimpleSidearmsCompat.GetCurrentSidearmCount(__instance) <
-                                    SimpleSidearmsCompat.GetMaxSidearmsForPawn(__instance);
-
-                int checkInterval = needsSidearms ? 300 : 3000; // 5 seconds if needed, 50 seconds otherwise
-
-                if (__instance.IsHashIntervalTick(checkInterval + __instance.thingIDNumber % 100))
+                if (__instance.IsHashIntervalTick(1500 + __instance.thingIDNumber % 500))
                 {
                     CheckSidearmUpgrade(__instance);
                 }
@@ -87,105 +77,6 @@ namespace AutoArm
             }
         }
 
-        private static bool ShouldCheckMainWeapon(Pawn pawn)
-        {
-            var currentWeapon = pawn.equipment?.Primary;
-
-            // Recently unarmed gets immediate check
-            if (recentlyUnarmedPawns.Contains(pawn))
-            {
-                recentlyUnarmedPawns.Remove(pawn);
-                lastWeaponCheckTick[pawn] = Find.TickManager.TicksGame;
-                return true;
-            }
-
-            // Unarmed pawns always pass through (they're already limited by tick interval)
-            if (currentWeapon == null)
-            {
-                lastWeaponCheckTick[pawn] = Find.TickManager.TicksGame;
-                return true;  // Always return true for unarmed
-            }
-
-            // Armed pawns use cooldown
-            if (lastWeaponCheckTick.TryGetValue(pawn, out int lastTick))
-            {
-                if (Find.TickManager.TicksGame - lastTick < 300)  // 5 seconds
-                    return false;
-            }
-
-            // If think tree injection failed, check more frequently
-            if (AutoArmMod.settings?.thinkTreeInjectionFailed == true)
-            {
-                lastWeaponCheckTick[pawn] = Find.TickManager.TicksGame;
-                return pawn.IsHashIntervalTick(2000 + pawn.thingIDNumber % 500);
-            }
-
-            // Check outfit filter (only for armed pawns)
-            if (pawn.outfits?.CurrentApparelPolicy?.filter != null)
-            {
-                var filter = pawn.outfits.CurrentApparelPolicy.filter;
-
-                // Check if current weapon is disallowed
-                if (!filter.Allows(currentWeapon.def))
-                {
-                    // Immediate drop for disallowed weapons
-                    if (pawn.jobs?.curJob?.def != JobDefOf.DropEquipment)
-                    {
-                        ForcedWeaponTracker.ClearForced(pawn);
-                        var dropJob = new Job(JobDefOf.DropEquipment, currentWeapon);
-                        pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
-
-                        if (AutoArmMod.settings.debugLogging)
-                        {
-                            Log.Message($"[AutoArm] {pawn.Name}: Dropping disallowed weapon {currentWeapon.Label}");
-                        }
-                        return false;
-                    }
-                }
-            }
-
-            // Mark check time and allow check
-            lastWeaponCheckTick[pawn] = Find.TickManager.TicksGame;
-            return true;
-        }
-
-        private static bool ShouldCheckSidearms(Pawn pawn)
-        {
-            // Check cooldown
-            if (lastSidearmCheckTick.TryGetValue(pawn, out int lastTick))
-            {
-                if (Find.TickManager.TicksGame - lastTick < 500)
-                    return false;
-            }
-
-            // Check if pawn needs sidearms
-            int maxSidearms = SimpleSidearmsCompat.GetMaxSidearmsForPawn(pawn);
-            int currentSidearms = SimpleSidearmsCompat.GetCurrentSidearmCount(pawn);
-            bool needsSidearms = currentSidearms < maxSidearms;
-
-            if (needsSidearms)
-            {
-                return pawn.IsHashIntervalTick(250 + pawn.thingIDNumber % 50);
-            }
-            else
-            {
-                // At max - scale with colony size
-                int pawnCount = pawn.Map.mapPawns.FreeColonistsCount;
-                int checkInterval = Math.Min(6000, Math.Max(1500, pawnCount * 50));
-                return pawn.IsHashIntervalTick(checkInterval + pawn.thingIDNumber % 500);
-            }
-        }
-
-        private static bool HasNoSidearms(Pawn pawn)
-        {
-            // Quick check if pawn has any weapons in inventory
-            if (pawn.inventory?.innerContainer == null || pawn.inventory.innerContainer.Count == 0)
-                return true;
-
-            // Check if any weapons in inventory
-            return !pawn.inventory.innerContainer.Any(t => t.def.IsWeapon);
-        }
-
         private static void CheckMainWeaponUpgrade(Pawn pawn)
         {
             // Check cache first (skip for unarmed - they need immediate checks)
@@ -193,7 +84,7 @@ namespace AutoArm
             {
                 if (lastWeaponSearchTick.TryGetValue(pawn, out int lastSearch))
                 {
-                    if (Find.TickManager.TicksGame - lastSearch < 600) // 10 seconds (was 41)
+                    if (Find.TickManager.TicksGame - lastSearch < 600) // 10 seconds
                     {
                         return; // Skip expensive search for armed pawns
                     }
@@ -212,16 +103,16 @@ namespace AutoArm
                 // Check if we should interrupt current job
                 bool shouldInterrupt = false;
                 var currentWeapon = pawn.equipment?.Primary;
-                bool isUrgent = currentWeapon == null;
+                bool isUnarmed = currentWeapon == null;
 
                 if (pawn.CurJob == null)
                 {
                     shouldInterrupt = true;
                 }
-                else if (isUrgent) // Unarmed pawns get priority
+                else if (isUnarmed) // Unarmed pawns get priority
                 {
                     // Don't interrupt critical jobs even for unarmed pawns
-                    shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: true);
+                    shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
                 }
                 else
                 {
@@ -266,8 +157,6 @@ namespace AutoArm
 
         private static void CheckSidearmUpgrade(Pawn pawn)
         {
-            SimpleSidearmsCompat.CheckPendingSidearmRegistrations(pawn);
-
             // Only upgrade sidearms when pawn is doing unimportant work
             if (pawn.CurJob != null && !JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def))
                 return;
@@ -300,6 +189,7 @@ namespace AutoArm
                        (kvp.Value.targetA.Thing?.DestroyedOrNull() ?? true))
                 .Select(kvp => kvp.Key)
                 .ToList();
+
             // Remove entries for dead/despawned pawns
             var toRemove = lastInterruptionTick.Keys
                 .Where(p => p.DestroyedOrNull() || p.Dead || !p.Spawned)
@@ -310,8 +200,8 @@ namespace AutoArm
                 lastInterruptionTick.Remove(pawn);
                 lastSidearmCheckTick.Remove(pawn);
                 lastWeaponCheckTick.Remove(pawn);
-                lastWeaponSearchTick.Remove(pawn);  // ADD THIS
-                cachedWeaponJobs.Remove(pawn);      // ADD THIS
+                lastWeaponSearchTick.Remove(pawn);
+                cachedWeaponJobs.Remove(pawn);
                 recentlyUnarmedPawns.Remove(pawn);
             }
 
@@ -335,8 +225,6 @@ namespace AutoArm
                     Log.Message("[AutoArm] Cleared recentlyUnarmedPawns set - was getting too large");
                 }
             }
-
-            SimpleSidearmsCompat.CleanupPendingRegistrations();
         }
 
         // Public method for marking pawns who just became unarmed

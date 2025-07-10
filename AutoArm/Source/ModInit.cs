@@ -119,7 +119,7 @@ namespace AutoArm
                 targetSorter = FindMainPrioritySorter(humanlikeThinkTree.thinkRoot);
                 if (targetSorter != null)
                 {
-                    workNodeIndex = Math.Min(8, targetSorter.subNodes.Count); // Insert early!
+                    workNodeIndex = Math.Min(8, targetSorter.subNodes.Count);
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
                         Log.Message("[AutoArm] Using alternative injection at index " + workNodeIndex);
@@ -132,45 +132,16 @@ namespace AutoArm
                 }
             }
 
-            // Create weapon optimization nodes
+            // Create single weapon node structure
             var weaponConditional = new ThinkNode_ConditionalWeaponsInOutfit();
-            var unarmedConditional = new ThinkNode_ConditionalUnarmedOrPoorlyArmed();
-            var emergencyJobGiver = new JobGiver_GetWeaponEmergency();
-            var normalJobGiver = new JobGiver_PickUpBetterWeapon();
+            var weaponJobGiver = new JobGiver_PickUpBetterWeapon();
+            weaponConditional.subNodes = new List<ThinkNode> { weaponJobGiver };
 
-            // Build the weapon node structure
-            unarmedConditional.subNodes = new List<ThinkNode> { emergencyJobGiver };
-            weaponConditional.subNodes = new List<ThinkNode> { unarmedConditional, normalJobGiver };
-
-            // Create sidearm nodes (only if Simple Sidearms is loaded)
-            ThinkNode sidearmNode = null;
-            if (SimpleSidearmsCompat.IsLoaded())
-            {
-                var noSidearmsConditional = new ThinkNode_ConditionalNoSidearms();
-                var sidearmEmergencyJobGiver = new JobGiver_GetSidearmEmergency();
-                noSidearmsConditional.subNodes = new List<ThinkNode> { sidearmEmergencyJobGiver };
-                sidearmNode = noSidearmsConditional;
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message("[AutoArm] Simple Sidearms detected - adding emergency sidearm acquisition");
-                }
-            }
-
-            // Insert MUCH EARLIER for higher priority
-            int insertIndex = Math.Max(0, Math.Min(workNodeIndex, 5)); // Cap at index 5 for high priority
+            // Insert at a higher priority (but not emergency level)
+            int insertIndex = Math.Max(0, workNodeIndex - 2); // Just before work
             targetSorter.subNodes.Insert(insertIndex, weaponConditional);
 
-            if (sidearmNode != null)
-            {
-                targetSorter.subNodes.Insert(insertIndex + 1, sidearmNode);
-            }
-
             Log.Message($"[AutoArm] Successfully injected weapon optimization into think tree at index {insertIndex}");
-            if (sidearmNode != null)
-            {
-                Log.Message($"[AutoArm] Successfully injected sidearm emergency acquisition at index {insertIndex + 1}");
-            }
         }
 
         private static void FindMainPrioritySorter(ThinkNode node, ref ThinkNode_PrioritySorter result, int depth)
@@ -244,35 +215,20 @@ namespace AutoArm
                 if (humanlikeThinkTree?.thinkRoot == null)
                     return false;
 
-                // Try to find our injected nodes
                 bool foundWeaponConditional = false;
                 bool foundJobGiver = false;
-                bool foundSidearmConditional = false;
-                bool foundSidearmJobGiver = false;
 
-                ValidateThinkNode(humanlikeThinkTree.thinkRoot, ref foundWeaponConditional, ref foundJobGiver, ref foundSidearmConditional, ref foundSidearmJobGiver);
+                ValidateThinkNode(humanlikeThinkTree.thinkRoot, ref foundWeaponConditional, ref foundJobGiver);
 
                 if (!foundWeaponConditional || !foundJobGiver)
                 {
-                    Log.Warning("[AutoArm] Think tree validation failed - our weapon nodes may have been overridden");
-                    Log.Warning("[AutoArm] Falling back to TickRare-only mode");
+                    Log.Warning("[AutoArm] Think tree validation failed - weapon nodes not found");
                     return false;
                 }
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message("[AutoArm] Think tree validation successful - weapon nodes found");
-                    if (SimpleSidearmsCompat.IsLoaded())
-                    {
-                        if (foundSidearmConditional && foundSidearmJobGiver)
-                        {
-                            Log.Message("[AutoArm] Sidearm emergency nodes found");
-                        }
-                        else
-                        {
-                            Log.Message("[AutoArm] Sidearm emergency nodes not found");
-                        }
-                    }
+                    Log.Message("[AutoArm] Think tree validation successful");
                 }
 
                 return true;
@@ -284,28 +240,21 @@ namespace AutoArm
             }
         }
 
-        private static void ValidateThinkNode(ThinkNode node, ref bool foundWeaponConditional, ref bool foundJobGiver, ref bool foundSidearmConditional, ref bool foundSidearmJobGiver)
+        private static void ValidateThinkNode(ThinkNode node, ref bool foundWeaponConditional, ref bool foundJobGiver)
         {
-            if (node == null)
-                return;
+            if (node == null) return;
 
             if (node is ThinkNode_ConditionalWeaponsInOutfit)
                 foundWeaponConditional = true;
 
-            if (node is JobGiver_PickUpBetterWeapon || node is JobGiver_GetWeaponEmergency)
+            if (node is JobGiver_PickUpBetterWeapon)
                 foundJobGiver = true;
-
-            if (node is ThinkNode_ConditionalNoSidearms)
-                foundSidearmConditional = true;
-
-            if (node is JobGiver_GetSidearmEmergency)
-                foundSidearmJobGiver = true;
 
             if (node.subNodes != null)
             {
                 foreach (var subNode in node.subNodes)
                 {
-                    ValidateThinkNode(subNode, ref foundWeaponConditional, ref foundJobGiver, ref foundSidearmConditional, ref foundSidearmJobGiver);
+                    ValidateThinkNode(subNode, ref foundWeaponConditional, ref foundJobGiver);
                 }
             }
         }

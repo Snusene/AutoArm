@@ -1,6 +1,6 @@
 ﻿using LudeonTK;
 using RimWorld;
-using System.Collections;  // Add this line!
+using System.Collections;
 using System.Linq;
 using System.Reflection;
 using Verse;
@@ -23,13 +23,10 @@ namespace AutoArm
 
             // Test conditionals
             var weaponsInOutfitNode = new ThinkNode_ConditionalWeaponsInOutfit();
-            var unarmedNode = new ThinkNode_ConditionalUnarmedOrPoorlyArmed();
 
             bool weaponsAllowed = weaponsInOutfitNode.TestSatisfied(pawn);
-            bool isUnarmedOrPoor = unarmedNode.TestSatisfied(pawn);
 
             Log.Message($"[AutoArm] Weapons in outfit allowed: {weaponsAllowed}");
-            Log.Message($"[AutoArm] Is unarmed or poorly armed: {isUnarmedOrPoor}");
 
             // Test current equipment
             var currentWeapon = pawn.equipment?.Primary;
@@ -186,66 +183,6 @@ namespace AutoArm
 
             Log.Message($"[AutoArm] === End Test ===\n");
         }
-        // Add this to DebugCommands.cs:
-
-        // Add this to DebugCommands.cs:
-
-        [DebugAction("AutoArm", "Test Emergency Sidearm", actionType = DebugActionType.ToolMapForPawns, allowedGameStates = AllowedGameStates.PlayingOnMap)]
-        private static void TestEmergencySidearm(Pawn pawn)
-        {
-            if (!pawn.IsColonist)
-            {
-                Log.Message($"[AutoArm] {pawn.Name} is not a colonist");
-                return;
-            }
-
-            Log.Message($"\n[AutoArm] === Testing Emergency Sidearm for {pawn.Name} ===");
-
-            // Test conditional
-            var noSidearmsNode = new ThinkNode_ConditionalNoSidearms();
-            bool hasNoSidearms = noSidearmsNode.TestSatisfied(pawn);
-
-            Log.Message($"[AutoArm] Has no sidearms: {hasNoSidearms}");
-            Log.Message($"[AutoArm] Simple Sidearms loaded: {SimpleSidearmsCompat.IsLoaded()}");
-            Log.Message($"[AutoArm] Auto-equip sidearms enabled: {AutoArmMod.settings?.autoEquipSidearms}");
-
-            // Check inventory
-            if (pawn.inventory?.innerContainer != null)
-            {
-                var weapons = pawn.inventory.innerContainer.Where(t => t.def.IsWeapon).ToList();
-                Log.Message($"[AutoArm] Weapons in inventory: {weapons.Count}");
-                foreach (var weapon in weapons)
-                {
-                    Log.Message($"[AutoArm]   - {weapon.Label}");
-                }
-            }
-            else
-            {
-                Log.Message($"[AutoArm] No inventory");
-            }
-
-            // Test emergency job giver
-            if (hasNoSidearms && SimpleSidearmsCompat.IsLoaded())
-            {
-                var jobGiver = new JobGiver_GetSidearmEmergency();
-                var job = jobGiver.TestTryGiveJob(pawn);
-
-                if (job != null)
-                {
-                    Log.Message($"[AutoArm] Emergency sidearm job found: {job.def.defName} targeting {job.targetA.Thing?.Label}");
-
-                    // Force start the job
-                    pawn.jobs.StartJob(job, JobCondition.InterruptForced);
-                    Log.Message($"[AutoArm] Started emergency sidearm job");
-                }
-                else
-                {
-                    Log.Message($"[AutoArm] No emergency sidearm job found");
-                }
-            }
-
-            Log.Message($"[AutoArm] === End Test ===\n");
-        }
 
         [DebugAction("AutoArm", "Test Infusion Compatibility", allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void TestInfusionCompat()
@@ -345,7 +282,7 @@ namespace AutoArm
 
         private static void CheckForWeaponNode(ThinkNode node, ref bool found)
         {
-            if (node is ThinkNode_ConditionalWeaponsInOutfit || node is JobGiver_GetWeaponEmergency)
+            if (node is ThinkNode_ConditionalWeaponsInOutfit || node is JobGiver_PickUpBetterWeapon)
                 found = true;
 
             if (node.subNodes != null)
@@ -374,7 +311,7 @@ namespace AutoArm
 
             if (node is JobGiver_Work)
                 nodeInfo += " <-- WORK IS HERE";
-            if (node is ThinkNode_ConditionalWeaponsInOutfit || node is JobGiver_GetWeaponEmergency)
+            if (node is ThinkNode_ConditionalWeaponsInOutfit || node is JobGiver_PickUpBetterWeapon)
                 nodeInfo += " <-- OUR WEAPON NODE";
 
             Log.Message(nodeInfo);
@@ -480,5 +417,5 @@ namespace AutoArm
 
             Log.Message($"[AutoArm] === End Debug ===\n");
         }
-    }  // <-- This closing brace ends the class
+    }
 }

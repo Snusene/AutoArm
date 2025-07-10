@@ -9,7 +9,6 @@ using UnityEngine;
 using Verse;
 using Verse.AI;
 using Verse.AI.Group;
-using static AutoArm.ForcedWeaponTracker;
 
 namespace AutoArm
 {
@@ -23,7 +22,6 @@ namespace AutoArm
     {
         private static Dictionary<Pawn, ThingDef> forcedWeaponsByDef = new Dictionary<Pawn, ThingDef>();
         private static Dictionary<Pawn, HashSet<ThingDef>> forcedSidearmsByDef = new Dictionary<Pawn, HashSet<ThingDef>>();
-
 
         public static void SetForced(Pawn pawn, ThingWithComps weapon)
         {
@@ -224,13 +222,60 @@ namespace AutoArm
         }
     }
 
+    // Track auto-equipped weapons for notifications
+    public static class AutoEquipTracker
+    {
+        private static HashSet<int> autoEquipJobIds = new HashSet<int>();
+        private static Dictionary<Pawn, ThingDef> previousWeapons = new Dictionary<Pawn, ThingDef>();
 
+        public static void MarkAutoEquip(Job job, Pawn pawn = null)
+        {
+            if (job != null)
+            {
+                autoEquipJobIds.Add(job.loadID);
+
+                if (pawn != null && job.def == JobDefOf.Equip && job.targetA.Thing is ThingWithComps weapon)
+                {
+                    if (pawn.equipment?.Primary != null)
+                    {
+                        previousWeapons[pawn] = pawn.equipment.Primary.def;
+                    }
+                    else
+                    {
+                        previousWeapons.Remove(pawn);
+                    }
+                }
+            }
+        }
+
+        public static bool IsAutoEquip(Job job)
+        {
+            return job != null && autoEquipJobIds.Contains(job.loadID);
+        }
+
+        public static void Clear(Job job)
+        {
+            if (job != null)
+                autoEquipJobIds.Remove(job.loadID);
+        }
+
+        public static ThingDef GetPreviousWeapon(Pawn pawn)
+        {
+            previousWeapons.TryGetValue(pawn, out var weapon);
+            return weapon;
+        }
+
+        public static void ClearPreviousWeapon(Pawn pawn)
+        {
+            previousWeapons.Remove(pawn);
+        }
+    }
 
     public class JobGiver_PickUpBetterWeapon : ThinkNode_JobGiver
     {
-        private const float MaxSearchDistance = 50f;  // Same as your old distance check
-        private const int MaxWeaponsToConsider = 30;  // If you don't have this already
-        private const int CacheLifetime = 250;        // If you don't have this already
+        private const float MaxSearchDistance = 50f;
+        private const int MaxWeaponsToConsider = 30;
+        private const int CacheLifetime = 250;
 
         // Weapon caching
         internal static Dictionary<Map, List<ThingWithComps>> weaponCache = new Dictionary<Map, List<ThingWithComps>>();
@@ -238,11 +283,6 @@ namespace AutoArm
 
         protected override Job TryGiveJob(Pawn pawn)
         {
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                Log.Message($"[AutoArm] Emergency weapon check for {pawn.Name}");
-            }
-
             // Skip if mod is disabled
             if (AutoArmMod.settings?.modEnabled == false)
                 return null;
@@ -251,31 +291,27 @@ namespace AutoArm
             if (!IsValidPawnForAutoEquip(pawn))
                 return null;
 
-            // For emergency job giver, only help unarmed pawns
-            if (pawn.equipment?.Primary != null)
+            bool isUnarmed = pawn.equipment?.Primary == null;
+
+            // For unarmed pawns, be less picky about interrupting jobs
+            if (!isUnarmed && JobGiverHelpers.IsCriticalJob(pawn))
                 return null;
 
-            // Skip if doing absolutely critical work
-            if (JobGiverHelpers.IsCriticalJob(pawn))
+            // Don't interrupt "Do until X" jobs unless unarmed
+            if (!isUnarmed && pawn.mindState?.lastJobTag == JobTag.SatisfyingNeeds)
                 return null;
 
-            // Don't interrupt "Do until X" jobs
-            if (pawn.mindState?.lastJobTag == JobTag.SatisfyingNeeds)
-                return null;
-
-            // Find ANY weapon quickly
             var job = FindBetterWeaponJob(pawn);
 
-            // Add the debug logging HERE
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 if (job != null)
                 {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Emergency TryGiveJob returning equip job for {job.targetA.Thing?.Label}");
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: TryGiveJob returning equip job for {job.targetA.Thing?.Label}");
                 }
                 else
                 {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Emergency TryGiveJob returning null");
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: TryGiveJob returning null");
                 }
             }
 
@@ -285,8 +321,12 @@ namespace AutoArm
         public Job FindBetterWeaponJob(Pawn pawn)
         {
             var currentWeapon = pawn.equipment?.Primary;
+            bool isUnarmed = currentWeapon == null;
+
+            // Lower threshold for unarmed pawns - any weapon is good
             float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : float.MinValue;
-            float improvementThreshold = currentWeapon != null ? currentScore * 1.1f : currentScore; // 10% improvement needed
+            float improvementThreshold = isUnarmed ? currentScore : currentScore * 1.1f;
+
             ThingWithComps bestWeapon = null;
             float bestScore = currentScore;
             int weaponsChecked = 0;
@@ -312,7 +352,6 @@ namespace AutoArm
                     }
                 }
 
-                // DON'T SORT HERE - just cache all weapons unsorted
                 weaponCache[pawn.Map] = cachedWeapons;
                 weaponCacheAge[pawn.Map] = Find.TickManager.TicksGame;
 
@@ -322,20 +361,18 @@ namespace AutoArm
                 }
             }
 
-            // AFTER getting cache, filter nearby weapons and sort only those
+            // Filter nearby weapons and sort only those
             var nearbyWeapons = cachedWeapons
                 .Where(w => w.Position.DistanceTo(pawn.Position) <= MaxSearchDistance)
                 .OrderBy(w => w.Position.DistanceTo(pawn.Position))
-                .Take(50)  // Only evaluate closest 50 weapons
+                .Take(50)
                 .ToList();
 
-            // Use nearbyWeapons, NOT cachedWeapons
-            foreach (var weapon in nearbyWeapons)  // CHANGED THIS LINE
+            foreach (var weapon in nearbyWeapons)
             {
                 if (weaponsChecked >= MaxWeaponsToConsider)
                     break;
 
-                // No need to check distance again - nearbyWeapons already filtered
                 if (IsWeapon(weapon) && IsValidWeaponCandidate(weapon, pawn))
                 {
                     weaponsChecked++;
@@ -515,22 +552,7 @@ namespace AutoArm
             if (equippable?.PrimaryVerb == null || !equippable.PrimaryVerb.HarmsHealth())
                 return -1000f;
 
-            // Simple scoring
-            float score = 100f;
-
-            // Quality bonus with exponential scaling
-            if (weapon.TryGetQuality(out QualityCategory qc))
-            {
-                // Normal=40, Good=56, Excellent=73, Masterwork=92, Legendary=113
-                score += Mathf.Pow((int)qc, 1.5f) * 20f;
-            }
-            else
-            {
-                // For weapons without quality (some modded weapons), use value as a small factor
-                score += Math.Min(weapon.MarketValue * 0.01f, 20f); // Cap at 20 points
-            }
-
-            // Hard overrides only for things outfit can't handle
+            // Hard overrides for traits
             if (pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) == true && weapon.def.IsRangedWeapon)
                 return -2000f; // Brawlers NEVER use ranged
 
@@ -538,66 +560,145 @@ namespace AutoArm
             if (isHunter && weapon.def.IsRangedWeapon && equippable.PrimaryVerb.UsesExplosiveProjectiles())
                 return -1000f; // Hunters shouldn't use explosives
 
+            // Persona weapon check
             var bladelinkComp = weapon.TryGetComp<CompBladelinkWeapon>();
             if (bladelinkComp != null && bladelinkComp.CodedPawn != null)
             {
                 if (bladelinkComp.CodedPawn != pawn)
-                {
                     return -1000f; // Someone else's persona weapon
-                }
-                else
-                {
-                    score += 15f; // Own persona weapon
-                }
             }
 
-            // Small skill preference with range consideration
+            // Get pawn skills
+            float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
+            float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
+
+            // Start with base score
+            float score = 100f;
+
+            // MAJOR skill preference - this should be the primary factor!
             if (weapon.def.IsRangedWeapon)
             {
-                float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
-                float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
-
                 if (shootingSkill > meleeSkill)
                 {
-                    score += 5f; // Small bonus if they're better at shooting
+                    // Strong preference for ranged when better at shooting
+                    float skillDiff = shootingSkill - meleeSkill;
+                    score += skillDiff * 50f; // 50 points per skill level difference
 
-                    // Range bonus only for shooters
-                    var verbs = weapon.def.Verbs;
-                    if (verbs?.Count > 0 && verbs[0] != null)
+                    // Additional bonus based on absolute shooting skill
+                    score += shootingSkill * 10f;
+                }
+                else if (meleeSkill > shootingSkill + 3)
+                {
+                    // Only consider ranged if MUCH worse at melee
+                    score -= (meleeSkill - shootingSkill) * 30f;
+                }
+
+                // Weapon stats consideration
+                if (weapon.def.Verbs?.Count > 0 && weapon.def.Verbs[0] != null)
+                {
+                    var verb = weapon.def.Verbs[0];
+
+                    // DPS estimate (rough)
+                    float damage = verb.defaultProjectile?.projectile?.GetDamageAmount(weapon) ?? 0f;
+                    float warmup = verb.warmupTime;
+                    float cooldown = weapon.def.GetStatValueAbstract(StatDefOf.RangedWeapon_Cooldown);
+                    float burstShots = verb.burstShotCount;
+
+                    float dps = damage * burstShots / (warmup + cooldown + 0.1f);
+                    score += dps * 5f; // 5 points per DPS
+
+                    // Range is CRITICAL for shooters
+                    float range = verb.range;
+                    if (shootingSkill >= 5) // Decent shooters
                     {
-                        float range = verbs[0].range;
-                        if (range >= 25f) // Good range weapons
-                        {
-                            score += (range - 20f) * 0.5f; // 0.5 points per tile over 20
-                        }
+                        // Strong preference for good range weapons
+                        if (range >= 30f) // Assault rifle range or better
+                            score += 100f + (range - 30f) * 3f;
+                        else if (range >= 25f) // Decent range
+                            score += 50f;
+                        else if (range < 20f) // Short range penalty for good shooters
+                            score -= (20f - range) * 5f;
+                    }
+                    else
+                    {
+                        // Less skilled shooters get smaller range bonus
+                        if (range >= 25f)
+                            score += (range - 20f) * 2f;
+                    }
 
-                        // Bonus for burst fire weapons
-                        if (verbs[0].burstShotCount > 1)
-                        {
-                            score += 5f; // Automatic weapons bonus
-                        }
+                    // Burst fire is highly valued
+                    if (burstShots > 1)
+                    {
+                        score += burstShots * 15f; // Much higher than before
+                    }
+
+                    // Accuracy bonus for good shooters
+                    if (shootingSkill >= 8)
+                    {
+                        float accuracy = weapon.def.GetStatValueAbstract(StatDefOf.AccuracyLong);
+                        score += accuracy * 50f;
                     }
                 }
             }
             else if (weapon.def.IsMeleeWeapon)
             {
-                float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
-                float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
-
                 if (meleeSkill > shootingSkill)
-                    score += 5f; // Small bonus if they're better at melee
+                {
+                    // Strong preference for melee when better at melee
+                    float skillDiff = meleeSkill - shootingSkill;
+                    score += skillDiff * 50f; // 50 points per skill level difference
+
+                    // Additional bonus based on absolute melee skill
+                    score += meleeSkill * 10f;
+                }
+                else if (shootingSkill > meleeSkill + 3)
+                {
+                    // Only consider melee if MUCH worse at shooting
+                    score -= (shootingSkill - meleeSkill) * 30f;
+                }
+
+                // Melee DPS consideration
+                float meleeDPS = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_CooldownMultiplier);
+                float meleeDamage = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_DamageMultiplier);
+                score += (meleeDPS + meleeDamage) * 20f;
             }
 
-            // Infusion 2 compatibility - add bonus for infused weapons
+            // Quality bonus - reduced to not overwhelm skill preference
+            if (weapon.TryGetQuality(out QualityCategory qc))
+            {
+                // Reduced from exponential to linear, capped impact
+                score += (int)qc * 15f; // 15 points per quality level
+            }
+
+            // Persona weapon bonus (reduced)
+            if (bladelinkComp?.CodedPawn == pawn)
+                score += 25f;
+
+            // Infusion 2 compatibility
             if (InfusionCompat.IsLoaded())
             {
                 score += InfusionCompat.GetInfusionScoreBonus(weapon);
             }
 
-            // If Combat Extended is loaded and checking ammo
+            // Combat Extended ammo check
             if (CECompat.ShouldCheckAmmo())
             {
                 score *= CECompat.GetAmmoScoreModifier(weapon, pawn);
+            }
+
+            // Final skill-based modifier to ensure strong preference
+            if (weapon.def.IsRangedWeapon && shootingSkill >= meleeSkill + 2)
+            {
+                score *= 1.5f; // 50% bonus for appropriate weapon type
+            }
+            else if (weapon.def.IsMeleeWeapon && meleeSkill >= shootingSkill + 2)
+            {
+                score *= 1.5f; // 50% bonus for appropriate weapon type
+            }
+            else if ((weapon.def.IsRangedWeapon && meleeSkill > shootingSkill + 3) ||
+                     (weapon.def.IsMeleeWeapon && shootingSkill > meleeSkill + 3))
+            {
+                score *= 0.3f; // 70% penalty for wrong weapon type
             }
 
             return score;
@@ -653,211 +754,373 @@ namespace AutoArm
         }
     }
 
-    // High priority conditional for unarmed colonists
-    public class ThinkNode_ConditionalUnarmedOrPoorlyArmed : ThinkNode_Conditional
+    // Harmony patches for forced weapon tracking
+    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
+    [HarmonyPriority(Priority.High)]
+    public static class Pawn_JobTracker_TrackForcedEquip_Patch
     {
-        protected override bool Satisfied(Pawn pawn)
+        [HarmonyPrefix]
+        public static void Prefix(Job newJob, Pawn ___pawn)
         {
-            // Only check colonists
-            if (!pawn.IsColonist)
-                return false;
-
-            // Skip if can't use weapons
-            if (pawn.WorkTagIsDisabled(WorkTags.Violent))
-                return false;
-
-            // Skip if drafted
-            if (pawn.Drafted)
-                return false;
-
-            // Skip if on fire
-            if (pawn.IsBurning())
-                return false;
-
-            // Skip if doing critical work
-            if (JobGiverHelpers.IsCriticalJob(pawn))
-                return false;
-
-            // Skip if in mental state (berserk, etc)
-            if (pawn.InMentalState)
-                return false;
-
-            // Only care about truly unarmed pawns
-            return pawn.equipment?.Primary == null;
-        }
-
-        // Public method for testing
-        public bool TestSatisfied(Pawn pawn)
-        {
-            return Satisfied(pawn);
+            if (newJob?.def == JobDefOf.Equip && newJob.playerForced && ___pawn.IsColonist)
+            {
+                var targetWeapon = newJob.targetA.Thing as ThingWithComps;
+                if (targetWeapon?.def.IsWeapon == true)
+                {
+                    ForcedWeaponTracker.SetForced(___pawn, targetWeapon);
+                }
+            }
+            else if (newJob?.def == JobDefOf.Equip && ___pawn.IsColonist)
+            {
+                var targetWeapon = newJob.targetA.Thing as ThingWithComps;
+                if (targetWeapon?.def.IsWeapon == true && SimpleSidearmsCompat.IsSimpleSidearmsSwitch(___pawn, targetWeapon))
+                {
+                    ForcedWeaponTracker.SetForced(___pawn, targetWeapon);
+                }
+            }
         }
     }
 
-    // Emergency weapon acquisition job giver for unarmed pawns
-    public class JobGiver_GetWeaponEmergency : JobGiver_PickUpBetterWeapon
+    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
+    [HarmonyPriority(Priority.High)]
+    public static class Pawn_JobTracker_TrackForcedSidearmEquip_Patch
     {
-        protected override Job TryGiveJob(Pawn pawn)
+        [HarmonyPrefix]
+        public static void Prefix(Job newJob, Pawn ___pawn)
         {
-            if (AutoArmMod.settings?.debugLogging == true)
+            if (!___pawn.IsColonist || !SimpleSidearmsCompat.IsLoaded())
+                return;
+
+            if (newJob?.def?.defName == "EquipSecondary" && newJob.playerForced)
             {
-                Log.Message($"[AutoArm] Emergency weapon check for {pawn.Name}");
+                var targetWeapon = newJob.targetA.Thing as ThingWithComps;
+                if (targetWeapon?.def.IsWeapon == true)
+                {
+                    ForcedWeaponTracker.SetForcedSidearm(___pawn, targetWeapon.def);
+
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] Player manually equipped {targetWeapon.Label} as sidearm for {___pawn.Name}");
+                    }
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_EquipmentTracker), "TryDropEquipment")]
+    public static class Pawn_EquipmentTracker_ClearForcedOnDrop_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(bool __result, Pawn ___pawn)
+        {
+            if (__result && ___pawn.IsColonist)
+            {
+                ForcedWeaponTracker.ClearForced(___pawn);
+
+                if (___pawn.equipment?.Primary == null)
+                {
+                    Pawn_TickRare_Unified_Patch.MarkRecentlyUnarmed(___pawn);
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_EquipmentTracker), "DestroyEquipment")]
+    public static class Pawn_EquipmentTracker_ClearForcedOnDestroy_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Pawn ___pawn)
+        {
+            if (___pawn.IsColonist)
+            {
+                ForcedWeaponTracker.ClearForced(___pawn);
+
+                if (___pawn.equipment?.Primary == null)
+                {
+                    Pawn_TickRare_Unified_Patch.MarkRecentlyUnarmed(___pawn);
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_InventoryTracker), "Notify_ItemRemoved")]
+    public static class Pawn_InventoryTracker_ClearForcedSidearm_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Thing item, Pawn ___pawn)
+        {
+            if (item is ThingWithComps weapon && weapon.def.IsWeapon && ___pawn.IsColonist)
+            {
+                ForcedWeaponTracker.ClearForcedSidearm(___pawn, weapon.def);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_EquipmentTracker), "AddEquipment")]
+    public static class Pawn_EquipmentTracker_NotifyAutoEquip_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ThingWithComps newEq, Pawn ___pawn)
+        {
+            if (___pawn.IsColonist && ___pawn.CurJob?.def == JobDefOf.Equip &&
+                AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
+            {
+                if (newEq != null && PawnUtility.ShouldSendNotificationAbout(___pawn) &&
+                    AutoArmMod.settings?.showNotifications == true)
+                {
+                    var previousWeapon = AutoEquipTracker.GetPreviousWeapon(___pawn);
+
+                    if (previousWeapon != null)
+                    {
+                        Messages.Message("AutoArm_UpgradedWeapon".Translate(
+                            ___pawn.LabelShort.CapitalizeFirst(),
+                            previousWeapon.label,
+                            newEq.Label
+                        ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                    }
+                    else
+                    {
+                        Messages.Message("AutoArm_EquippedWeapon".Translate(
+                            ___pawn.LabelShort.CapitalizeFirst(),
+                            newEq.Label
+                        ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                    }
+                }
+
+                AutoEquipTracker.Clear(___pawn.CurJob);
+                AutoEquipTracker.ClearPreviousWeapon(___pawn);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_OutfitTracker), "CurrentApparelPolicy", MethodType.Setter)]
+    public static class Pawn_OutfitTracker_PolicyChanged_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Pawn ___pawn)
+        {
+            if (AutoArmMod.settings?.modEnabled != true)
+                return;
+
+            if (___pawn.IsColonist && ___pawn.Spawned && !___pawn.Dead &&
+                ___pawn.equipment?.Primary != null && !___pawn.Drafted)
+            {
+                var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
+                if (filter != null && !filter.Allows(___pawn.equipment.Primary.def))
+                {
+                    ForcedWeaponTracker.ClearForced(___pawn);
+
+                    var dropJob = new Job(JobDefOf.DropEquipment, ___pawn.equipment.Primary);
+                    ___pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
+
+                    if (AutoArmMod.settings.debugLogging)
+                    {
+                        Log.Message($"[AutoArm] {___pawn.Name}: Outfit changed, dropping {___pawn.equipment.Primary.Label}");
+                    }
+
+                    if (PawnUtility.ShouldSendNotificationAbout(___pawn))
+                    {
+                        Messages.Message("AutoArm_DroppingDisallowed".Translate(
+                            ___pawn.LabelShort.CapitalizeFirst(),
+                            ___pawn.equipment.Primary.Label
+                        ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                    }
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ThingFilter), "SetAllow", new Type[] { typeof(ThingDef), typeof(bool) })]
+    public static class ThingFilter_SetAllow_CheckWeapons_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ThingFilter __instance, ThingDef thingDef, bool allow)
+        {
+            if (AutoArmMod.settings?.modEnabled != true || allow || !thingDef.IsWeapon)
+                return;
+
+            if (Current.Game == null || Find.Maps == null)
+                return;
+
+            var pawnsToDropWeapons = new List<(Pawn pawn, ThingWithComps weapon)>();
+
+            foreach (var map in Find.Maps)
+            {
+                if (map?.mapPawns?.FreeColonists == null)
+                    continue;
+
+                foreach (var pawn in map.mapPawns.FreeColonists)
+                {
+                    if (pawn.Drafted || pawn.jobs == null)
+                        continue;
+
+                    if (pawn.outfits?.CurrentApparelPolicy?.filter == __instance &&
+                        pawn.equipment?.Primary?.def == thingDef)
+                    {
+                        pawnsToDropWeapons.Add((pawn, pawn.equipment.Primary));
+                    }
+                }
             }
 
-            // Skip if mod is disabled
-            if (AutoArmMod.settings?.modEnabled == false)
-                return null;
-
-            // Quick validation
-            if (!IsValidPawnForAutoEquip(pawn))
-                return null;
-
-            // For emergency job giver, only help unarmed pawns
-            if (pawn.equipment?.Primary != null)
-                return null;
-
-            // Skip if doing absolutely critical work
-            if (JobGiverHelpers.IsCriticalJob(pawn))
-                return null;
-
-            // Don't interrupt "Do until X" jobs
-            if (pawn.mindState?.lastJobTag == JobTag.SatisfyingNeeds)
-                return null;
-
-            // Use the base class method - for unarmed pawns, any weapon is better
-            var job = FindBetterWeaponJob(pawn);
-
-            // Add the debug logging
-            if (AutoArmMod.settings?.debugLogging == true)
+            if (pawnsToDropWeapons.Count > 0)
             {
-                if (job != null)
+                LongEventHandler.ExecuteWhenFinished(() =>
                 {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Emergency TryGiveJob returning equip job for {job.targetA.Thing?.Label}");
+                    foreach (var (pawn, weapon) in pawnsToDropWeapons)
+                    {
+                        if (pawn.equipment?.Primary == weapon && !pawn.Drafted)
+                        {
+                            ForcedWeaponTracker.ClearForced(pawn);
+
+                            var dropJob = new Job(JobDefOf.DropEquipment, weapon);
+                            pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
+
+                            if (AutoArmMod.settings.debugLogging)
+                            {
+                                Log.Message($"[AutoArm] {pawn.Name}: {thingDef.label} now disallowed, dropping weapon");
+                            }
+
+                            if (PawnUtility.ShouldSendNotificationAbout(pawn))
+                            {
+                                Messages.Message("AutoArm_DroppingDisallowed".Translate(
+                                    pawn.LabelShort.CapitalizeFirst(),
+                                    weapon.Label
+                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ThingFilter), "SetDisallowAll")]
+    public static class ThingFilter_SetDisallowAll_CheckWeapons_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ThingFilter __instance)
+        {
+            if (AutoArmMod.settings?.modEnabled != true)
+                return;
+
+            if (Current.Game == null || Find.Maps == null)
+                return;
+
+            var pawnsToDropWeapons = new List<(Pawn pawn, ThingWithComps weapon)>();
+
+            foreach (var map in Find.Maps)
+            {
+                if (map?.mapPawns?.FreeColonists == null)
+                    continue;
+
+                foreach (var pawn in map.mapPawns.FreeColonists)
+                {
+                    if (pawn.Drafted || pawn.jobs == null)
+                        continue;
+
+                    if (pawn.outfits?.CurrentApparelPolicy?.filter == __instance &&
+                        pawn.equipment?.Primary != null)
+                    {
+                        pawnsToDropWeapons.Add((pawn, pawn.equipment.Primary));
+                    }
+                }
+            }
+
+            if (pawnsToDropWeapons.Count > 0)
+            {
+                LongEventHandler.ExecuteWhenFinished(() =>
+                {
+                    foreach (var (pawn, weapon) in pawnsToDropWeapons)
+                    {
+                        if (pawn.equipment?.Primary == weapon && !pawn.Drafted)
+                        {
+                            ForcedWeaponTracker.ClearForced(pawn);
+
+                            var dropJob = new Job(JobDefOf.DropEquipment, weapon);
+                            pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
+
+                            if (AutoArmMod.settings.debugLogging)
+                            {
+                                Log.Message($"[AutoArm] {pawn.Name}: All items disallowed, dropping weapon");
+                            }
+
+                            if (PawnUtility.ShouldSendNotificationAbout(pawn))
+                            {
+                                Messages.Message("AutoArm_DroppingDisallowed".Translate(
+                                    pawn.LabelShort.CapitalizeFirst(),
+                                    weapon.Label
+                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_OutfitTracker), "CurrentApparelPolicy", MethodType.Setter)]
+    public static class Pawn_OutfitTracker_CurrentPolicy_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Pawn_OutfitTracker __instance)
+        {
+            var pawn = __instance.pawn;
+            if (pawn != null && Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.ContainsKey(pawn))
+            {
+                Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.Remove(pawn);
+                Pawn_TickRare_Unified_Patch.cachedWeaponJobs.Remove(pawn);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_JobTracker), "EndCurrentJob")]
+    public static class Debug_JobTracker_EndCurrentJob_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(Pawn ___pawn, JobCondition condition, Job ___curJob)
+        {
+            if (AutoArmMod.settings?.debugLogging == true &&
+                ___curJob?.def == JobDefOf.Equip &&
+                AutoEquipTracker.IsAutoEquip(___curJob))
+            {
+                Log.Message($"[AutoArm DEBUG] {___pawn.Name}: Ending equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
+    public static class Debug_JobTracker_StartJob_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(Pawn ___pawn, Job newJob)
+        {
+            if (AutoArmMod.settings?.debugLogging == true &&
+                newJob?.def == JobDefOf.Equip &&
+                AutoEquipTracker.IsAutoEquip(newJob))
+            {
+                Log.Message($"[AutoArm DEBUG] {___pawn.Name}: Starting equip job for {newJob.targetA.Thing?.Label}");
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ThinkNode_JobGiver), "TryIssueJobPackage")]
+    public static class Debug_ThinkNode_JobGiver_TryIssueJobPackage_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ThinkNode_JobGiver __instance, Pawn pawn, JobIssueParams jobParams, ThinkResult __result)
+        {
+            if (AutoArmMod.settings?.debugLogging == true &&
+                __instance is JobGiver_PickUpBetterWeapon)
+            {
+                if (__result.Job != null)
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued job: {__result.Job.def.defName} targeting {__result.Job.targetA.Thing?.Label}");
                 }
                 else
                 {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Emergency TryGiveJob returning null");
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued NO job");
                 }
             }
-
-            return job;
-        }
-
-    }
-
-    // Think tree conditional for checking if pawn has no sidearms
-    public class ThinkNode_ConditionalNoSidearms : ThinkNode_Conditional
-    {
-        protected override bool Satisfied(Pawn pawn)
-        {
-            // Only check colonists
-            if (!pawn.IsColonist)
-                return false;
-
-            // Skip if Simple Sidearms isn't loaded
-            if (!SimpleSidearmsCompat.IsLoaded())
-                return false;
-
-            // Skip if sidearm auto-equip is disabled
-            if (AutoArmMod.settings?.autoEquipSidearms != true)
-                return false;
-
-            // Skip if can't use weapons
-            if (pawn.WorkTagIsDisabled(WorkTags.Violent))
-                return false;
-
-            // Skip if drafted
-            if (pawn.Drafted)
-                return false;
-
-            // Check if pawn has any weapons in inventory
-            if (pawn.inventory?.innerContainer == null || pawn.inventory.innerContainer.Count == 0)
-            {
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm] {pawn.Name}: ConditionalNoSidearms - no inventory items, returning true");
-                }
-                return true;
-            }
-
-            // Check if any weapons in inventory
-            bool hasWeapons = pawn.inventory.innerContainer.Any(t => t.def.IsWeapon);
-
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                Log.Message($"[AutoArm] {pawn.Name}: ConditionalNoSidearms - has weapons: {hasWeapons}, returning {!hasWeapons}");
-            }
-
-            return !hasWeapons;
-        }
-
-        // Public method for testing
-        public bool TestSatisfied(Pawn pawn)
-        {
-            return Satisfied(pawn);
         }
     }
-
-    // Emergency sidearm acquisition job giver
-    public class JobGiver_GetSidearmEmergency : ThinkNode_JobGiver
-    {
-        protected override Job TryGiveJob(Pawn pawn)
-        {
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                Log.Message($"[AutoArm] Emergency sidearm check for {pawn.Name}");
-            }
-
-            // Skip if mod is disabled
-            if (AutoArmMod.settings?.modEnabled == false)
-                return null;
-
-            // Skip if Simple Sidearms isn't loaded
-            if (!SimpleSidearmsCompat.IsLoaded())
-                return null;
-
-            // Skip if sidearm auto-equip is disabled
-            if (AutoArmMod.settings?.autoEquipSidearms != true)
-                return null;
-
-            // Basic validation
-            if (pawn == null || !pawn.IsColonist || pawn.Drafted || pawn.Dead || pawn.Downed)
-                return null;
-
-            if (pawn.WorkTagIsDisabled(WorkTags.Violent))
-                return null;
-
-            // Skip if doing absolutely critical work
-            if (JobGiverHelpers.IsCriticalJob(pawn))
-                return null;
-
-            // Don't interrupt "Do until X" jobs
-            if (pawn.mindState?.lastJobTag == JobTag.SatisfyingNeeds)
-                return null;
-
-            // Use the existing sidearm finding logic
-            var job = SimpleSidearmsCompat.TryGetSidearmUpgradeJob(pawn);
-
-            // Add the debug logging HERE
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                if (job != null)
-                {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Sidearm TryGiveJob returning equip job for {job.targetA.Thing?.Label}");
-                }
-                else
-                {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Sidearm TryGiveJob returning null");
-                }
-            }
-
-            return job;
-        }
-
-        // Add this public method for testing
-        public Job TestTryGiveJob(Pawn pawn)
-        {
-            return TryGiveJob(pawn);
-        }
-    }
-
 }

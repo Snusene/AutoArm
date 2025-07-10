@@ -85,8 +85,8 @@ namespace AutoArm
             if (AlwaysCriticalJobs.Contains(job))
                 return true;
 
-            // Check conditional jobs (only critical if pawn has sidearms)
-            if (!hasNoSidearms && ConditionalCriticalJobs.Contains(job))
+            // Check conditional jobs (always critical now since we removed emergency system)
+            if (ConditionalCriticalJobs.Contains(job))
                 return true;
 
             // Check string-based patterns for DLC/modded content

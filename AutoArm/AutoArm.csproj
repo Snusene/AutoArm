@@ -62,7 +62,6 @@
     <Compile Include="Source\ConflictDetection.cs" />
     <Compile Include="Source\DebugCommands.cs" />
     <Compile Include="Source\JobGiverHelpers.cs" />
-    <Compile Include="Source\JobGiver_PickUpBetterWeapon.cs" />
     <Compile Include="Source\ModInit.cs" />
     <Compile Include="Source\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\WeaponAutoEquip.cs" />
