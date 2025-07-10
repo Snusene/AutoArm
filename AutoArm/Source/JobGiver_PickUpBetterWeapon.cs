@@ -405,6 +405,72 @@ namespace AutoArm
             }
         }
     }
+    [HarmonyPatch(typeof(Pawn_OutfitTracker), "CurrentApparelPolicy", MethodType.Setter)]
+    public static class Pawn_OutfitTracker_CurrentPolicy_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Pawn_OutfitTracker __instance)
+        {
+            // Clear weapon cache when outfit changes
+            var pawn = __instance.pawn;
+            if (pawn != null && Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.ContainsKey(pawn))
+            {
+                Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.Remove(pawn);
+                Pawn_TickRare_Unified_Patch.cachedWeaponJobs.Remove(pawn);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Pawn_JobTracker), "EndCurrentJob")]
+    public static class Debug_JobTracker_EndCurrentJob_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(Pawn ___pawn, JobCondition condition, Job ___curJob)
+        {
+            if (AutoArmMod.settings?.debugLogging == true &&
+                ___curJob?.def == JobDefOf.Equip &&
+                AutoEquipTracker.IsAutoEquip(___curJob))
+            {
+                Log.Message($"[AutoArm DEBUG] {___pawn.Name}: Ending equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
+            }
+        }
+    }
+
+    // Also add this to see when jobs start
+    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
+    public static class Debug_JobTracker_StartJob_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(Pawn ___pawn, Job newJob)
+        {
+            if (AutoArmMod.settings?.debugLogging == true &&
+                newJob?.def == JobDefOf.Equip &&
+                AutoEquipTracker.IsAutoEquip(newJob))
+            {
+                Log.Message($"[AutoArm DEBUG] {___pawn.Name}: Starting equip job for {newJob.targetA.Thing?.Label}");
+            }
+        }
+    }
+    [HarmonyPatch(typeof(ThinkNode_JobGiver), "TryIssueJobPackage")]
+    public static class Debug_ThinkNode_JobGiver_TryIssueJobPackage_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ThinkNode_JobGiver __instance, Pawn pawn, JobIssueParams jobParams, ThinkResult __result)
+        {
+            if (AutoArmMod.settings?.debugLogging == true &&
+                (__instance is JobGiver_GetWeaponEmergency || __instance is JobGiver_PickUpBetterWeapon))
+            {
+                if (__result.Job != null)
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued job: {__result.Job.def.defName} targeting {__result.Job.targetA.Thing?.Label}");
+                }
+                else
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued NO job");
+                }
+            }
+        }
+    }
 
     // Pawn_TickRare_UnarmedCheck_Patch has been moved to UnifiedTickRarePatch.cs
 }

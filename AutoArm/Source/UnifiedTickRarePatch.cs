@@ -18,80 +18,11 @@ namespace AutoArm
         private static Dictionary<Pawn, int> lastSidearmCheckTick = new Dictionary<Pawn, int>();
         private static Dictionary<Pawn, int> lastWeaponCheckTick = new Dictionary<Pawn, int>();
 
+        internal static Dictionary<Pawn, int> lastWeaponSearchTick = new Dictionary<Pawn, int>();
+        internal static Dictionary<Pawn, Job> cachedWeaponJobs = new Dictionary<Pawn, Job>();
+
         // Track pawns who just became unarmed for urgent checks
         private static HashSet<Pawn> recentlyUnarmedPawns = new HashSet<Pawn>();
-
-        // Critical jobs that should never be interrupted
-        private static readonly HashSet<JobDef> AlwaysCriticalJobs = new HashSet<JobDef>
-        {
-            // Medical/Emergency
-            JobDefOf.TendPatient,
-            JobDefOf.Rescue,
-            JobDefOf.ExtinguishSelf,
-            JobDefOf.BeatFire,
-            JobDefOf.GotoSafeTemperature,     // Added - Fleeing deadly temperatures
-    
-            // Combat
-            JobDefOf.AttackMelee,
-            JobDefOf.AttackStatic,
-            JobDefOf.Hunt,
-            JobDefOf.ManTurret,
-            JobDefOf.Wait_Combat,
-            JobDefOf.FleeAndCower,
-            JobDefOf.Reload,
-    
-            // Critical personal needs
-            JobDefOf.Vomit,
-            JobDefOf.LayDown,
-            JobDefOf.Lovin,
-            JobDefOf.Ingest,
-    
-            // Transportation
-            JobDefOf.EnterTransporter,
-            JobDefOf.EnterCryptosleepCasket,  // Added - Emergency medical
-    
-            // Prison/Security
-            JobDefOf.Arrest,
-            JobDefOf.Capture,
-            JobDefOf.EscortPrisonerToBed,
-            JobDefOf.TakeWoundedPrisonerToBed,
-            JobDefOf.ReleasePrisoner,
-            JobDefOf.Kidnap,
-            JobDefOf.CarryDownedPawnToExit,
-            JobDefOf.CarryToCryptosleepCasket, // Added - Emergency medical transport
-    
-            // Trading
-            JobDefOf.TradeWithPawn,
-    
-            // Communications
-            JobDefOf.UseCommsConsole,
-    
-            // Equipment handling
-            JobDefOf.DropEquipment             // Added - Prevent interrupt loops
-        };
-
-        // Jobs that are only critical for pawns who already have sidearms
-        private static readonly HashSet<JobDef> ConditionalCriticalJobs = new HashSet<JobDef>
-        {
-            JobDefOf.Sow,
-            JobDefOf.Harvest,
-            JobDefOf.HaulToCell,
-            JobDefOf.HaulToContainer,
-            JobDefOf.DoBill,
-            JobDefOf.FinishFrame,
-            JobDefOf.SmoothFloor,
-            JobDefOf.Mine,
-            JobDefOf.Refuel,
-            JobDefOf.Research
-        };
-
-        // Safe jobs that can always be interrupted
-        private static readonly HashSet<JobDef> AlwaysSafeToInterrupt = new HashSet<JobDef>
-        {
-            JobDefOf.Wait,
-            JobDefOf.Wait_Wander,
-            JobDefOf.GotoWander
-        };
 
         [HarmonyPostfix]
         public static void Postfix(Pawn __instance)
@@ -135,19 +66,22 @@ namespace AutoArm
                 }
             }
 
-            // Sidearms check
-            if (SimpleSidearmsCompat.IsLoaded() &&
-                AutoArmMod.settings?.autoEquipSidearms == true &&
-                __instance.IsHashIntervalTick(3000 + __instance.thingIDNumber % 500))
+            // Sidearms check - different intervals based on need
+            if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                if (ShouldCheckSidearms(__instance))
+                bool needsSidearms = SimpleSidearmsCompat.GetCurrentSidearmCount(__instance) <
+                                    SimpleSidearmsCompat.GetMaxSidearmsForPawn(__instance);
+
+                int checkInterval = needsSidearms ? 300 : 3000; // 5 seconds if needed, 50 seconds otherwise
+
+                if (__instance.IsHashIntervalTick(checkInterval + __instance.thingIDNumber % 100))
                 {
                     CheckSidearmUpgrade(__instance);
                 }
             }
 
             // Cleanup occasionally
-            if (Find.TickManager.TicksGame % 10000 == 0 && __instance.IsHashIntervalTick(100))
+            if (Find.TickManager.TicksGame % 2500 == 0 && __instance.IsHashIntervalTick(100))
             {
                 CleanupOldEntries();
             }
@@ -252,53 +186,26 @@ namespace AutoArm
             return !pawn.inventory.innerContainer.Any(t => t.def.IsWeapon);
         }
 
-        private static bool IsCriticalJob(Pawn pawn, bool hasNoSidearms = false)
-        {
-            if (pawn.CurJob == null)
-                return false;
-
-            var job = pawn.CurJob;
-
-            // Always check player-forced
-            if (job.playerForced)
-                return true;
-
-            // Check always-critical jobs
-            if (AlwaysCriticalJobs.Contains(job.def))
-                return true;
-
-            // Check conditional jobs (only critical if pawn has sidearms)
-            if (!hasNoSidearms && ConditionalCriticalJobs.Contains(job.def))
-                return true;
-
-            // Check string-based patterns for DLC/modded content
-            var defName = job.def.defName;
-            if (defName.Contains("Ritual") ||
-                defName.Contains("Surgery") ||
-                defName.Contains("Operate") ||
-                defName.Contains("Prisoner") ||
-                defName.Contains("Mental") ||
-                defName.Contains("PrepareCaravan"))
-                return true;
-
-            return false;
-        }
-
-        private static bool IsSafeToInterrupt(JobDef jobDef)
-        {
-            if (AlwaysSafeToInterrupt.Contains(jobDef))
-                return true;
-
-            var defName = jobDef.defName;
-            return defName.StartsWith("Joy") ||
-                   defName.Contains("Social");
-        }
-
         private static void CheckMainWeaponUpgrade(Pawn pawn)
         {
+            // Check cache first (skip for unarmed - they need immediate checks)
+            if (pawn.equipment?.Primary != null)
+            {
+                if (lastWeaponSearchTick.TryGetValue(pawn, out int lastSearch))
+                {
+                    if (Find.TickManager.TicksGame - lastSearch < 600) // 10 seconds (was 41)
+                    {
+                        return; // Skip expensive search for armed pawns
+                    }
+                }
+            }
+
             // Try to give a weapon job using our job giver
             var jobGiver = new JobGiver_PickUpBetterWeapon();
             var job = jobGiver.TestTryGiveJob(pawn);
+
+            // Update last search time
+            lastWeaponSearchTick[pawn] = Find.TickManager.TicksGame;
 
             if (job != null && pawn.jobs != null)
             {
@@ -314,12 +221,12 @@ namespace AutoArm
                 else if (isUrgent) // Unarmed pawns get priority
                 {
                     // Don't interrupt critical jobs even for unarmed pawns
-                    shouldInterrupt = !IsCriticalJob(pawn, hasNoSidearms: true);
+                    shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: true);
                 }
                 else
                 {
                     // Armed pawns interrupt safe jobs OR if upgrade is significant
-                    shouldInterrupt = IsSafeToInterrupt(pawn.CurJob.def);
+                    shouldInterrupt = JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def);
 
                     // Also interrupt for major upgrades (25%+ improvement)
                     if (!shouldInterrupt && job?.targetA.Thing is ThingWithComps newWeapon)
@@ -336,6 +243,24 @@ namespace AutoArm
                         }
                     }
                 }
+
+                // ACTUALLY START THE JOB!
+                if (shouldInterrupt)
+                {
+                    pawn.jobs.StartJob(job, JobCondition.InterruptForced);
+
+                    // Update cooldown
+                    lastInterruptionTick[pawn] = Find.TickManager.TicksGame;
+
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] {pawn.Name}: Interrupting to pick up {job.targetA.Thing?.Label}");
+                    }
+                }
+            }
+            else if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message($"[AutoArm] {pawn.Name}: No upgrade found (has {pawn.equipment?.Primary?.Label ?? "nothing"})");
             }
         }
 
@@ -344,7 +269,7 @@ namespace AutoArm
             SimpleSidearmsCompat.CheckPendingSidearmRegistrations(pawn);
 
             // Only upgrade sidearms when pawn is doing unimportant work
-            if (pawn.CurJob != null && !IsSafeToInterrupt(pawn.CurJob.def))
+            if (pawn.CurJob != null && !JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def))
                 return;
 
             // Try to find sidearm upgrade
@@ -370,6 +295,11 @@ namespace AutoArm
 
         private static void CleanupOldEntries()
         {
+            var invalidJobPawns = cachedWeaponJobs
+                .Where(kvp => kvp.Value != null &&
+                       (kvp.Value.targetA.Thing?.DestroyedOrNull() ?? true))
+                .Select(kvp => kvp.Key)
+                .ToList();
             // Remove entries for dead/despawned pawns
             var toRemove = lastInterruptionTick.Keys
                 .Where(p => p.DestroyedOrNull() || p.Dead || !p.Spawned)
@@ -380,6 +310,8 @@ namespace AutoArm
                 lastInterruptionTick.Remove(pawn);
                 lastSidearmCheckTick.Remove(pawn);
                 lastWeaponCheckTick.Remove(pawn);
+                lastWeaponSearchTick.Remove(pawn);  // ADD THIS
+                cachedWeaponJobs.Remove(pawn);      // ADD THIS
                 recentlyUnarmedPawns.Remove(pawn);
             }
 

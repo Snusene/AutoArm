@@ -329,6 +329,66 @@ namespace AutoArm
             }
         }
 
+        [DebugAction("AutoArm", "Test Check Think Tree Status", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void CheckThinkTreeStatus()
+        {
+            Log.Message($"[AutoArm] Think tree injection failed: {AutoArmMod.settings?.thinkTreeInjectionFailed}");
+
+            var humanlikeThinkTree = DefDatabase<ThinkTreeDef>.GetNamed("Humanlike");
+            if (humanlikeThinkTree?.thinkRoot != null)
+            {
+                bool foundWeaponNode = false;
+                CheckForWeaponNode(humanlikeThinkTree.thinkRoot, ref foundWeaponNode);
+                Log.Message($"[AutoArm] Weapon nodes found in think tree: {foundWeaponNode}");
+            }
+        }
+
+        private static void CheckForWeaponNode(ThinkNode node, ref bool found)
+        {
+            if (node is ThinkNode_ConditionalWeaponsInOutfit || node is JobGiver_GetWeaponEmergency)
+                found = true;
+
+            if (node.subNodes != null)
+                foreach (var sub in node.subNodes)
+                    CheckForWeaponNode(sub, ref found);
+        }
+
+        [DebugAction("AutoArm", "Show Think Tree Structure", allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void ShowThinkTreeStructure()
+        {
+            var humanlikeThinkTree = DefDatabase<ThinkTreeDef>.GetNamed("Humanlike");
+            if (humanlikeThinkTree?.thinkRoot == null)
+            {
+                Log.Message("[AutoArm] No humanlike think tree found");
+                return;
+            }
+
+            Log.Message("[AutoArm] === Think Tree Structure ===");
+            PrintThinkNode(humanlikeThinkTree.thinkRoot, 0);
+        }
+
+        private static void PrintThinkNode(ThinkNode node, int depth)
+        {
+            string indent = new string(' ', depth * 2);
+            string nodeInfo = $"{indent}{node.GetType().Name}";
+
+            if (node is JobGiver_Work)
+                nodeInfo += " <-- WORK IS HERE";
+            if (node is ThinkNode_ConditionalWeaponsInOutfit || node is JobGiver_GetWeaponEmergency)
+                nodeInfo += " <-- OUR WEAPON NODE";
+
+            Log.Message(nodeInfo);
+
+            if (node.subNodes != null)
+            {
+                for (int i = 0; i < node.subNodes.Count; i++)
+                {
+                    Log.Message($"{indent}[{i}]:");
+                    PrintThinkNode(node.subNodes[i], depth + 1);
+                }
+            }
+        }
+
         [DebugAction("AutoArm", "Test Debug Simple Sidearms Data", actionType = DebugActionType.ToolMapForPawns, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void DebugSimpleSidearmsData(Pawn pawn)
         {

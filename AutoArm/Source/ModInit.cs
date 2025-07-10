@@ -12,6 +12,9 @@ namespace AutoArm
     [StaticConstructorOnStartup]
     public static class AutoArmInit
     {
+        internal static int retryAttempts = 0;
+        internal const int MaxRetryAttempts = 3;
+
         static AutoArmInit()
         {
             var harmony = new Harmony("Snues.AutoArm");
@@ -35,11 +38,60 @@ namespace AutoArm
             {
                 if (!ValidateThinkTreeInjection())
                 {
-                    // Set a flag that TickRare should handle everything
                     AutoArmMod.settings.thinkTreeInjectionFailed = true;
-                    Log.Warning("[AutoArm] Think tree injection validation failed - using fallback mode");
+                    Log.Warning("[AutoArm] Think tree injection validation failed - attempting retry...");
+                    RetryThinkTreeInjection();
+                }
+                else
+                {
+                    // Reset retry counter on success
+                    AutoArmInit.retryAttempts = 0;
                 }
             });
+        }
+
+        private static void RetryThinkTreeInjection()
+        {
+            if (!AutoArmMod.settings.thinkTreeInjectionFailed || AutoArmInit.retryAttempts >= AutoArmInit.MaxRetryAttempts)
+                return;
+
+            AutoArmInit.retryAttempts++;
+            Log.Message($"[AutoArm] Attempting think tree injection retry {AutoArmInit.retryAttempts}/{AutoArmInit.MaxRetryAttempts}...");
+
+            try
+            {
+                InjectIntoThinkTree();
+
+                // Validate after a short delay
+                LongEventHandler.ExecuteWhenFinished(() =>
+                {
+                    if (ValidateThinkTreeInjection())
+                    {
+                        AutoArmMod.settings.thinkTreeInjectionFailed = false;
+                        Log.Message("[AutoArm] Think tree injection successful on retry!");
+                        AutoArmInit.retryAttempts = 0;
+                    }
+                    else if (AutoArmInit.retryAttempts < AutoArmInit.MaxRetryAttempts)
+                    {
+                        // Schedule another retry
+                        LongEventHandler.QueueLongEvent(() => RetryThinkTreeInjection(),
+                            "AutoArm", false, null);
+                    }
+                    else
+                    {
+                        Log.Warning("[AutoArm] Think tree injection failed after all retries. Using fallback mode.");
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                Log.Warning($"[AutoArm] Think tree injection retry {AutoArmInit.retryAttempts} failed: {e.Message}");
+
+                if (AutoArmInit.retryAttempts >= AutoArmInit.MaxRetryAttempts)
+                {
+                    Log.Warning("[AutoArm] All retry attempts exhausted. Using fallback mode.");
+                }
+            }
         }
 
         private static void InjectIntoThinkTree()
@@ -64,15 +116,13 @@ namespace AutoArm
             if (targetSorter == null || workNodeIndex < 0)
             {
                 Log.Warning("[AutoArm] Could not find JobGiver_Work in think tree. Trying alternative injection method...");
-
-                // Alternative: Find the main priority sorter
                 targetSorter = FindMainPrioritySorter(humanlikeThinkTree.thinkRoot);
                 if (targetSorter != null)
                 {
-                    workNodeIndex = targetSorter.subNodes.Count; // Add at end
+                    workNodeIndex = Math.Min(8, targetSorter.subNodes.Count); // Insert early!
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        Log.Message("[AutoArm] Using alternative injection at end of main priority sorter");
+                        Log.Message("[AutoArm] Using alternative injection at index " + workNodeIndex);
                     }
                 }
                 else
@@ -98,8 +148,6 @@ namespace AutoArm
             {
                 var noSidearmsConditional = new ThinkNode_ConditionalNoSidearms();
                 var sidearmEmergencyJobGiver = new JobGiver_GetSidearmEmergency();
-
-                // Build the sidearm node structure
                 noSidearmsConditional.subNodes = new List<ThinkNode> { sidearmEmergencyJobGiver };
                 sidearmNode = noSidearmsConditional;
 
@@ -109,19 +157,37 @@ namespace AutoArm
                 }
             }
 
-            // Insert into think tree - weapons first, then sidearms
-            targetSorter.subNodes.Insert(workNodeIndex, weaponConditional);
+            // Insert MUCH EARLIER for higher priority
+            int insertIndex = Math.Max(0, Math.Min(workNodeIndex, 5)); // Cap at index 5 for high priority
+            targetSorter.subNodes.Insert(insertIndex, weaponConditional);
 
             if (sidearmNode != null)
             {
-                // Insert sidearms right after weapons (so it has similar priority)
-                targetSorter.subNodes.Insert(workNodeIndex + 1, sidearmNode);
+                targetSorter.subNodes.Insert(insertIndex + 1, sidearmNode);
             }
 
-            Log.Message($"[AutoArm] Successfully injected weapon optimization into think tree at index {workNodeIndex}");
+            Log.Message($"[AutoArm] Successfully injected weapon optimization into think tree at index {insertIndex}");
             if (sidearmNode != null)
             {
-                Log.Message($"[AutoArm] Successfully injected sidearm emergency acquisition at index {workNodeIndex + 1}");
+                Log.Message($"[AutoArm] Successfully injected sidearm emergency acquisition at index {insertIndex + 1}");
+            }
+        }
+
+        private static void FindMainPrioritySorter(ThinkNode node, ref ThinkNode_PrioritySorter result, int depth)
+        {
+            // The main sorter is usually at depth 1 or 2 and has many sub-nodes
+            if (node is ThinkNode_PrioritySorter sorter && depth <= 2 && sorter.subNodes?.Count > 10)
+            {
+                result = sorter;
+                return;
+            }
+
+            if (node.subNodes != null && result == null)
+            {
+                foreach (var subNode in node.subNodes)
+                {
+                    FindMainPrioritySorter(subNode, ref result, depth + 1);
+                }
             }
         }
 
@@ -252,6 +318,8 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix()
         {
+            // Reset retry counter when loading a game
+            AutoArmInit.retryAttempts = 0;
             Game_FinalizeInit_InjectThinkTree_Patch.Postfix();
         }
     }

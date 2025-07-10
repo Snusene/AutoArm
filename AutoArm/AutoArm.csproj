@@ -56,14 +56,18 @@
     <Compile Include="Compatibility\InfusionCompat.cs" />
     <Compile Include="Compatibility\SimpleSidearmsCompat.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Source\AutoArmConstants.cs" />
     <Compile Include="Source\AutoArmMod.cs" />
     <Compile Include="Compatibility\CECompat.cs" />
     <Compile Include="Source\ConflictDetection.cs" />
     <Compile Include="Source\DebugCommands.cs" />
-    <Compile Include="Source\JobGiver_PickUpOpportunisticWeapon_Patch.cs" />
+    <Compile Include="Source\JobGiverHelpers.cs" />
+    <Compile Include="Source\JobGiver_PickUpBetterWeapon.cs" />
     <Compile Include="Source\ModInit.cs" />
     <Compile Include="Source\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\WeaponAutoEquip.cs" />
+    <Compile Include="Source\WeaponCacheManager.cs" />
+    <Compile Include="Source\WeaponDecisionLog.cs" />
     <Compile Include="Source\WeaponTabInjector.cs" />
     <Compile Include="Source\WeaponThingFilterUtility.cs" />
   </ItemGroup>
