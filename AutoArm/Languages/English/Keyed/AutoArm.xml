@@ -28,4 +28,10 @@
 	<!-- Reset Button -->
 	<AutoArm_ResetToDefaults>Reset to defaults</AutoArm_ResetToDefaults>
 	<AutoArm_SettingsReset>Settings have been reset to defaults</AutoArm_SettingsReset>
+
+	<AutoArm_TestRunner>Test Runner</AutoArm_TestRunner>
+	<AutoArm_RunAllTests>Run All AutoArm Tests</AutoArm_RunAllTests>
+	<AutoArm_RunSpecificTest>Run Specific Test</AutoArm_RunSpecificTest>
+	<AutoArm_ExportLogs>Export Debug Logs</AutoArm_ExportLogs>
+	<AutoArm_TestResults>Test Results</AutoArm_TestResults>
 </LanguageData>

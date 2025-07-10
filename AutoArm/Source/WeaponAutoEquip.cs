@@ -280,6 +280,7 @@ namespace AutoArm
         // Weapon caching
         internal static Dictionary<Map, List<ThingWithComps>> weaponCache = new Dictionary<Map, List<ThingWithComps>>();
         internal static Dictionary<Map, int> weaponCacheAge = new Dictionary<Map, int>();
+        private static readonly CompositeWeaponScorer weaponScorer = new CompositeWeaponScorer();
 
         protected override Job TryGiveJob(Pawn pawn)
         {
@@ -316,6 +317,19 @@ namespace AutoArm
             }
 
             return job;
+        }
+
+        public float GetWeaponScore(Pawn pawn, ThingWithComps weapon)
+        {
+            if (weapon == null || pawn == null)
+                return 0f;
+
+            // Check if it's a forced weapon first
+            if (ForcedWeaponTracker.IsForced(pawn, weapon))
+                return float.MaxValue; // Always prefer forced weapons
+
+            // Use the composite scorer
+            return weaponScorer.GetScore(pawn, weapon);
         }
 
         public Job FindBetterWeaponJob(Pawn pawn)
@@ -537,171 +551,272 @@ namespace AutoArm
             return true;
         }
 
-        public float GetWeaponScore(Pawn pawn, ThingWithComps weapon)
+        public interface IWeaponScorer
         {
-            if (weapon?.def == null)
-                return 0f;
+            float GetScore(Pawn pawn, ThingWithComps weapon);
+        }
 
-            // First check: Is it allowed by outfit?
-            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter != null && !filter.Allows(weapon.def))
-                return -1000f; // Not allowed by outfit
+        public class CompositeWeaponScorer : IWeaponScorer
+        {
+            private readonly List<IWeaponScorer> scorers;
 
-            // Base validation - weapon must do damage
-            var equippable = weapon.TryGetComp<CompEquippable>();
-            if (equippable?.PrimaryVerb == null || !equippable.PrimaryVerb.HarmsHealth())
-                return -1000f;
-
-            // Hard overrides for traits
-            if (pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) == true && weapon.def.IsRangedWeapon)
-                return -2000f; // Brawlers NEVER use ranged
-
-            bool isHunter = pawn.workSettings?.WorkIsActive(WorkTypeDefOf.Hunting) ?? false;
-            if (isHunter && weapon.def.IsRangedWeapon && equippable.PrimaryVerb.UsesExplosiveProjectiles())
-                return -1000f; // Hunters shouldn't use explosives
-
-            // Persona weapon check
-            var bladelinkComp = weapon.TryGetComp<CompBladelinkWeapon>();
-            if (bladelinkComp != null && bladelinkComp.CodedPawn != null)
+            public CompositeWeaponScorer()
             {
-                if (bladelinkComp.CodedPawn != pawn)
-                    return -1000f; // Someone else's persona weapon
+                scorers = new List<IWeaponScorer>
+        {
+            new OutfitPolicyScorer(),
+            new TraitScorer(),
+            new SkillScorer(),
+            new QualityScorer(),
+            new DamageScorer(),
+            new RangeScorer(),
+            new ModCompatibilityScorer(),
+            new PersonaWeaponScorer()
+        };
             }
 
-            // Get pawn skills
-            float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
-            float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
-
-            // Start with base score
-            float score = 100f;
-
-            // MAJOR skill preference - this should be the primary factor!
-            if (weapon.def.IsRangedWeapon)
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
             {
+                float totalScore = 0f;
+
+                foreach (var scorer in scorers)
+                {
+                    float score = scorer.GetScore(pawn, weapon);
+
+                    // Early exit for hard disqualifications
+                    if (score <= -1000f)
+                        return score;
+
+                    totalScore += score;
+                }
+
+                return totalScore;
+            }
+        }
+
+        public class OutfitPolicyScorer : IWeaponScorer
+        {
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
+            {
+                var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+                if (filter != null && !filter.Allows(weapon.def))
+                    return -1000f; // Hard disqualification
+                return 0f;
+            }
+        }
+
+        public class TraitScorer : IWeaponScorer
+        {
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
+            {
+                if (pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) == true)
+                {
+                    if (weapon.def.IsRangedWeapon)
+                        return -2000f; // Brawlers never use ranged
+                    else if (weapon.def.IsMeleeWeapon)
+                        return 200f; // Brawler melee bonus
+                }
+                return 0f;
+            }
+        }
+
+        public class SkillScorer : IWeaponScorer
+        {
+            private const float SkillDifferenceMultiplier = 50f;
+            private const float AbsoluteSkillMultiplier = 10f;
+            private const float WrongTypeMultiplier = 0.3f;
+            private const float RightTypeMultiplier = 1.5f;
+
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
+            {
+                float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
+                float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
+                float score = 0f;
+
+                if (weapon.def.IsRangedWeapon)
+                {
+                    score = CalculateRangedScore(weapon, shootingSkill, meleeSkill);
+                }
+                else if (weapon.def.IsMeleeWeapon)
+                {
+                    score = CalculateMeleeScore(weapon, shootingSkill, meleeSkill);
+                }
+
+                // Apply final multipliers based on skill match
+                if (weapon.def.IsRangedWeapon && shootingSkill >= meleeSkill + 2)
+                    score *= RightTypeMultiplier;
+                else if (weapon.def.IsMeleeWeapon && meleeSkill >= shootingSkill + 2)
+                    score *= RightTypeMultiplier;
+                else if ((weapon.def.IsRangedWeapon && meleeSkill > shootingSkill + 3) ||
+                         (weapon.def.IsMeleeWeapon && shootingSkill > meleeSkill + 3))
+                    score *= WrongTypeMultiplier;
+
+                return score;
+            }
+
+            private float CalculateRangedScore(ThingWithComps weapon, float shootingSkill, float meleeSkill)
+            {
+                float score = 0f;
+
                 if (shootingSkill > meleeSkill)
                 {
-                    // Strong preference for ranged when better at shooting
                     float skillDiff = shootingSkill - meleeSkill;
-                    score += skillDiff * 50f; // 50 points per skill level difference
-
-                    // Additional bonus based on absolute shooting skill
-                    score += shootingSkill * 10f;
+                    score += skillDiff * SkillDifferenceMultiplier;
+                    score += shootingSkill * AbsoluteSkillMultiplier;
                 }
                 else if (meleeSkill > shootingSkill + 3)
                 {
-                    // Only consider ranged if MUCH worse at melee
                     score -= (meleeSkill - shootingSkill) * 30f;
                 }
 
-                // Weapon stats consideration
+                return score;
+            }
+
+            private float CalculateMeleeScore(ThingWithComps weapon, float shootingSkill, float meleeSkill)
+            {
+                float score = 0f;
+
+                if (meleeSkill > shootingSkill)
+                {
+                    float skillDiff = meleeSkill - shootingSkill;
+                    score += skillDiff * SkillDifferenceMultiplier;
+                    score += meleeSkill * AbsoluteSkillMultiplier;
+                }
+                else if (shootingSkill > meleeSkill + 3)
+                {
+                    score -= (shootingSkill - meleeSkill) * 30f;
+                }
+
+                return score;
+            }
+        }
+
+        public class DamageScorer : IWeaponScorer
+        {
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
+            {
+                if (weapon.def.IsRangedWeapon)
+                    return GetRangedDamageScore(weapon);
+                else if (weapon.def.IsMeleeWeapon)
+                    return GetMeleeDamageScore(weapon);
+                return 0f;
+            }
+
+            private float GetRangedDamageScore(ThingWithComps weapon)
+            {
                 if (weapon.def.Verbs?.Count > 0 && weapon.def.Verbs[0] != null)
                 {
                     var verb = weapon.def.Verbs[0];
-
-                    // DPS estimate (rough)
                     float damage = verb.defaultProjectile?.projectile?.GetDamageAmount(weapon) ?? 0f;
                     float warmup = verb.warmupTime;
                     float cooldown = weapon.def.GetStatValueAbstract(StatDefOf.RangedWeapon_Cooldown);
                     float burstShots = verb.burstShotCount;
 
                     float dps = damage * burstShots / (warmup + cooldown + 0.1f);
-                    score += dps * 5f; // 5 points per DPS
+                    float score = dps * 5f;
 
-                    // Range is CRITICAL for shooters
-                    float range = verb.range;
+                    // Burst fire bonus
+                    if (burstShots > 1)
+                        score += burstShots * 15f;
+
+                    return score;
+                }
+                return 0f;
+            }
+
+            private float GetMeleeDamageScore(ThingWithComps weapon)
+            {
+                float meleeDPS = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_CooldownMultiplier);
+                float meleeDamage = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_DamageMultiplier);
+                return (meleeDPS + meleeDamage) * 20f;
+            }
+        }
+
+        public class QualityScorer : IWeaponScorer
+        {
+            private const float QualityMultiplier = 15f;
+
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
+            {
+                if (weapon.TryGetQuality(out QualityCategory qc))
+                {
+                    return (int)qc * QualityMultiplier;
+                }
+                return 0f;
+            }
+        }
+
+        public class RangeScorer : IWeaponScorer
+        {
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
+            {
+                if (!weapon.def.IsRangedWeapon)
+                    return 0f;
+
+                float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
+                if (weapon.def.Verbs?.Count > 0 && weapon.def.Verbs[0] != null)
+                {
+                    float range = weapon.def.Verbs[0].range;
+
                     if (shootingSkill >= 5) // Decent shooters
                     {
-                        // Strong preference for good range weapons
-                        if (range >= 30f) // Assault rifle range or better
-                            score += 100f + (range - 30f) * 3f;
-                        else if (range >= 25f) // Decent range
-                            score += 50f;
-                        else if (range < 20f) // Short range penalty for good shooters
-                            score -= (20f - range) * 5f;
+                        if (range >= 30f)
+                            return 100f + (range - 30f) * 3f;
+                        else if (range >= 25f)
+                            return 50f;
+                        else if (range < 20f)
+                            return -(20f - range) * 5f;
                     }
                     else
                     {
-                        // Less skilled shooters get smaller range bonus
                         if (range >= 25f)
-                            score += (range - 20f) * 2f;
-                    }
-
-                    // Burst fire is highly valued
-                    if (burstShots > 1)
-                    {
-                        score += burstShots * 15f; // Much higher than before
-                    }
-
-                    // Accuracy bonus for good shooters
-                    if (shootingSkill >= 8)
-                    {
-                        float accuracy = weapon.def.GetStatValueAbstract(StatDefOf.AccuracyLong);
-                        score += accuracy * 50f;
+                            return (range - 20f) * 2f;
                     }
                 }
+                return 0f;
             }
-            else if (weapon.def.IsMeleeWeapon)
+        }
+
+        public class ModCompatibilityScorer : IWeaponScorer
+        {
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
             {
-                if (meleeSkill > shootingSkill)
+                float score = 0f;
+
+                // Infusion 2
+                if (InfusionCompat.IsLoaded())
                 {
-                    // Strong preference for melee when better at melee
-                    float skillDiff = meleeSkill - shootingSkill;
-                    score += skillDiff * 50f; // 50 points per skill level difference
-
-                    // Additional bonus based on absolute melee skill
-                    score += meleeSkill * 10f;
+                    score += InfusionCompat.GetInfusionScoreBonus(weapon);
                 }
-                else if (shootingSkill > meleeSkill + 3)
+
+                // Combat Extended
+                if (CECompat.ShouldCheckAmmo())
                 {
-                    // Only consider melee if MUCH worse at shooting
-                    score -= (shootingSkill - meleeSkill) * 30f;
+                    float ammoModifier = CECompat.GetAmmoScoreModifier(weapon, pawn);
+                    if (ammoModifier < 1f)
+                        score *= ammoModifier;
+                    else
+                        score += (ammoModifier - 1f) * 100f; // Convert bonus to points
                 }
 
-                // Melee DPS consideration
-                float meleeDPS = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_CooldownMultiplier);
-                float meleeDamage = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_DamageMultiplier);
-                score += (meleeDPS + meleeDamage) * 20f;
+                return score;
             }
+        }
 
-            // Quality bonus - reduced to not overwhelm skill preference
-            if (weapon.TryGetQuality(out QualityCategory qc))
+        public class PersonaWeaponScorer : IWeaponScorer
+        {
+            public float GetScore(Pawn pawn, ThingWithComps weapon)
             {
-                // Reduced from exponential to linear, capped impact
-                score += (int)qc * 15f; // 15 points per quality level
+                var bladelinkComp = weapon.TryGetComp<CompBladelinkWeapon>();
+                if (bladelinkComp != null && bladelinkComp.CodedPawn != null)
+                {
+                    if (bladelinkComp.CodedPawn != pawn)
+                        return -1000f; // Someone else's persona weapon
+                    else
+                        return 25f; // Bonus for own persona weapon
+                }
+                return 0f;
             }
-
-            // Persona weapon bonus (reduced)
-            if (bladelinkComp?.CodedPawn == pawn)
-                score += 25f;
-
-            // Infusion 2 compatibility
-            if (InfusionCompat.IsLoaded())
-            {
-                score += InfusionCompat.GetInfusionScoreBonus(weapon);
-            }
-
-            // Combat Extended ammo check
-            if (CECompat.ShouldCheckAmmo())
-            {
-                score *= CECompat.GetAmmoScoreModifier(weapon, pawn);
-            }
-
-            // Final skill-based modifier to ensure strong preference
-            if (weapon.def.IsRangedWeapon && shootingSkill >= meleeSkill + 2)
-            {
-                score *= 1.5f; // 50% bonus for appropriate weapon type
-            }
-            else if (weapon.def.IsMeleeWeapon && meleeSkill >= shootingSkill + 2)
-            {
-                score *= 1.5f; // 50% bonus for appropriate weapon type
-            }
-            else if ((weapon.def.IsRangedWeapon && meleeSkill > shootingSkill + 3) ||
-                     (weapon.def.IsMeleeWeapon && shootingSkill > meleeSkill + 3))
-            {
-                score *= 0.3f; // 70% penalty for wrong weapon type
-            }
-
-            return score;
         }
     }
 

@@ -1,70 +1,107 @@
-﻿using System.Collections.Generic;
-using RimWorld;
+﻿using RimWorld;
+using System.Collections.Generic;
 using Verse;
 
-namespace AutoArm
+public class ImprovedWeaponCacheManager
 {
-    public static class WeaponCacheManager
+    private class WeaponCacheEntry
     {
-        private static Dictionary<Map, List<ThingWithComps>> weaponCache = new Dictionary<Map, List<ThingWithComps>>();
-        private static Dictionary<Map, int> weaponCacheAge = new Dictionary<Map, int>();
-        private const int CacheLifetime = 500;
+        public List<ThingWithComps> Weapons { get; set; }
+        public int LastUpdateTick { get; set; }
+        public Dictionary<IntVec3, List<ThingWithComps>> SpatialIndex { get; set; }
 
-        public static List<ThingWithComps> GetCachedWeapons(Map map, Pawn pawn)
+        public WeaponCacheEntry()
         {
-            if (!weaponCache.TryGetValue(map, out var cached) ||
-                !weaponCacheAge.TryGetValue(map, out var age) ||
-                Find.TickManager.TicksGame - age > CacheLifetime)
-            {
-                RebuildCache(map, pawn);
-            }
-            return weaponCache[map];
+            Weapons = new List<ThingWithComps>();
+            SpatialIndex = new Dictionary<IntVec3, List<ThingWithComps>>();
         }
+    }
 
-        private static void RebuildCache(Map map, Pawn pawn)
+    private static Dictionary<Map, WeaponCacheEntry> weaponCache = new Dictionary<Map, WeaponCacheEntry>();
+    private const int CacheLifetime = 250;
+    private const int GridSize = 10; // For spatial indexing
+
+    public static List<ThingWithComps> GetWeaponsNear(Map map, IntVec3 position, float maxDistance)
+    {
+        var cache = GetOrCreateCache(map);
+
+        // Use spatial index for faster lookups
+        var result = new List<ThingWithComps>();
+        var maxDistSquared = maxDistance * maxDistance;
+
+        // Calculate grid cells to check
+        int minX = (position.x - (int)maxDistance) / GridSize;
+        int maxX = (position.x + (int)maxDistance) / GridSize;
+        int minZ = (position.z - (int)maxDistance) / GridSize;
+        int maxZ = (position.z + (int)maxDistance) / GridSize;
+
+        for (int x = minX; x <= maxX; x++)
         {
-            var weapons = new List<ThingWithComps>(200);
-            var allMapWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
-
-            foreach (var thing in allMapWeapons)
+            for (int z = minZ; z <= maxZ; z++)
             {
-                var weapon = thing as ThingWithComps;
-                if (weapon?.def == null) continue;
-                if (!weapon.def.IsRangedWeapon && !weapon.def.IsMeleeWeapon) continue;
-                if (weapon.def.defName == "WoodLog") continue;
-                if (weapon.IsForbidden(Faction.OfPlayer)) continue;
-
-                // Special cases
-                if (weapon.def.defName == "ElephantTusk" || weapon.def.defName == "ThrumboHorn" ||
-                    WeaponThingFilterUtility.AllWeapons.Contains(weapon.def))
+                var gridKey = new IntVec3(x * GridSize, 0, z * GridSize);
+                if (cache.SpatialIndex.TryGetValue(gridKey, out var weapons))
                 {
-                    weapons.Add(weapon);
+                    foreach (var weapon in weapons)
+                    {
+                        if (weapon.Position.DistanceToSquared(position) <= maxDistSquared)
+                        {
+                            result.Add(weapon);
+                        }
+                    }
                 }
             }
-
-            weaponCache[map] = weapons;
-            weaponCacheAge[map] = Find.TickManager.TicksGame;
         }
 
-        public static void InvalidateCache(Map map)
+        return result;
+    }
+
+    private static WeaponCacheEntry GetOrCreateCache(Map map)
+    {
+        if (!weaponCache.TryGetValue(map, out var cache) ||
+            Find.TickManager.TicksGame - cache.LastUpdateTick > CacheLifetime)
         {
-            weaponCache.Remove(map);
-            weaponCacheAge.Remove(map);
+            cache = RebuildCache(map);
+            weaponCache[map] = cache;
+        }
+        return cache;
+    }
+
+    private static WeaponCacheEntry RebuildCache(Map map)
+    {
+        var entry = new WeaponCacheEntry();
+        entry.LastUpdateTick = Find.TickManager.TicksGame;
+
+        var allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
+
+        foreach (var thing in allWeapons)
+        {
+            var weapon = thing as ThingWithComps;
+            if (weapon?.def == null || !IsValidWeapon(weapon)) continue;
+
+            entry.Weapons.Add(weapon);
+
+            // Add to spatial index
+            var gridKey = new IntVec3(
+                (weapon.Position.x / GridSize) * GridSize,
+                0,
+                (weapon.Position.z / GridSize) * GridSize
+            );
+
+            if (!entry.SpatialIndex.ContainsKey(gridKey))
+                entry.SpatialIndex[gridKey] = new List<ThingWithComps>();
+
+            entry.SpatialIndex[gridKey].Add(weapon);
         }
 
-        public static void CleanupCache()
-        {
-            var mapsToRemove = new List<Map>();
-            foreach (var kvp in weaponCache)
-            {
-                if (kvp.Key == null || kvp.Key.Tile < 0 || !Find.Maps.Contains(kvp.Key))
-                    mapsToRemove.Add(kvp.Key);
-            }
-            foreach (var map in mapsToRemove)
-            {
-                weaponCache.Remove(map);
-                weaponCacheAge.Remove(map);
-            }
-        }
+        return entry;
+    }
+
+    private static bool IsValidWeapon(ThingWithComps weapon)
+    {
+        if (!weapon.def.IsWeapon || weapon.def.IsApparel) return false;
+        if (weapon.def.defName == "WoodLog") return false;
+        if (weapon.IsForbidden(Faction.OfPlayer)) return false;
+        return true;
     }
 }
