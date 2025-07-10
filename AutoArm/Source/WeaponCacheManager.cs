@@ -1,5 +1,6 @@
 ﻿using RimWorld;
 using System.Collections.Generic;
+using System.Linq;
 using Verse;
 
 public class ImprovedWeaponCacheManager
@@ -54,6 +55,23 @@ public class ImprovedWeaponCacheManager
         }
 
         return result;
+    }
+
+    public static void ClearCache()
+    {
+        weaponCache.Clear();
+    }
+
+    public static void ClearCacheForMap(Map map)
+    {
+        if (map != null && weaponCache.ContainsKey(map))
+            weaponCache.Remove(map);
+    }
+
+    public static List<ThingWithComps> GetAllWeapons(Map map)
+    {
+        var cache = GetOrCreateCache(map);
+        return cache.Weapons;
     }
 
     private static WeaponCacheEntry GetOrCreateCache(Map map)
