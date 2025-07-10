@@ -324,9 +324,9 @@ namespace AutoArm
             if (weapon == null || pawn == null)
                 return 0f;
 
-            // Check if it's a forced weapon first
+            // Check if it's a forced weapon
             if (ForcedWeaponTracker.IsForced(pawn, weapon))
-                return float.MaxValue; // Always prefer forced weapons
+                return 10000f; // High score but not float.MaxValue
 
             // Use the composite scorer
             return weaponScorer.GetScore(pawn, weapon);
@@ -337,66 +337,59 @@ namespace AutoArm
             var currentWeapon = pawn.equipment?.Primary;
             bool isUnarmed = currentWeapon == null;
 
-            // Lower threshold for unarmed pawns - any weapon is good
-            float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : float.MinValue;
+            float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : -1000f;
             float improvementThreshold = isUnarmed ? currentScore : currentScore * 1.1f;
 
             ThingWithComps bestWeapon = null;
             float bestScore = currentScore;
             int weaponsChecked = 0;
 
-            // Get cached weapons or refresh cache if expired
-            List<ThingWithComps> cachedWeapons;
-            int cacheAge;
-            if (!weaponCache.TryGetValue(pawn.Map, out cachedWeapons) ||
-                !weaponCacheAge.TryGetValue(pawn.Map, out cacheAge) ||
-                Find.TickManager.TicksGame - cacheAge > CacheLifetime)
-            {
-                cachedWeapons = new List<ThingWithComps>();
-                var allMapWeapons = pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
-                cachedWeapons.Capacity = Math.Min(allMapWeapons.Count(), 200);
-
-                foreach (var thing in allMapWeapons)
-                {
-                    var weapon = thing as ThingWithComps;
-                    if (weapon?.def == null) continue;
-                    if (weapon.def.IsWeapon && !weapon.def.IsApparel)
-                    {
-                        cachedWeapons.Add(weapon);
-                    }
-                }
-
-                weaponCache[pawn.Map] = cachedWeapons;
-                weaponCacheAge[pawn.Map] = Find.TickManager.TicksGame;
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm DEBUG] Rebuilt weapon cache - {cachedWeapons.Count} valid weapons");
-                }
-            }
-
-            // Filter nearby weapons and sort only those
-            var nearbyWeapons = cachedWeapons
-                .Where(w => w.Position.DistanceTo(pawn.Position) <= MaxSearchDistance)
+            // Get all weapons on map directly for tests
+            var mapWeapons = pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
+                .OfType<ThingWithComps>()
+                .Where(w => w != currentWeapon &&
+                           w.def.IsWeapon &&
+                           !w.def.IsApparel &&
+                           w.def.defName != "WoodLog" && // Exclude wood
+                           !w.def.IsStuff && // Exclude materials
+                           w.Position.DistanceTo(pawn.Position) <= MaxSearchDistance)
                 .OrderBy(w => w.Position.DistanceTo(pawn.Position))
                 .Take(50)
                 .ToList();
 
-            foreach (var weapon in nearbyWeapons)
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message($"[AutoArm DEBUG] {pawn.Name}: Found {mapWeapons.Count} weapons within {MaxSearchDistance} cells");
+            }
+
+            foreach (var weapon in mapWeapons)
             {
                 if (weaponsChecked >= MaxWeaponsToConsider)
                     break;
 
-                if (IsWeapon(weapon) && IsValidWeaponCandidate(weapon, pawn))
+                // Validate weapon
+                string invalidReason;
+                if (!JobGiverHelpers.IsValidWeaponCandidate(weapon, pawn, out invalidReason))
                 {
-                    weaponsChecked++;
-                    float score = GetWeaponScore(pawn, weapon);
-
-                    if (score > bestScore && (currentWeapon == null || score > improvementThreshold))
+                    if (AutoArmMod.settings?.debugLogging == true && weaponsChecked < 5)
                     {
-                        bestScore = score;
-                        bestWeapon = weapon;
+                        Log.Message($"[AutoArm DEBUG] {pawn.Name}: {weapon.Label} invalid: {invalidReason}");
                     }
+                    continue;
+                }
+
+                weaponsChecked++;
+                float score = GetWeaponScore(pawn, weapon);
+
+                if (AutoArmMod.settings?.debugLogging == true && weaponsChecked <= 5)
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {weapon.Label} score: {score:F1} (need > {improvementThreshold:F1})");
+                }
+
+                if (score > bestScore && score > improvementThreshold)
+                {
+                    bestScore = score;
+                    bestWeapon = weapon;
                 }
             }
 
@@ -407,14 +400,15 @@ namespace AutoArm
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Created equip job for {bestWeapon.Label}");
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Will equip {bestWeapon.Label} (score: {bestScore:F1})");
                 }
 
                 return equipJob;
             }
-            else if (AutoArmMod.settings?.debugLogging == true)
+
+            if (AutoArmMod.settings?.debugLogging == true)
             {
-                Log.Message($"[AutoArm DEBUG] {pawn.Name}: No best weapon found");
+                Log.Message($"[AutoArm DEBUG] {pawn.Name}: No upgrade found (checked {weaponsChecked} weapons)");
             }
 
             return null;
@@ -468,18 +462,30 @@ namespace AutoArm
             return true;
         }
 
+        // Replace the IsWeapon method in JobGiver_PickUpBetterWeapon class
+
         protected bool IsWeapon(ThingWithComps thing)
         {
             if (thing?.def == null)
                 return false;
 
+            // Direct checks without relying on cached lists
+            if (!thing.def.IsWeapon)
+                return false;
+
+            if (thing.def.IsApparel)
+                return false;
+
+            if (thing.def.equipmentType == EquipmentType.None)
+                return false;
+
+            // Don't require CompEquippable check as some valid weapons might not have it
+
             // Explicitly allow vanilla animal weapons
             if (thing.def.defName == "ElephantTusk" || thing.def.defName == "ThrumboHorn")
                 return true;
 
-            // Use the cached weapon lists
-            bool isInList = WeaponThingFilterUtility.AllWeapons.Contains(thing.def);
-            return isInList;
+            return true;
         }
 
         protected bool IsValidWeaponCandidate(ThingWithComps weapon, Pawn pawn)

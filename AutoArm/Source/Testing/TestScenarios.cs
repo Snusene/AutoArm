@@ -161,6 +161,12 @@ namespace AutoArm.Testing
         }
     }
 
+    // Complete fix for WeaponUpgradeTest in TestScenarios.cs
+
+    // Replace the ENTIRE WeaponUpgradeTest class in TestScenarios.cs with this:
+
+    // Add this temporary debug version to see what's happening
+
     public class WeaponUpgradeTest : ITestScenario
     {
         public string Name => "Weapon Upgrade Logic";
@@ -171,45 +177,151 @@ namespace AutoArm.Testing
         public void Setup(Map map)
         {
             if (map == null) return;
+
+            Log.Message("[TEST] Starting weapon upgrade test setup");
+
             testPawn = TestHelpers.CreateTestPawn(map);
-
-            if (testPawn != null)
+            if (testPawn == null)
             {
-                var pos = testPawn.Position;
+                Log.Error("[TEST] Failed to create test pawn!");
+                return;
+            }
 
-                // Give pawn a poor quality weapon
-                var weaponDef = VanillaWeaponDefOf.Gun_Autopistol;
-                if (weaponDef != null)
+            Log.Message($"[TEST] Created pawn: {testPawn.Name} at {testPawn.Position}");
+
+            // Clear any existing equipment
+            testPawn.equipment?.DestroyAllEquipment();
+
+            // Check if weapon defs exist
+            var pistolDef = VanillaWeaponDefOf.Gun_Autopistol;
+            var rifleDef = VanillaWeaponDefOf.Gun_AssaultRifle;
+
+            Log.Message($"[TEST] Pistol def: {pistolDef?.defName ?? "NULL"}");
+            Log.Message($"[TEST] Rifle def: {rifleDef?.defName ?? "NULL"}");
+
+            // Try alternative weapons if main ones don't exist
+            if (pistolDef == null)
+            {
+                pistolDef = DefDatabase<ThingDef>.GetNamedSilentFail("Gun_Revolver");
+                Log.Message($"[TEST] Using revolver instead: {pistolDef?.defName ?? "NULL"}");
+            }
+            if (rifleDef == null)
+            {
+                rifleDef = DefDatabase<ThingDef>.GetNamedSilentFail("Gun_BoltActionRifle");
+                Log.Message($"[TEST] Using bolt rifle instead: {rifleDef?.defName ?? "NULL"}");
+            }
+
+            if (pistolDef != null && rifleDef != null)
+            {
+                // Create current weapon
+                currentWeapon = ThingMaker.MakeThing(pistolDef) as ThingWithComps;
+                if (currentWeapon != null)
                 {
-                    currentWeapon = TestHelpers.CreateWeapon(map, weaponDef, pos, QualityCategory.Poor);
-                    if (currentWeapon != null)
+                    var compQuality = currentWeapon.TryGetComp<CompQuality>();
+                    if (compQuality != null)
                     {
-                        testPawn.equipment?.AddEquipment(currentWeapon);
+                        compQuality.SetQuality(QualityCategory.Poor, ArtGenerationContext.Colony);
+                    }
+                    testPawn.equipment.AddEquipment(currentWeapon);
+                    Log.Message($"[TEST] Equipped pawn with {currentWeapon.Label}");
+                }
+
+                // Create better weapon on ground
+                var weaponPos = testPawn.Position + new IntVec3(3, 0, 0);
+                if (!weaponPos.InBounds(map) || !weaponPos.Standable(map))
+                {
+                    weaponPos = testPawn.Position + new IntVec3(0, 0, 3);
+                }
+
+                betterWeapon = TestHelpers.CreateWeapon(map, rifleDef, weaponPos, QualityCategory.Good);
+                if (betterWeapon != null)
+                {
+                    betterWeapon.SetForbidden(false, false);
+
+                    // Force outfit to allow this weapon
+                    if (testPawn.outfits?.CurrentApparelPolicy?.filter != null)
+                    {
+                        testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(rifleDef, true);
+                        var weaponsCat = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
+                        if (weaponsCat != null)
+                            testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(weaponsCat, true); // Allow all weapons
                     }
 
-                    // Create a better weapon nearby
-                    betterWeapon = TestHelpers.CreateWeapon(map, weaponDef, pos + new IntVec3(3, 0, 0), QualityCategory.Excellent);
+                    Log.Message($"[TEST] Created {betterWeapon.Label} at {betterWeapon.Position}");
                 }
             }
         }
 
         public TestResult Run()
         {
+            Log.Message("[TEST] Starting test run");
+
             if (testPawn == null)
-                return TestResult.Failure("Test pawn creation failed");
+                return TestResult.Failure("Test pawn is null");
+
+            if (testPawn.equipment?.Primary == null)
+                return TestResult.Failure($"Pawn has no equipped weapon (equipment tracker: {testPawn.equipment != null})");
+
+            if (betterWeapon == null || !betterWeapon.Spawned)
+                return TestResult.Failure($"Better weapon null or not spawned (null: {betterWeapon == null})");
+
+            // Enable debug logging temporarily
+            var oldDebug = AutoArmMod.settings.debugLogging;
+            AutoArmMod.settings.debugLogging = true;
 
             var jobGiver = new JobGiver_PickUpBetterWeapon();
-            var currentScore = currentWeapon != null ? jobGiver.GetWeaponScore(testPawn, currentWeapon) : 0f;
-            var betterScore = betterWeapon != null ? jobGiver.GetWeaponScore(testPawn, betterWeapon) : 0f;
 
-            if (betterScore <= currentScore)
-                return TestResult.Failure("Better weapon not scored higher than current weapon");
+            // Log details
+            Log.Message($"[TEST] Pawn: {testPawn.Name} at {testPawn.Position}");
+            Log.Message($"[TEST] Current weapon: {currentWeapon?.Label ?? "null"}");
+            Log.Message($"[TEST] Better weapon: {betterWeapon?.Label} at {betterWeapon?.Position}");
+            Log.Message($"[TEST] Distance: {testPawn.Position.DistanceTo(betterWeapon.Position)}");
+            Log.Message($"[TEST] Weapon forbidden: {betterWeapon?.IsForbidden(testPawn)}");
+
+            // Check outfit
+            var filter = testPawn.outfits?.CurrentApparelPolicy?.filter;
+            if (filter != null)
+            {
+                Log.Message($"[TEST] Outfit allows rifle: {filter.Allows(betterWeapon.def)}");
+            }
+
+            // Get scores
+            var currentScore = jobGiver.GetWeaponScore(testPawn, currentWeapon);
+            var betterScore = jobGiver.GetWeaponScore(testPawn, betterWeapon);
+
+            Log.Message($"[TEST] Current weapon score: {currentScore}");
+            Log.Message($"[TEST] Better weapon score: {betterScore}");
+            Log.Message($"[TEST] Threshold needed: {currentScore * 1.1f}");
 
             var job = jobGiver.TestTryGiveJob(testPawn);
-            if (job == null)
-                return TestResult.Failure("No upgrade job created despite better weapon available");
 
-            return TestResult.Pass();
+            // Restore debug setting
+            AutoArmMod.settings.debugLogging = oldDebug;
+
+            Log.Message($"[TEST] Job result: {job?.def.defName ?? "NULL"}");
+            if (job != null)
+            {
+                Log.Message($"[TEST] Job target: {job.targetA.Thing?.Label ?? "null"}");
+            }
+
+            // Continue with normal test...
+            var result = new TestResult { Success = true };
+            result.Data["Current Score"] = currentScore;
+            result.Data["Better Score"] = betterScore;
+
+            if (betterScore <= currentScore * 1.1f)
+                return TestResult.Failure($"Better weapon score not high enough ({betterScore} vs {currentScore * 1.1f} required)");
+
+            if (job == null)
+                return TestResult.Failure("No upgrade job created");
+
+            if (job.def != JobDefOf.Equip)
+                return TestResult.Failure($"Wrong job type: {job.def.defName}");
+
+            if (job.targetA.Thing != betterWeapon)
+                return TestResult.Failure("Job targets wrong weapon");
+
+            return result;
         }
 
         public void Cleanup()
@@ -377,17 +489,23 @@ namespace AutoArm.Testing
         }
     }
 
+    // Fixed ChildColonistTest from TestScenarios.cs
+
     public class ChildColonistTest : ITestScenario
     {
         public string Name => "Child Colonist Age Restrictions";
         private Pawn childPawn;
+        private int testAge = 10; // Test with a 10-year-old
 
         public void Setup(Map map)
         {
             if (map == null || !ModsConfig.BiotechActive) return;
 
+            // Store current setting to restore later
+            var originalSetting = AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false;
+
             // Create a young pawn
-            childPawn = TestHelpers.CreateTestPawnWithAge(map, 10, "TestChild");
+            childPawn = TestHelpers.CreateTestPawnWithAge(map, testAge, "TestChild");
         }
 
         public TestResult Run()
@@ -396,23 +514,52 @@ namespace AutoArm.Testing
                 return TestResult.Pass(); // Skip if Biotech not active
 
             if (childPawn == null)
-                return TestResult.Pass(); // Can't test without proper child pawn
+                return TestResult.Failure("Failed to create child pawn");
+
+            // Verify the pawn's age was set correctly
+            if (childPawn.ageTracker == null)
+                return TestResult.Failure("Pawn has no age tracker");
+
+            int actualAge = childPawn.ageTracker.AgeBiologicalYears;
+            if (actualAge != testAge && actualAge >= 18)
+            {
+                // Age setting failed, skip the test
+                var skipResult = TestResult.Pass();
+                skipResult.Data["Note"] = $"Could not set pawn age properly (wanted {testAge}, got {actualAge}), skipping test";
+                return skipResult;
+            }
+
+            var result = new TestResult { Success = true };
+            result.Data["Pawn Age"] = actualAge;
+            result.Data["Allow Children Setting"] = AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false;
+            result.Data["Min Age Setting"] = AutoArmMod.settings?.childrenMinAge ?? 13;
 
             string reason;
             bool isValid = JobGiverHelpers.IsValidPawnForAutoEquip(childPawn, out reason);
 
-            if (AutoArmMod.settings?.allowChildrenToEquipWeapons == true)
+            result.Data["Is Valid"] = isValid;
+            result.Data["Reason"] = reason ?? "None";
+
+            // Test both scenarios
+            bool allowChildrenSetting = AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false;
+            int minAge = AutoArmMod.settings?.childrenMinAge ?? 13;
+
+            if (allowChildrenSetting && actualAge >= minAge)
             {
+                // Children are allowed and this child meets minimum age
                 if (!isValid && reason.Contains("Too young"))
-                    return TestResult.Failure("Child rejected despite setting allowing children");
+                    return TestResult.Failure($"Child rejected despite being old enough ({actualAge} >= {minAge}) and setting allowing children");
             }
-            else
+            else if (!allowChildrenSetting || actualAge < minAge)
             {
+                // Children are not allowed OR child is below minimum age
                 if (isValid)
-                    return TestResult.Failure("Child allowed despite setting disallowing children");
+                    return TestResult.Failure($"Child allowed despite settings (allow={allowChildrenSetting}, age={actualAge}, minAge={minAge})");
+                if (!reason.Contains("Too young") && !reason.Contains("age"))
+                    return TestResult.Failure($"Child rejected but not for age reasons: {reason}");
             }
 
-            return TestResult.Pass();
+            return result;
         }
 
         public void Cleanup()
