@@ -75,7 +75,6 @@
     <Compile Include="Source\Testing\TestInterfaces.cs" />
     <Compile Include="Source\Testing\TestRunner.cs" />
     <Compile Include="Source\Testing\TestScenarios.cs" />
-    <Compile Include="Source\Threading\ThreadSafeForcedWeaponTracker.cs" />
     <Compile Include="Source\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\VanillaWeaponDefOf.cs" />
     <Compile Include="Source\WeaponAutoEquip.cs" />

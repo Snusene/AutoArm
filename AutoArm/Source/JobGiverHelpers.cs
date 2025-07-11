@@ -384,10 +384,12 @@ namespace AutoArm
             }
 
             // Parent holder check
-            if (weapon.ParentHolder is Pawn_EquipmentTracker)
+            if (weapon.ParentHolder is Pawn_EquipmentTracker equipTracker)
             {
-                reason = "Equipped by someone";
-                return false;
+                // This weapon is equipped by someone
+                var equipperPawn = equipTracker.pawn;
+                if (equipperPawn != null && equipperPawn != pawn)
+                    return false;
             }
 
             if (weapon.ParentHolder is Pawn_InventoryTracker)

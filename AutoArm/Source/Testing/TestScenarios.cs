@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Verse;
 using Verse.AI;
+using Verse.AI.Group;
+using static AutoArm.Testing.TestHelpers;
 
 namespace AutoArm.Testing
 {
@@ -19,18 +21,53 @@ namespace AutoArm.Testing
         public void Setup(Map map)
         {
             if (map == null) return;
+
+            // Clean up ALL autopistols on the map to avoid interference
+            var allAutopistols = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
+                .Where(t => t.def == VanillaWeaponDefOf.Gun_Autopistol)
+                .ToList();
+
+            foreach (var weapon in allAutopistols)
+            {
+                weapon.Destroy();
+            }
+
             testPawn = TestHelpers.CreateTestPawn(map);
             if (testPawn != null)
             {
+                // Ensure the pawn can use weapons - remove any traits that disable violence
+                if (testPawn.WorkTagIsDisabled(WorkTags.Violent))
+                {
+                    // Clear all traits and add a neutral one
+                    testPawn.story.traits.allTraits.Clear();
+                    testPawn.story.traits.GainTrait(new Trait(TraitDefOf.Kind));
+
+                    // If still disabled after removing traits, log it
+                    if (testPawn.WorkTagIsDisabled(WorkTags.Violent))
+                    {
+                        Log.Warning($"[TEST] Pawn {testPawn.Name} still incapable of violence after removing traits (backstory issue)");
+                    }
+                }
+
                 // Make sure pawn is unarmed
                 testPawn.equipment?.DestroyAllEquipment();
 
-                // Create a weapon nearby
+                // Create a weapon nearby - make it unique so we can verify it's the right one
                 var weaponDef = VanillaWeaponDefOf.Gun_Autopistol;
                 if (weaponDef != null)
                 {
                     testWeapon = TestHelpers.CreateWeapon(map, weaponDef,
                         testPawn.Position + new IntVec3(3, 0, 0));
+
+                    // Make it excellent quality so it's distinguishable
+                    if (testWeapon != null)
+                    {
+                        var compQuality = testWeapon.TryGetComp<CompQuality>();
+                        if (compQuality != null)
+                        {
+                            compQuality.SetQuality(QualityCategory.Excellent, ArtGenerationContext.Colony);
+                        }
+                    }
                 }
             }
         }
@@ -43,14 +80,45 @@ namespace AutoArm.Testing
             if (testPawn.equipment?.Primary != null)
                 return TestResult.Failure("Pawn is not unarmed");
 
+            // Enable debug logging temporarily for this test
+            var oldDebug = AutoArmMod.settings.debugLogging;
+            AutoArmMod.settings.debugLogging = true;
+
+            Log.Message($"[TEST] Testing unarmed pawn: {testPawn.Name} at {testPawn.Position}");
+            Log.Message($"[TEST] Available weapon: {testWeapon?.Label} at {testWeapon?.Position}");
+
             var jobGiver = new JobGiver_PickUpBetterWeapon();
             var job = jobGiver.TestTryGiveJob(testPawn);
 
+            // Restore debug setting
+            AutoArmMod.settings.debugLogging = oldDebug;
+
             if (job == null)
+            {
+                // Log more details about why no job was created
+                Log.Message($"[TEST] No job created. Checking conditions:");
+
+                string reason;
+                bool isValidPawn = JobGiverHelpers.IsValidPawnForAutoEquip(testPawn, out reason);
+                Log.Message($"[TEST] Is valid pawn: {isValidPawn} - {reason}");
+
+                if (testWeapon != null)
+                {
+                    bool isValidWeapon = JobGiverHelpers.IsValidWeaponCandidate(testWeapon, testPawn, out reason);
+                    Log.Message($"[TEST] Is valid weapon: {isValidWeapon} - {reason}");
+
+                    var score = jobGiver.GetWeaponScore(testPawn, testWeapon);
+                    Log.Message($"[TEST] Weapon score: {score}");
+                }
+
                 return TestResult.Failure("No weapon pickup job created for unarmed pawn");
+            }
 
             if (job.def != JobDefOf.Equip)
                 return TestResult.Failure($"Wrong job type: {job.def.defName}");
+
+            if (job.targetA.Thing != testWeapon)
+                return TestResult.Failure($"Job targets wrong weapon: {job.targetA.Thing?.Label}");
 
             return TestResult.Pass();
         }
@@ -178,6 +246,17 @@ namespace AutoArm.Testing
         {
             if (map == null) return;
 
+            // Clear any existing weapons in the test area first
+            var testArea = CellRect.CenteredOn(map.Center, 10);
+            var existingWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
+                .Where(t => testArea.Contains(t.Position))
+                .ToList();
+
+            foreach (var weapon in existingWeapons)
+            {
+                weapon.Destroy();
+            }
+
             Log.Message("[TEST] Starting weapon upgrade test setup");
 
             testPawn = TestHelpers.CreateTestPawn(map);
@@ -185,6 +264,21 @@ namespace AutoArm.Testing
             {
                 Log.Error("[TEST] Failed to create test pawn!");
                 return;
+            }
+
+            // Ensure the pawn can use weapons - remove any traits that disable violence
+            if (testPawn.WorkTagIsDisabled(WorkTags.Violent))
+            {
+                // Clear all traits and add a neutral one
+                testPawn.story.traits.allTraits.Clear();
+                testPawn.story.traits.GainTrait(new Trait(TraitDefOf.Kind));
+
+                // If still disabled after removing traits, it's from backstory
+                // In that case, we'll just log it and let the test handle it
+                if (testPawn.WorkTagIsDisabled(WorkTags.Violent))
+                {
+                    Log.Warning($"[TEST] Pawn {testPawn.Name} still incapable of violence after removing traits (backstory issue)");
+                }
             }
 
             Log.Message($"[TEST] Created pawn: {testPawn.Name} at {testPawn.Position}");
@@ -238,13 +332,20 @@ namespace AutoArm.Testing
                 {
                     betterWeapon.SetForbidden(false, false);
 
-                    // Force outfit to allow this weapon
+                    // Force outfit to allow both weapon types
                     if (testPawn.outfits?.CurrentApparelPolicy?.filter != null)
                     {
+                        testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(pistolDef, true);
                         testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(rifleDef, true);
+
+                        // Also allow the weapon categories
                         var weaponsCat = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
                         if (weaponsCat != null)
-                            testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(weaponsCat, true); // Allow all weapons
+                            testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(weaponsCat, true);
+
+                        var rangedCat = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("WeaponsRanged");
+                        if (rangedCat != null)
+                            testPawn.outfits.CurrentApparelPolicy.filter.SetAllow(rangedCat, true);
                     }
 
                     Log.Message($"[TEST] Created {betterWeapon.Label} at {betterWeapon.Position}");
@@ -265,9 +366,11 @@ namespace AutoArm.Testing
             if (betterWeapon == null || !betterWeapon.Spawned)
                 return TestResult.Failure($"Better weapon null or not spawned (null: {betterWeapon == null})");
 
-            // Enable debug logging temporarily
+            // Enable debug logging temporarily for this test
             var oldDebug = AutoArmMod.settings.debugLogging;
+            var oldEnabled = AutoArmMod.settings.modEnabled;
             AutoArmMod.settings.debugLogging = true;
+            AutoArmMod.settings.modEnabled = true; // Force enable for test
 
             var jobGiver = new JobGiver_PickUpBetterWeapon();
 
@@ -293,10 +396,29 @@ namespace AutoArm.Testing
             Log.Message($"[TEST] Better weapon score: {betterScore}");
             Log.Message($"[TEST] Threshold needed: {currentScore * 1.1f}");
 
+            // Add validation checks
+            string reason;
+            bool isValidPawn = JobGiverHelpers.IsValidPawnForAutoEquip(testPawn, out reason);
+            Log.Message($"[TEST] Is valid pawn: {isValidPawn} - Reason: {reason}");
+
+            // Check if pawn is in bed or has a lord
+            Log.Message($"[TEST] Pawn in bed: {testPawn.InBed()}");
+            Log.Message($"[TEST] Pawn has lord: {testPawn.GetLord() != null}");
+
+            // Check weapon conditional
+            var weaponConditional = new ThinkNode_ConditionalWeaponsInOutfit();
+            bool weaponsAllowed = weaponConditional.TestSatisfied(testPawn);
+            Log.Message($"[TEST] Weapons allowed in outfit: {weaponsAllowed}");
+
+            // Check if better weapon is valid
+            bool isValidWeapon = JobGiverHelpers.IsValidWeaponCandidate(betterWeapon, testPawn, out reason);
+            Log.Message($"[TEST] Is better weapon valid: {isValidWeapon} - Reason: {reason}");
+
             var job = jobGiver.TestTryGiveJob(testPawn);
 
-            // Restore debug setting
+            // Restore settings
             AutoArmMod.settings.debugLogging = oldDebug;
+            AutoArmMod.settings.modEnabled = oldEnabled;
 
             Log.Message($"[TEST] Job result: {job?.def.defName ?? "NULL"}");
             if (job != null)
@@ -304,7 +426,6 @@ namespace AutoArm.Testing
                 Log.Message($"[TEST] Job target: {job.targetA.Thing?.Label ?? "null"}");
             }
 
-            // Continue with normal test...
             var result = new TestResult { Success = true };
             result.Data["Current Score"] = currentScore;
             result.Data["Better Score"] = betterScore;
@@ -393,7 +514,16 @@ namespace AutoArm.Testing
 
                 if (pistolDef != null && rifleDef != null)
                 {
-                    forcedWeapon = TestHelpers.CreateWeapon(map, pistolDef, pos);
+                    // Method 1: Create weapon without spawning it
+                    forcedWeapon = ThingMaker.MakeThing(pistolDef) as ThingWithComps;
+
+                    // OR Method 2: If you must use CreateWeapon, despawn it first
+                    // forcedWeapon = TestHelpers.CreateWeapon(map, pistolDef, pos);
+                    // if (forcedWeapon != null)
+                    // {
+                    //     forcedWeapon.DeSpawn();
+                    // }
+
                     if (forcedWeapon != null)
                     {
                         testPawn.equipment?.AddEquipment(forcedWeapon);
@@ -505,7 +635,8 @@ namespace AutoArm.Testing
             var originalSetting = AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false;
 
             // Create a young pawn
-            childPawn = TestHelpers.CreateTestPawnWithAge(map, testAge, "TestChild");
+            var config = new TestPawnConfig { Age = 10 }; // or whatever age you're using for the child
+            childPawn = TestHelpers.CreateTestPawn(map, config);
         }
 
         public TestResult Run()
@@ -677,10 +808,13 @@ namespace AutoArm.Testing
             // Simulate load
             ForcedWeaponTracker.LoadSaveData(saveData);
 
-            // Check if still forced
-            if (!ForcedWeaponTracker.IsForced(testPawn, testWeapon))
-                return TestResult.Failure("Forced weapon not retained after load");
+            // After loading, check if the weapon DEF is still marked as forced
+            var forcedDef = ForcedWeaponTracker.GetForcedWeaponDef(testPawn);
+            if (forcedDef != testWeapon.def)
+                return TestResult.Failure("Forced weapon def not retained after load");
 
+            // The IsForced method now checks if weapon is equipped, which won't work in this test
+            // So we just verify the def is stored correctly
             return TestResult.Pass();
         }
 

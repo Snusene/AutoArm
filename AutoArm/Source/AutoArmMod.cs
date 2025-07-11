@@ -32,209 +32,150 @@ namespace AutoArm
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
-            // Draw header
-            DrawHeader(ref inRect);
-
-            // Draw tabs
-            DrawTabs(ref inRect);
-
-            // Draw tab content
-            switch (currentTab)
-            {
-                case SettingsTab.General:
-                    DrawGeneralTab(inRect);
-                    break;
-                case SettingsTab.Compatibility:
-                    DrawCompatibilityTab(inRect);
-                    break;
-                case SettingsTab.Advanced:
-                    DrawAdvancedTab(inRect);
-                    break;
-                case SettingsTab.Debug:
-                    DrawDebugTab(inRect);
-                    break;
-            }
-
-            base.DoSettingsWindowContents(inRect);
-        }
-
-        private void DrawHeader(ref Rect inRect)
-        {
-            // Draw mod title
-            Text.Font = GameFont.Medium;
-            var titleRect = new Rect(inRect.x, inRect.y, inRect.width, 40f);
-            Widgets.Label(titleRect, "AutoArm Settings");
-
-            // Draw version info
-            Text.Font = GameFont.Tiny;
-            Text.Anchor = TextAnchor.UpperRight;
-            var versionRect = new Rect(inRect.x, inRect.y, inRect.width - 5f, 20f);
-            Widgets.Label(versionRect, "v1.0.0");
-            Text.Anchor = TextAnchor.UpperLeft;
-
-            inRect.y += 45f;
-            inRect.height -= 45f;
-
-            // Draw separator
-            Widgets.DrawLineHorizontal(inRect.x, inRect.y, inRect.width);
-            inRect.y += 10f;
-            inRect.height -= 10f;
-        }
-
-        private void DrawTabs(ref Rect inRect)
-        {
-            Text.Font = GameFont.Small;
-            var tabRect = new Rect(inRect.x, inRect.y, inRect.width, 30f);
-            var tabWidth = tabRect.width / 4f;
-
-            // General tab
-            var generalRect = new Rect(tabRect.x, tabRect.y, tabWidth - 5f, tabRect.height);
-            if (Widgets.ButtonText(generalRect, "General"))
-            {
-                currentTab = SettingsTab.General;
-            }
-            if (currentTab == SettingsTab.General)
-            {
-                Widgets.DrawHighlight(generalRect);
-            }
-
-            // Compatibility tab
-            var compatRect = new Rect(tabRect.x + tabWidth, tabRect.y, tabWidth - 5f, tabRect.height);
-            if (Widgets.ButtonText(compatRect, "Compatibility"))
-            {
-                currentTab = SettingsTab.Compatibility;
-            }
-            if (currentTab == SettingsTab.Compatibility)
-            {
-                Widgets.DrawHighlight(compatRect);
-            }
-
-            // Advanced tab
-            var advancedRect = new Rect(tabRect.x + tabWidth * 2, tabRect.y, tabWidth - 5f, tabRect.height);
-            if (Widgets.ButtonText(advancedRect, "Advanced"))
-            {
-                currentTab = SettingsTab.Advanced;
-            }
-            if (currentTab == SettingsTab.Advanced)
-            {
-                Widgets.DrawHighlight(advancedRect);
-            }
-
-            // Debug tab
-            var debugRect = new Rect(tabRect.x + tabWidth * 3, tabRect.y, tabWidth - 5f, tabRect.height);
-            if (Widgets.ButtonText(debugRect, "Debug"))
-            {
-                currentTab = SettingsTab.Debug;
-            }
-            if (currentTab == SettingsTab.Debug)
-            {
-                Widgets.DrawHighlight(debugRect);
-            }
-
-            inRect.y += 35f;
-            inRect.height -= 35f;
-        }
-
-        private void DrawGeneralTab(Rect inRect)
-        {
+            // Use simpler UI approach for better compatibility
             var listing = new Listing_Standard();
             listing.Begin(inRect);
 
-            // Main settings section
-            DrawSectionHeader(listing, "Main Settings");
+            // Title
+            Text.Font = GameFont.Medium;
+            listing.Label("AutoArm Settings");
+            Text.Font = GameFont.Small;
+            listing.Gap(12f);
 
-            // Enable mod with better checkbox
-            DrawCheckboxRow(listing, "Enable AutoArm", "When enabled, colonists will automatically equip better weapons based on their outfit policy.",
-                ref settings.modEnabled);
+            // Simple tab buttons
+            var tabRect = listing.GetRect(30f);
+            var tabWidth = tabRect.width / 4f - 5f;
+
+            if (Widgets.ButtonText(new Rect(tabRect.x, tabRect.y, tabWidth, 30f), "General"))
+                currentTab = SettingsTab.General;
+            if (Widgets.ButtonText(new Rect(tabRect.x + tabWidth + 5f, tabRect.y, tabWidth, 30f), "Compatibility"))
+                currentTab = SettingsTab.Compatibility;
+            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 2, tabRect.y, tabWidth, 30f), "Advanced"))
+                currentTab = SettingsTab.Advanced;
+            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 3, tabRect.y, tabWidth, 30f), "Debug"))
+                currentTab = SettingsTab.Debug;
 
             listing.Gap(12f);
 
-            // Notifications
-            DrawCheckboxRow(listing, "Show notifications", "Shows blue notification messages when colonists equip or drop weapons.",
-                ref settings.showNotifications);
+            // Content area
+            var contentRect = listing.GetRect(inRect.height - listing.CurHeight - 30f);
+            var innerRect = contentRect.ContractedBy(10f);
+
+            Widgets.DrawBoxSolid(contentRect, new Color(0.1f, 0.1f, 0.1f, 0.3f));
+
+            // Draw tab content
+            var innerListing = new Listing_Standard();
+            innerListing.Begin(innerRect);
+
+            switch (currentTab)
+            {
+                case SettingsTab.General:
+                    DrawGeneralTab(innerListing);
+                    break;
+                case SettingsTab.Compatibility:
+                    DrawCompatibilityTab(innerListing);
+                    break;
+                case SettingsTab.Advanced:
+                    DrawAdvancedTab(innerListing);
+                    break;
+                case SettingsTab.Debug:
+                    DrawDebugTab(innerListing, innerRect);
+                    break;
+            }
+
+            innerListing.End();
+            listing.End();
+        }
+
+        private void DrawGeneralTab(Listing_Standard listing)
+        {
+            // Main settings
+            listing.CheckboxLabeled("Enable AutoArm", ref settings.modEnabled,
+                "When enabled, colonists will automatically equip better weapons based on their outfit policy.");
+
+            listing.Gap(12f);
+
+            listing.CheckboxLabeled("Show notifications", ref settings.showNotifications,
+                "Shows blue notification messages when colonists equip or drop weapons.");
 
             listing.Gap(20f);
 
-            // Status section
-            DrawSectionHeader(listing, "Mod Status");
-
-            Text.Font = GameFont.Tiny;
-            listing.Label(new TaggedString($"Think tree injection: {(settings.thinkTreeInjectionFailed ? "FAILED - using fallback" : "OK")}"), -1, null);
+            // Status
+            Text.Font = GameFont.Medium;
+            listing.Label("Mod Status");
             Text.Font = GameFont.Small;
+
+            listing.Label($"Think tree injection: {(settings.thinkTreeInjectionFailed ? "FAILED - using fallback" : "OK")}");
 
             listing.Gap(20f);
 
             // Reset button
-            var resetRect = listing.GetRect(30f);
-            resetRect.width = 150f;
-            if (Widgets.ButtonText(resetRect, "Reset to defaults"))
+            if (listing.ButtonText("Reset to defaults"))
             {
                 settings.ResetToDefaults();
                 Messages.Message("Settings have been reset to defaults", MessageTypeDefOf.TaskCompletion, false);
             }
-
-            listing.End();
         }
 
-        private void DrawCompatibilityTab(Rect inRect)
+        private void DrawCompatibilityTab(Listing_Standard listing)
         {
-            var listing = new Listing_Standard();
-            listing.Begin(inRect);
+            Text.Font = GameFont.Medium;
+            listing.Label("Detected Mods");
+            Text.Font = GameFont.Small;
+            listing.Gap(12f);
 
-            DrawSectionHeader(listing, "Detected Mods");
-
-            // Show detected mods with icons
-            DrawModStatus(listing, "Simple Sidearms", SimpleSidearmsCompat.IsLoaded());
-            DrawModStatus(listing, "Combat Extended", CECompat.IsLoaded());
-            DrawModStatus(listing, "Infusion 2", InfusionCompat.IsLoaded());
+            // Show detected mods
+            listing.Label($"Simple Sidearms: {(SimpleSidearmsCompat.IsLoaded() ? "Loaded" : "Not found")}");
+            listing.Label($"Combat Extended: {(CECompat.IsLoaded() ? "Loaded" : "Not found")}");
+            listing.Label($"Infusion 2: {(InfusionCompat.IsLoaded() ? "Loaded" : "Not found")}");
 
             listing.Gap(20f);
 
             // Mod-specific settings
             if (SimpleSidearmsCompat.IsLoaded())
             {
-                DrawSectionHeader(listing, "Simple Sidearms");
-                DrawCheckboxRow(listing, "Auto-equip sidearms",
-                    "Allows colonists to automatically pick up additional weapons as sidearms.",
-                    ref settings.autoEquipSidearms);
+                Text.Font = GameFont.Medium;
+                listing.Label("Simple Sidearms");
+                Text.Font = GameFont.Small;
+
+                listing.CheckboxLabeled("Auto-equip sidearms", ref settings.autoEquipSidearms,
+                    "Allows colonists to automatically pick up additional weapons as sidearms.");
             }
 
             if (CECompat.IsLoaded())
             {
                 listing.Gap(20f);
-                DrawSectionHeader(listing, "Combat Extended");
-                DrawCheckboxRow(listing, "Check for ammunition",
-                    "When enabled, colonists will only pick up weapons if they have access to appropriate ammunition.",
-                    ref settings.checkCEAmmo);
-            }
+                Text.Font = GameFont.Medium;
+                listing.Label("Combat Extended");
+                Text.Font = GameFont.Small;
 
-            listing.End();
+                listing.CheckboxLabeled("Check for ammunition", ref settings.checkCEAmmo,
+                    "When enabled, colonists will only pick up weapons if they have access to appropriate ammunition.");
+            }
         }
 
-        private void DrawAdvancedTab(Rect inRect)
+        private void DrawAdvancedTab(Listing_Standard listing)
         {
-            var listing = new Listing_Standard();
-            listing.Begin(inRect);
-
-            DrawSectionHeader(listing, "Weapon Selection");
+            Text.Font = GameFont.Medium;
+            listing.Label("Weapon Selection");
+            Text.Font = GameFont.Small;
+            listing.Gap(12f);
 
             // Weapon upgrade threshold
             listing.Label($"Weapon upgrade threshold: {settings.weaponUpgradeThreshold:P0}");
             settings.weaponUpgradeThreshold = listing.Slider(settings.weaponUpgradeThreshold, 1.01f, 1.50f);
-            Text.Font = GameFont.Tiny;
-            listing.Label("How much better a weapon must be to trigger an upgrade (default: 5%)");
-            Text.Font = GameFont.Small;
 
             listing.Gap(20f);
 
             // Age restrictions
             if (ModsConfig.BiotechActive)
             {
-                DrawSectionHeader(listing, "Age Restrictions");
+                Text.Font = GameFont.Medium;
+                listing.Label("Age Restrictions");
+                Text.Font = GameFont.Small;
 
-                DrawCheckboxRow(listing, "Allow children to equip weapons",
-                    "When enabled, child colonists can pick up and use weapons.",
-                    ref settings.allowChildrenToEquipWeapons);
+                listing.CheckboxLabeled("Allow children to equip weapons", ref settings.allowChildrenToEquipWeapons,
+                    "When enabled, child colonists can pick up and use weapons.");
 
                 if (settings.allowChildrenToEquipWeapons)
                 {
@@ -243,166 +184,74 @@ namespace AutoArm
                 }
             }
 
-            listing.Gap(20f);
-
             // Nobility
             if (ModsConfig.RoyaltyActive)
             {
-                DrawSectionHeader(listing, "Nobility");
+                listing.Gap(20f);
+                Text.Font = GameFont.Medium;
+                listing.Label("Nobility");
+                Text.Font = GameFont.Small;
 
-                DrawCheckboxRow(listing, "Respect conceited nobles",
-                    "When enabled, conceited nobles won't automatically switch weapons.",
-                    ref settings.respectConceitedNobles);
+                listing.CheckboxLabeled("Respect conceited nobles", ref settings.respectConceitedNobles,
+                    "When enabled, conceited nobles won't automatically switch weapons.");
             }
-
-            listing.End();
         }
 
-        private void DrawDebugTab(Rect inRect)
+        private void DrawDebugTab(Listing_Standard listing, Rect contentRect)
         {
-            var listing = new Listing_Standard();
-
-            // Split the area if showing test results
-            Rect mainRect = showTestResults ? new Rect(inRect.x, inRect.y, inRect.width, inRect.height * 0.5f) : inRect;
-
-            listing.Begin(mainRect);
-
-            DrawSectionHeader(listing, "Debug Options");
-
-            DrawCheckboxRow(listing, "Enable debug logging",
-                "Outputs detailed information to the debug log for troubleshooting.",
-                ref settings.debugLogging);
+            listing.CheckboxLabeled("Enable debug logging", ref settings.debugLogging,
+                "Outputs detailed information to the debug log for troubleshooting.");
 
             if (settings.debugLogging && Current.Game != null && Find.CurrentMap != null)
             {
                 listing.Gap(20f);
-                DrawSectionHeader(listing, "Testing Tools");
+                Text.Font = GameFont.Medium;
+                listing.Label("Testing Tools");
+                Text.Font = GameFont.Small;
 
-                // Test buttons in a row
-                var buttonRect = listing.GetRect(30f);
-                var buttonWidth = (buttonRect.width - 10f) / 2f;
-
-                var testWeaponRect = new Rect(buttonRect.x, buttonRect.y, buttonWidth, buttonRect.height);
-                if (Widgets.ButtonText(testWeaponRect, "Test Weapon Detection"))
+                if (listing.ButtonText("Test Weapon Detection"))
                 {
                     TestWeaponDetection();
                 }
 
-                var testPawnRect = new Rect(buttonRect.x + buttonWidth + 10f, buttonRect.y, buttonWidth, buttonRect.height);
-                if (Widgets.ButtonText(testPawnRect, "Test Pawn Validation"))
+                if (listing.ButtonText("Test Pawn Validation"))
                 {
                     TestPawnValidation();
                 }
 
-                listing.Gap(10f);
-
-                // Full test runner
-                var runTestsRect = listing.GetRect(35f);
-                runTestsRect.width = 200f;
-                if (Widgets.ButtonText(runTestsRect, "Run All Tests", true, false, true))
+                if (listing.ButtonText("Run All Tests"))
                 {
                     RunAllTests();
                 }
 
-                if (lastTestResults != null)
+                // Show test results if available
+                if (lastTestResults != null && showTestResults)
                 {
                     listing.Gap(10f);
-                    var toggleRect = listing.GetRect(25f);
-                    toggleRect.width = 150f;
-                    string buttonText = showTestResults ? "Hide Results" : "Show Results";
-                    if (Widgets.ButtonText(toggleRect, buttonText))
-                    {
-                        showTestResults = !showTestResults;
-                    }
+
+                    var resultsRect = new Rect(contentRect.x, listing.CurHeight + 20f, contentRect.width, contentRect.height - listing.CurHeight - 30f);
+
+                    Widgets.DrawBoxSolid(resultsRect, new Color(0.1f, 0.1f, 0.1f, 0.8f));
+
+                    var innerResultsRect = resultsRect.ContractedBy(10f);
+                    var textHeight = Text.CalcHeight(testResultsText, innerResultsRect.width);
+
+                    Widgets.BeginScrollView(innerResultsRect, ref scrollPosition,
+                        new Rect(0, 0, innerResultsRect.width - 20f, textHeight));
+
+                    Widgets.Label(new Rect(0, 0, innerResultsRect.width - 20f, textHeight), testResultsText);
+
+                    Widgets.EndScrollView();
                 }
             }
             else if (settings.debugLogging)
             {
                 listing.Gap(20f);
-                Text.Font = GameFont.Tiny;
-                GUI.color = Color.gray;
                 listing.Label("Testing tools require an active game");
-                GUI.color = Color.white;
-                Text.Font = GameFont.Small;
-            }
-
-            listing.End();
-
-            // Draw test results if shown
-            if (showTestResults && lastTestResults != null)
-            {
-                DrawTestResults(new Rect(inRect.x, mainRect.yMax + 10f, inRect.width, inRect.height - mainRect.height - 10f));
             }
         }
 
-        // Helper methods
-        private void DrawSectionHeader(Listing_Standard listing, string text)
-        {
-            Text.Font = GameFont.Medium;
-            GUI.color = new Color(0.8f, 0.8f, 0.8f);
-            listing.Label(text);
-            GUI.color = Color.white;
-            Text.Font = GameFont.Small;
-            listing.GapLine(6f);
-        }
-
-        private void DrawCheckboxRow(Listing_Standard listing, string label, string tooltip, ref bool value)
-        {
-            var rect = listing.GetRect(24f);
-
-            // Draw checkbox on the left
-            var checkRect = new Rect(rect.x, rect.y, 24f, 24f);
-            Widgets.Checkbox(checkRect.x, checkRect.y, ref value);
-
-            // Draw label
-            var labelRect = new Rect(rect.x + 30f, rect.y, rect.width - 30f, rect.height);
-            Widgets.Label(labelRect, label);
-
-            // Add tooltip to entire row
-            if (!string.IsNullOrEmpty(tooltip))
-            {
-                TooltipHandler.TipRegion(rect, tooltip);
-            }
-        }
-
-        private void DrawModStatus(Listing_Standard listing, string modName, bool isLoaded)
-        {
-            var rect = listing.GetRect(22f);
-
-            // Draw status indicator
-            GUI.color = isLoaded ? Color.green : Color.gray;
-            Widgets.Label(new Rect(rect.x, rect.y, 20f, rect.height), isLoaded ? "✓" : "✗");
-            GUI.color = Color.white;
-
-            // Draw mod name
-            Widgets.Label(new Rect(rect.x + 25f, rect.y, rect.width - 25f, rect.height), modName);
-        }
-
-        private void DrawTestResults(Rect rect)
-        {
-            // Draw background
-            Widgets.DrawBoxSolid(rect, new Color(0.1f, 0.1f, 0.1f, 0.8f));
-            Widgets.DrawBox(rect, 2);
-            rect = rect.ContractedBy(10f);
-
-            // Title
-            Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(rect.x, rect.y, rect.width, 30f), "Test Results");
-            Text.Font = GameFont.Small;
-
-            // Results
-            var textRect = new Rect(rect.x, rect.y + 35f, rect.width, rect.height - 35f);
-            Widgets.BeginScrollView(textRect, ref scrollPosition,
-                new Rect(0, 0, rect.width - 20f, Text.CalcHeight(testResultsText, rect.width - 20f)));
-
-            GUI.color = new Color(0.8f, 1f, 0.8f);
-            Widgets.Label(new Rect(0, 0, rect.width - 20f, 9999f), testResultsText);
-            GUI.color = Color.white;
-
-            Widgets.EndScrollView();
-        }
-
-        // Test methods remain the same...
+        // Test methods
         private void TestWeaponDetection()
         {
             var map = Find.CurrentMap;
@@ -491,11 +340,6 @@ namespace AutoArm
                 testResultsText += $"\nTest runner error: {e.Message}";
                 Log.Error($"[AutoArm] Test runner error: {e}");
             }
-        }
-
-        private List<ITestScenario> GetAllTests()
-        {
-            return TestRunner.GetAllTests();
         }
 
         public override string SettingsCategory()

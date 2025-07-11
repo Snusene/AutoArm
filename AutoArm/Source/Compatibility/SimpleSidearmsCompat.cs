@@ -59,7 +59,7 @@ namespace AutoArm
                 {
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        Log.Message("[AutoArm] Could not find CompSidearmMemory type");
+                        Log.Warning("[AutoArm] Could not find CompSidearmMemory type");
                     }
                     return;
                 }
@@ -81,22 +81,46 @@ namespace AutoArm
                     rememberedWeaponsField = compSidearmMemoryType.GetField("rememberedWeapons", BindingFlags.Public | BindingFlags.Instance);
                 }
 
-                // Find the EquipSecondary JobDef
-                string[] possibleJobNames = { "EquipSecondary", "SimpleSidearms_EquipSecondary", "Sidearms_EquipSecondary" };
+                // Find the EquipSecondary JobDef - try more variations
+                string[] possibleJobNames = {
+                    "EquipSecondary",
+                    "SimpleSidearms_EquipSecondary",
+                    "Sidearms_EquipSecondary",
+                    "EquipSecondarySidearm",
+                    "PickupSidearm"
+                };
 
                 foreach (var name in possibleJobNames)
                 {
                     equipSecondaryJobDef = DefDatabase<JobDef>.GetNamedSilentFail(name);
                     if (equipSecondaryJobDef != null)
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            Log.Message($"[AutoArm] Found sidearm job def: {equipSecondaryJobDef.defName}");
+                        }
                         break;
+                    }
                 }
 
                 // If not found, search by pattern
                 if (equipSecondaryJobDef == null)
                 {
-                    equipSecondaryJobDef = DefDatabase<JobDef>.AllDefs
+                    var allJobDefs = DefDatabase<JobDef>.AllDefs.ToList();
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] Searching through {allJobDefs.Count} job defs for sidearm job...");
+                    }
+
+                    equipSecondaryJobDef = allJobDefs
                         .FirstOrDefault(j => j.defName.Contains("EquipSecondary") ||
-                                           (j.defName.Contains("Sidearm") && j.defName.Contains("Equip")));
+                                           (j.defName.Contains("Sidearm") && j.defName.Contains("Equip")) ||
+                                           (j.defName.Contains("Sidearm") && j.defName.Contains("Pickup")));
+
+                    if (equipSecondaryJobDef != null && AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] Found sidearm job def by search: {equipSecondaryJobDef.defName}");
+                    }
                 }
 
                 _initialized = true;
@@ -106,6 +130,27 @@ namespace AutoArm
                     Log.Message($"[AutoArm] Simple Sidearms compatibility initialized: " +
                               $"MemoryComp={compSidearmMemoryType != null}, " +
                               $"JobDef={equipSecondaryJobDef?.defName ?? "null"}");
+
+                    if (equipSecondaryJobDef == null)
+                    {
+                        Log.Warning("[AutoArm] Could not find Simple Sidearms equip job def! Sidearm auto-equip will not work.");
+
+                        // List all job defs that might be related
+                        var possibleJobs = DefDatabase<JobDef>.AllDefs
+                            .Where(j => j.defName.ToLower().Contains("sidearm") ||
+                                      j.defName.ToLower().Contains("secondary"))
+                            .Take(10)
+                            .ToList();
+
+                        if (possibleJobs.Any())
+                        {
+                            Log.Message("[AutoArm] Possible sidearm job defs found:");
+                            foreach (var job in possibleJobs)
+                            {
+                                Log.Message($"  - {job.defName}");
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception e)
@@ -155,7 +200,13 @@ namespace AutoArm
                     t.Namespace?.Contains("SimpleSidearms") == true);
 
                 if (statCalcType == null)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message("[AutoArm] Could not find StatCalculator type, allowing weapon");
+                    }
                     return true;
+                }
 
                 // Find CanPickupSidearmInstance method
                 var canPickupMethod = statCalcType.GetMethod("CanPickupSidearmInstance",
@@ -165,40 +216,79 @@ namespace AutoArm
                     null);
 
                 if (canPickupMethod == null)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message("[AutoArm] Could not find CanPickupSidearmInstance method, allowing weapon");
+                    }
                     return true;
+                }
 
                 // Call the method
                 object[] parameters = new object[] { weapon, pawn, null };
                 bool result = (bool)canPickupMethod.Invoke(null, parameters);
                 reason = (string)parameters[2] ?? "";
 
+                if (AutoArmMod.settings?.debugLogging == true && !result)
+                {
+                    Log.Message($"[AutoArm] Simple Sidearms rejected {weapon.Label} for {pawn.Name}: {reason}");
+                }
+
                 return result;
             }
-            catch
+            catch (Exception e)
             {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Warning($"[AutoArm] Error checking sidearm compatibility: {e.Message}");
+                }
                 return true;
             }
         }
 
         public static Job TryGetSidearmUpgradeJob(Pawn pawn)
         {
-            if (!IsLoaded() || pawn == null || !pawn.IsColonist || equipSecondaryJobDef == null)
+            if (!IsLoaded() || pawn == null || !pawn.IsColonist)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Sidearm check skipped - not loaded or invalid pawn");
+                }
                 return null;
+            }
 
             // Check if sidearm auto-equip is enabled
             if (AutoArmMod.settings?.autoEquipSidearms != true)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Sidearm check skipped - auto-equip disabled");
+                }
                 return null;
+            }
 
             EnsureInitialized();
 
-            if (!_initialized)
+            if (!_initialized || equipSecondaryJobDef == null)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Sidearm check failed - not initialized or no job def");
+                }
                 return null;
+            }
 
             try
             {
                 var comp = GetSidearmComp(pawn);
                 if (comp == null)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] {pawn.Name} has no sidearm memory component");
+                    }
                     return null;
+                }
 
                 // Get current sidearms
                 var currentSidearmDefs = new HashSet<ThingDef>();
@@ -219,29 +309,45 @@ namespace AutoArm
                     }
                 }
 
+                // Also count weapons in inventory
+                int inventoryWeaponCount = pawn.inventory?.innerContainer?.Count(t => t.def.IsWeapon) ?? 0;
+
                 int maxSidearms = GetMaxSidearmsForPawn(pawn);
-                int availableSlots = maxSidearms - currentSidearmDefs.Count;
+                int currentSidearmCount = Math.Max(currentSidearmDefs.Count, inventoryWeaponCount);
+                int availableSlots = maxSidearms - currentSidearmCount;
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm] {pawn.Name} has {currentSidearmDefs.Count}/{maxSidearms} sidearms");
+                    Log.Message($"[AutoArm] {pawn.Name} sidearm check: {currentSidearmCount}/{maxSidearms} slots used");
                 }
 
                 // Check Simple Sidearms limits
                 if (availableSlots <= 0)
                 {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] {pawn.Name} has no available sidearm slots");
+                    }
                     // Try to upgrade existing sidearms
                     return TryUpgradeExistingSidearm(pawn, currentSidearmDefs);
                 }
 
                 // Look for good weapons to add as sidearms
-                return TryFindNewSidearm(pawn, currentSidearmDefs);
+                var job = TryFindNewSidearm(pawn, currentSidearmDefs);
+
+                if (job == null && AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] {pawn.Name} - no suitable sidearm found");
+                }
+
+                return job;
             }
             catch (Exception e)
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     Log.Warning($"[AutoArm] Error finding sidearm upgrade: {e.Message}");
+                    Log.Warning($"[AutoArm] Stack trace: {e.StackTrace}");
                 }
                 return null;
             }
@@ -256,7 +362,14 @@ namespace AutoArm
                 .OrderBy(w => GetBasicWeaponScore(w))
                 .FirstOrDefault();
 
-            if (worstSidearm == null) return null;
+            if (worstSidearm == null)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] {pawn.Name} - no upgradeable sidearms");
+                }
+                return null;
+            }
 
             float worstScore = GetBasicWeaponScore(worstSidearm);
 
@@ -290,27 +403,80 @@ namespace AutoArm
             if (pawn?.Map == null)
                 return null;
 
-            var validWeapon = pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message($"[AutoArm] {pawn.Name} looking for new sidearm...");
+            }
+
+            // Get all weapons within reasonable distance
+            var candidateWeapons = pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
                 .OfType<ThingWithComps>()
                 .Where(w => w != null && w.def != null &&
+                           w.Position.DistanceTo(pawn.Position) <= 50f &&
                            IsValidSidearmCandidate(w, pawn) &&
                            !currentSidearmDefs.Contains(w.def))
                 .OrderBy(w => w.Position.DistanceTo(pawn.Position))
-                .Take(20)
-                .Where(w => GetBasicWeaponScore(w) > 0)
-                .OrderByDescending(w => GetBasicWeaponScore(w) / (1f + w.Position.DistanceTo(pawn.Position) / 100f))
-                .FirstOrDefault();
+                .Take(30)
+                .ToList();
 
-            if (validWeapon != null && equipSecondaryJobDef != null)
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message($"[AutoArm] {pawn.Name} found {candidateWeapons.Count} candidate weapons");
+            }
+
+            // Score and sort candidates
+            var scoredWeapons = candidateWeapons
+                .Select(w => new { Weapon = w, Score = GetSidearmScore(w, pawn) })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score / (1f + x.Weapon.Position.DistanceTo(pawn.Position) / 100f))
+                .ToList();
+
+            if (AutoArmMod.settings?.debugLogging == true && scoredWeapons.Any())
+            {
+                Log.Message($"[AutoArm] {pawn.Name} top sidearm candidates:");
+                foreach (var sw in scoredWeapons.Take(3))
+                {
+                    Log.Message($"  - {sw.Weapon.Label}: score {sw.Score:F0} at distance {sw.Weapon.Position.DistanceTo(pawn.Position):F0}");
+                }
+            }
+
+            var bestWeapon = scoredWeapons.FirstOrDefault()?.Weapon;
+
+            if (bestWeapon != null && equipSecondaryJobDef != null)
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm] {pawn.Name} will add {validWeapon.Label} as sidearm");
+                    Log.Message($"[AutoArm] {pawn.Name} will add {bestWeapon.Label} as sidearm");
                 }
-                return JobMaker.MakeJob(equipSecondaryJobDef, validWeapon);
+                return JobMaker.MakeJob(equipSecondaryJobDef, bestWeapon);
             }
 
             return null;
+        }
+
+        private static float GetSidearmScore(ThingWithComps weapon, Pawn pawn)
+        {
+            float score = GetBasicWeaponScore(weapon);
+
+            // Diversification bonus - prefer different weapon types
+            bool hasRangedSidearm = pawn.inventory?.innerContainer?.Any(t => t.def.IsRangedWeapon) ?? false;
+            bool hasMeleeSidearm = pawn.inventory?.innerContainer?.Any(t => t.def.IsMeleeWeapon) ?? false;
+
+            if (weapon.def.IsRangedWeapon && !hasRangedSidearm)
+                score *= 1.5f;
+            else if (weapon.def.IsMeleeWeapon && !hasMeleeSidearm)
+                score *= 1.5f;
+
+            // Skill-based adjustments
+            float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
+            float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
+
+            if (weapon.def.IsRangedWeapon && shootingSkill > 5)
+                score *= 1f + (shootingSkill / 20f);
+            else if (weapon.def.IsMeleeWeapon && meleeSkill > 5)
+                score *= 1f + (meleeSkill / 20f);
+
+            return score;
         }
 
         private static float GetBasicWeaponScore(ThingWithComps weapon)
@@ -343,34 +509,55 @@ namespace AutoArm
             if (weapon.def.defName == "WoodLog" || weapon.def.defName == "MeleeWeapon_Club")
                 score *= 0.5f;
 
+            // Damage potential
+            if (weapon.def.IsRangedWeapon)
+            {
+                float dps = JobGiverHelpers.GetRangedWeaponDPS(weapon.def, weapon);
+                score += dps * 5f;
+            }
+            else if (weapon.def.IsMeleeWeapon)
+            {
+                float meleeDPS = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_CooldownMultiplier);
+                float meleeDamage = weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_DamageMultiplier);
+                score += (meleeDPS + meleeDamage) * 10f;
+            }
+
             return score;
         }
 
         private static bool IsValidSidearmCandidate(ThingWithComps weapon, Pawn pawn)
         {
             if (weapon == null || weapon.def == null || weapon.Destroyed || weapon.IsForbidden(pawn))
+            {
                 return false;
+            }
 
-            // Don't take weapons from inventory
+            // Don't take weapons from inventory or equipment
             if (weapon.ParentHolder is Pawn_InventoryTracker || weapon.ParentHolder is Pawn_EquipmentTracker)
+            {
                 return false;
+            }
 
             // Check outfit filter
             var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
             if (filter != null && !filter.Allows(weapon.def))
+            {
                 return false;
+            }
 
             // Check Simple Sidearms restrictions
             if (!CanPickupWeaponAsSidearm(weapon, pawn, out string reason))
             {
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm] {pawn.Name}: {weapon.def.defName} blocked by Simple Sidearms: {reason}");
-                }
                 return false;
             }
 
-            return pawn.CanReserveAndReach(weapon, PathEndMode.ClosestTouch, Danger.Deadly);
+            // Check if reachable
+            if (!pawn.CanReserveAndReach(weapon, PathEndMode.ClosestTouch, Danger.Deadly))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public static int GetMaxSidearmsForPawn(Pawn pawn)
@@ -398,29 +585,42 @@ namespace AutoArm
                             var settings = settingsField.GetValue(null);
                             if (settings != null)
                             {
-                                var limitField = settingsType.GetField("SidearmLimit") ??
-                                               settingsType.GetField("LimitModeSingle") ??
-                                               settingsType.GetField("maxSidearms") ??
-                                               settingsType.GetField("MaxSidearms");
+                                // Try various field names
+                                string[] possibleFieldNames = {
+                                    "SidearmLimit",
+                                    "LimitModeSingle",
+                                    "maxSidearms",
+                                    "MaxSidearms",
+                                    "LimitModeAmount",
+                                    "sidearmLimit"
+                                };
 
-                                if (limitField != null)
+                                foreach (var fieldName in possibleFieldNames)
                                 {
-                                    var value = limitField.GetValue(settings);
-                                    if (value is int limit)
-                                        return limit;
-                                    else if (value is float fLimit)
-                                        return (int)fLimit;
+                                    var limitField = settingsType.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    if (limitField != null)
+                                    {
+                                        var value = limitField.GetValue(settings);
+                                        if (value is int limit)
+                                            return limit;
+                                        else if (value is float fLimit)
+                                            return (int)fLimit;
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            catch
+            catch (Exception e)
             {
-                // Default fallback
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Warning($"[AutoArm] Error getting max sidearms: {e.Message}");
+                }
             }
 
+            // Default fallback
             return 3;
         }
 
@@ -498,6 +698,26 @@ namespace AutoArm
                 // On error, fall back to simple inventory check
                 return !pawn.inventory.innerContainer.Any(t => t.def.IsWeapon);
             }
+        }
+
+        // Debug helper to list all Simple Sidearms job defs
+        public static void DebugListSidearmJobs()
+        {
+            Log.Message("\n[AutoArm] === Simple Sidearms Job Defs ===");
+
+            var sidearmJobs = DefDatabase<JobDef>.AllDefs
+                .Where(j => j.defName.ToLower().Contains("sidearm") ||
+                          j.defName.ToLower().Contains("secondary") ||
+                          j.modContentPack?.Name?.Contains("Simple Sidearms") == true)
+                .ToList();
+
+            Log.Message($"[AutoArm] Found {sidearmJobs.Count} possible sidearm job defs:");
+            foreach (var job in sidearmJobs)
+            {
+                Log.Message($"  - {job.defName} (from {job.modContentPack?.Name ?? "unknown"})");
+            }
+
+            Log.Message("[AutoArm] === End Job Defs ===\n");
         }
     }
 }

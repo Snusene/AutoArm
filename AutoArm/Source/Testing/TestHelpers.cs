@@ -16,6 +16,7 @@ namespace AutoArm.Testing
             public bool MakeNoble = false;
             public bool Conceited = false;
             public int? BiologicalAge = null; // Add age option
+            public int? Age { get; set; }
         }
 
         public static Pawn CreateTestPawn(Map map, TestPawnConfig config = null)
@@ -171,16 +172,6 @@ namespace AutoArm.Testing
                 Log.Warning($"[AutoArm] Failed to create weapon {weaponDef?.defName}: {e.Message}");
                 return null;
             }
-        }
-
-        public static Pawn CreateTestPawnWithAge(Map map, int age, string name = "TestPawn")
-        {
-            var config = new TestPawnConfig
-            {
-                Name = name,
-                BiologicalAge = age
-            };
-            return CreateTestPawn(map, config);
         }
 
         // Helper to get weapon defs safely

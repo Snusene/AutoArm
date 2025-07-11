@@ -45,7 +45,15 @@ namespace AutoArm
         public static bool IsForced(Pawn pawn, ThingWithComps weapon)
         {
             if (pawn == null || weapon == null) return false;
-            return forcedWeaponsByDef.TryGetValue(pawn, out var def) && def == weapon.def;
+
+            // Check if this pawn has a forced weapon def
+            if (!forcedWeaponsByDef.TryGetValue(pawn, out var forcedDef))
+                return false;
+
+            // The weapon is only "forced" if:
+            // 1. It matches the forced def AND
+            // 2. It's currently equipped by the pawn
+            return weapon.def == forcedDef && pawn.equipment?.Primary == weapon;
         }
 
         // Sidearm methods
@@ -292,7 +300,18 @@ namespace AutoArm
             if (!IsValidPawnForAutoEquip(pawn))
                 return null;
 
-            bool isUnarmed = pawn.equipment?.Primary == null;
+            // Check if current weapon is forced - add this check here too
+            var currentWeapon = pawn.equipment?.Primary;
+            if (currentWeapon != null && ForcedWeaponTracker.IsForced(pawn, currentWeapon))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Current weapon is forced, skipping weapon search");
+                }
+                return null;
+            }
+
+            bool isUnarmed = currentWeapon == null;
 
             // For unarmed pawns, be less picky about interrupting jobs
             if (!isUnarmed && JobGiverHelpers.IsCriticalJob(pawn))
@@ -336,6 +355,16 @@ namespace AutoArm
         {
             var currentWeapon = pawn.equipment?.Primary;
             bool isUnarmed = currentWeapon == null;
+
+            // Check if current weapon is forced - don't replace forced weapons
+            if (currentWeapon != null && ForcedWeaponTracker.IsForced(pawn, currentWeapon))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Current weapon {currentWeapon.Label} is forced, skipping upgrade check");
+                }
+                return null;
+            }
 
             float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : -1000f;
             float improvementThreshold = isUnarmed ? currentScore : currentScore * 1.1f;
