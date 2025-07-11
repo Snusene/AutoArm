@@ -43,21 +43,25 @@ namespace AutoArm
             // Main weapon checks
             if (__instance.equipment?.Primary == null)
             {
-                // Unarmed - check frequently
-                if (__instance.IsHashIntervalTick(60 + __instance.thingIDNumber % 20))
+                // Main weapon checks
+                if (__instance.equipment?.Primary == null)
                 {
-                    CheckMainWeaponUpgrade(__instance);
+                    // Unarmed - check every 60-120 ticks (1-2 seconds)
+                    if (__instance.IsHashIntervalTick(60 + __instance.thingIDNumber % 60))
+                    {
+                        CheckMainWeaponUpgrade(__instance);
+                    }
                 }
-            }
-            else
-            {
-                // Armed - check based on colony size
-                int colonistCount = __instance.Map.mapPawns.FreeColonistsCount;
-                int baseInterval = colonistCount < 20 ? 300 : 600;
-
-                if (__instance.IsHashIntervalTick(baseInterval + __instance.thingIDNumber % 100))
+                else
                 {
-                    CheckMainWeaponUpgrade(__instance);
+                    // Armed - check based on colony size
+                    int colonistCount = __instance.Map.mapPawns.FreeColonistsCount;
+                    int baseInterval = colonistCount < 20 ? 300 : 600;
+
+                    if (__instance.IsHashIntervalTick(baseInterval + __instance.thingIDNumber % 100))
+                    {
+                        CheckMainWeaponUpgrade(__instance);
+                    }
                 }
             }
 

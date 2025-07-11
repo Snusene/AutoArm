@@ -79,7 +79,7 @@
     <Compile Include="Source\VanillaWeaponDefOf.cs" />
     <Compile Include="Source\WeaponAutoEquip.cs" />
     <Compile Include="Source\WeaponCacheManager.cs" />
-    <Compile Include="Source\WeaponDecisionLog.cs" />
+    <Compile Include="Source\Testing\WeaponDecisionLog.cs" />
     <Compile Include="Source\WeaponTabInjector.cs" />
     <Compile Include="Source\WeaponThingFilterUtility.cs" />
   </ItemGroup>

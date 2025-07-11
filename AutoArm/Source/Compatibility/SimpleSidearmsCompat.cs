@@ -19,7 +19,8 @@ namespace AutoArm
         // Types
         private static Type compSidearmMemoryType;
         private static Type thingDefStuffDefPairType;
-
+        private static Type statCalculatorType;
+        private static MethodInfo canPickupSidearmInstanceMethod;
         // Properties and Fields
         private static PropertyInfo rememberedWeaponsProperty;
         private static FieldInfo rememberedWeaponsField;
@@ -83,12 +84,12 @@ namespace AutoArm
 
                 // Find the EquipSecondary JobDef - try more variations
                 string[] possibleJobNames = {
-                    "EquipSecondary",
-                    "SimpleSidearms_EquipSecondary",
-                    "Sidearms_EquipSecondary",
-                    "EquipSecondarySidearm",
-                    "PickupSidearm"
-                };
+            "EquipSecondary",
+            "SimpleSidearms_EquipSecondary",
+            "Sidearms_EquipSecondary",
+            "EquipSecondarySidearm",
+            "PickupSidearm"
+        };
 
                 foreach (var name in possibleJobNames)
                 {
@@ -123,13 +124,34 @@ namespace AutoArm
                     }
                 }
 
+                // NEW: Cache StatCalculator type and method
+                statCalculatorType = GenTypes.AllTypes.FirstOrDefault(t =>
+                    t.Name == "StatCalculator" &&
+                    t.Namespace?.Contains("SimpleSidearms") == true);
+
+                if (statCalculatorType != null)
+                {
+                    canPickupSidearmInstanceMethod = statCalculatorType.GetMethod("CanPickupSidearmInstance",
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new Type[] { typeof(ThingWithComps), typeof(Pawn), typeof(string).MakeByRefType() },
+                        null);
+
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] Cached StatCalculator type and CanPickupSidearmInstance method");
+                    }
+                }
+
                 _initialized = true;
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     Log.Message($"[AutoArm] Simple Sidearms compatibility initialized: " +
                               $"MemoryComp={compSidearmMemoryType != null}, " +
-                              $"JobDef={equipSecondaryJobDef?.defName ?? "null"}");
+                              $"JobDef={equipSecondaryJobDef?.defName ?? "null"}, " +
+                              $"StatCalc={statCalculatorType != null}, " +
+                              $"CanPickupMethod={canPickupSidearmInstanceMethod != null}");
 
                     if (equipSecondaryJobDef == null)
                     {
@@ -194,39 +216,19 @@ namespace AutoArm
 
             try
             {
-                // Get the StatCalculator type
-                var statCalcType = GenTypes.AllTypes.FirstOrDefault(t =>
-                    t.Name == "StatCalculator" &&
-                    t.Namespace?.Contains("SimpleSidearms") == true);
-
-                if (statCalcType == null)
+                // Use cached values instead of searching every time
+                if (statCalculatorType == null || canPickupSidearmInstanceMethod == null)
                 {
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        Log.Message("[AutoArm] Could not find StatCalculator type, allowing weapon");
+                        Log.Message("[AutoArm] StatCalculator not found, allowing weapon");
                     }
                     return true;
                 }
 
-                // Find CanPickupSidearmInstance method
-                var canPickupMethod = statCalcType.GetMethod("CanPickupSidearmInstance",
-                    BindingFlags.Public | BindingFlags.Static,
-                    null,
-                    new Type[] { typeof(ThingWithComps), typeof(Pawn), typeof(string).MakeByRefType() },
-                    null);
-
-                if (canPickupMethod == null)
-                {
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        Log.Message("[AutoArm] Could not find CanPickupSidearmInstance method, allowing weapon");
-                    }
-                    return true;
-                }
-
-                // Call the method
+                // Call the method using cached MethodInfo
                 object[] parameters = new object[] { weapon, pawn, null };
-                bool result = (bool)canPickupMethod.Invoke(null, parameters);
+                bool result = (bool)canPickupSidearmInstanceMethod.Invoke(null, parameters);
                 reason = (string)parameters[2] ?? "";
 
                 if (AutoArmMod.settings?.debugLogging == true && !result)

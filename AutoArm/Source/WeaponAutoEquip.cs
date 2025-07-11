@@ -236,11 +236,18 @@ namespace AutoArm
         private static HashSet<int> autoEquipJobIds = new HashSet<int>();
         private static Dictionary<Pawn, ThingDef> previousWeapons = new Dictionary<Pawn, ThingDef>();
 
+        // Track when jobs were added for cleanup
+        private static Dictionary<int, int> jobAddedTick = new Dictionary<int, int>();
+        private const int JobRetentionTicks = 1000; // Keep job IDs for ~16 seconds
+
         public static void MarkAutoEquip(Job job, Pawn pawn = null)
         {
             if (job != null)
             {
                 autoEquipJobIds.Add(job.loadID);
+
+                // Track when this job was marked
+                jobAddedTick[job.loadID] = Find.TickManager.TicksGame;
 
                 if (pawn != null && job.def == JobDefOf.Equip && job.targetA.Thing is ThingWithComps weapon)
                 {
@@ -264,7 +271,10 @@ namespace AutoArm
         public static void Clear(Job job)
         {
             if (job != null)
+            {
                 autoEquipJobIds.Remove(job.loadID);
+                jobAddedTick.Remove(job.loadID);
+            }
         }
 
         public static ThingDef GetPreviousWeapon(Pawn pawn)
@@ -276,6 +286,42 @@ namespace AutoArm
         public static void ClearPreviousWeapon(Pawn pawn)
         {
             previousWeapons.Remove(pawn);
+        }
+
+        // New cleanup method
+        public static void CleanupOldJobs()
+        {
+            if (jobAddedTick.Count == 0)
+                return;
+
+            int currentTick = Find.TickManager.TicksGame;
+            var toRemove = new List<int>();
+
+            foreach (var kvp in jobAddedTick)
+            {
+                if (currentTick - kvp.Value > JobRetentionTicks)
+                {
+                    toRemove.Add(kvp.Key);
+                }
+            }
+
+            foreach (int jobId in toRemove)
+            {
+                autoEquipJobIds.Remove(jobId);
+                jobAddedTick.Remove(jobId);
+            }
+
+            // Also cleanup previous weapons for dead/null pawns
+            var deadPawns = previousWeapons.Keys.Where(p => p.DestroyedOrNull() || p.Dead).ToList();
+            foreach (var pawn in deadPawns)
+            {
+                previousWeapons.Remove(pawn);
+            }
+
+            if (AutoArmMod.settings?.debugLogging == true && toRemove.Count > 0)
+            {
+                Log.Message($"[AutoArm] Cleaned up {toRemove.Count} old job IDs and {deadPawns.Count} dead pawn records");
+            }
         }
     }
 
@@ -373,15 +419,13 @@ namespace AutoArm
             float bestScore = currentScore;
             int weaponsChecked = 0;
 
-            // Get all weapons on map directly for tests
-            var mapWeapons = pawn.Map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
-                .OfType<ThingWithComps>()
+            // Use the cache manager instead of direct query
+            var mapWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, MaxSearchDistance)
                 .Where(w => w != currentWeapon &&
                            w.def.IsWeapon &&
                            !w.def.IsApparel &&
-                           w.def.defName != "WoodLog" && // Exclude wood
-                           !w.def.IsStuff && // Exclude materials
-                           w.Position.DistanceTo(pawn.Position) <= MaxSearchDistance)
+                           w.def.defName != "WoodLog" &&
+                           !w.def.IsStuff)
                 .OrderBy(w => w.Position.DistanceTo(pawn.Position))
                 .Take(50)
                 .ToList();
