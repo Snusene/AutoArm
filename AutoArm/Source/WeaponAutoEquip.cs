@@ -1010,11 +1010,6 @@ namespace AutoArm
             if (__result && ___pawn.IsColonist)
             {
                 ForcedWeaponTracker.ClearForced(___pawn);
-
-                if (___pawn.equipment?.Primary == null)
-                {
-                    Pawn_TickRare_Unified_Patch.MarkRecentlyUnarmed(___pawn);
-                }
             }
         }
     }
@@ -1028,11 +1023,6 @@ namespace AutoArm
             if (___pawn.IsColonist)
             {
                 ForcedWeaponTracker.ClearForced(___pawn);
-
-                if (___pawn.equipment?.Primary == null)
-                {
-                    Pawn_TickRare_Unified_Patch.MarkRecentlyUnarmed(___pawn);
-                }
             }
         }
     }
@@ -1262,7 +1252,6 @@ namespace AutoArm
             if (pawn != null && Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.ContainsKey(pawn))
             {
                 Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.Remove(pawn);
-                Pawn_TickRare_Unified_Patch.cachedWeaponJobs.Remove(pawn);
             }
         }
     }

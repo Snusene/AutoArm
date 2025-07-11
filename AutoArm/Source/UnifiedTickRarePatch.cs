@@ -19,10 +19,6 @@ namespace AutoArm
         private static Dictionary<Pawn, int> lastWeaponCheckTick = new Dictionary<Pawn, int>();
 
         internal static Dictionary<Pawn, int> lastWeaponSearchTick = new Dictionary<Pawn, int>();
-        internal static Dictionary<Pawn, Job> cachedWeaponJobs = new Dictionary<Pawn, Job>();
-
-        // Track pawns who just became unarmed for urgent checks
-        private static HashSet<Pawn> recentlyUnarmedPawns = new HashSet<Pawn>();
 
         [HarmonyPostfix]
         public static void Postfix(Pawn __instance)
@@ -188,11 +184,6 @@ namespace AutoArm
 
         private static void CleanupOldEntries()
         {
-            var invalidJobPawns = cachedWeaponJobs
-                .Where(kvp => kvp.Value != null &&
-                       (kvp.Value.targetA.Thing?.DestroyedOrNull() ?? true))
-                .Select(kvp => kvp.Key)
-                .ToList();
 
             // Remove entries for dead/despawned pawns
             var toRemove = lastInterruptionTick.Keys
@@ -205,8 +196,6 @@ namespace AutoArm
                 lastSidearmCheckTick.Remove(pawn);
                 lastWeaponCheckTick.Remove(pawn);
                 lastWeaponSearchTick.Remove(pawn);
-                cachedWeaponJobs.Remove(pawn);
-                recentlyUnarmedPawns.Remove(pawn);
             }
 
             // Clean up weapon cache for null or destroyed maps
@@ -219,30 +208,6 @@ namespace AutoArm
                 JobGiver_PickUpBetterWeapon.weaponCacheAge.Remove(map);
             }
 
-            // Limit recently unarmed pawns set size to prevent accumulation
-            if (recentlyUnarmedPawns.Count > 20)
-            {
-                recentlyUnarmedPawns.Clear();
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message("[AutoArm] Cleared recentlyUnarmedPawns set - was getting too large");
-                }
-            }
-        }
-
-        // Public method for marking pawns who just became unarmed
-        public static void MarkRecentlyUnarmed(Pawn pawn)
-        {
-            if (pawn != null && pawn.IsColonist)
-            {
-                recentlyUnarmedPawns.Add(pawn);
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm] {pawn.Name} marked as recently unarmed - will check for weapon immediately");
-                }
-            }
         }
     }
 }

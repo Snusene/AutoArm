@@ -28,7 +28,18 @@ namespace AutoArm
 
         // Cache for ammo lookups
         private static Dictionary<ThingDef, List<ThingDef>> weaponAmmoCache = new Dictionary<ThingDef, List<ThingDef>>();
+        
+        private static int lastCacheClearTick = 0;
+        private const int CacheClearInterval = 60000; // Clear every 1000 seconds
 
+        private static void CheckCacheClear()
+        {
+            if (Find.TickManager.TicksGame - lastCacheClearTick > CacheClearInterval)
+            {
+                ClearCache();
+                lastCacheClearTick = Find.TickManager.TicksGame;
+            }
+        }
         // Check if CE is loaded
         public static bool IsLoaded()
         {
@@ -240,6 +251,8 @@ namespace AutoArm
         {
             if (weaponDef == null)
                 return null;
+
+            CheckCacheClear();
 
             // Check cache first
             if (weaponAmmoCache.TryGetValue(weaponDef, out var cached))
