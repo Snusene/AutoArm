@@ -74,18 +74,32 @@ namespace AutoArm
         }
     }
 
-    // Updated patch with null checks
+    // Combined patch for TryDropEquipment
     [HarmonyPatch(typeof(Pawn_EquipmentTracker), "TryDropEquipment")]
     public static class Pawn_EquipmentTracker_TryDropEquipment_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(bool __result, Pawn ___pawn)
+        public static void Postfix(bool __result, Pawn ___pawn, ThingWithComps resultingEq)
         {
-            // NULL CHECK
-            if (!__result || ___pawn == null || !___pawn.IsColonist)
+            if (!__result)
                 return;
 
-            ForcedWeaponTracker.ClearForced(___pawn);
+            // Original functionality - clear forced weapon
+            if (___pawn != null && ___pawn.IsColonist)
+            {
+                ForcedWeaponTracker.ClearForced(___pawn);
+            }
+
+            // New functionality - mark weapon as recently dropped for Simple Sidearms
+            if (resultingEq != null && SimpleSidearmsCompat.IsLoaded())
+            {
+                SimpleSidearmsCompat.MarkWeaponAsRecentlyDropped(resultingEq);
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Marked dropped weapon {resultingEq.Label} as recently dropped");
+                }
+            }
         }
     }
 

@@ -14,12 +14,10 @@ namespace AutoArm
         private static bool _initialized = false;
         private static bool _initFailed = false;
 
-        // Infusion 2 Types (we'll detect what we can)
         private static Type compInfusionType;
         private static MethodInfo getInfusionsMethod;
         private static PropertyInfo getInfusionsProperty;
 
-        // Check if Infusion 2 is loaded
         public static bool IsLoaded()
         {
             if (_isLoaded == null)
@@ -27,7 +25,7 @@ namespace AutoArm
                 _isLoaded = ModLister.AllInstalledMods.Any(m =>
                     m.Active && (
                         m.PackageIdPlayerFacing.ToLower().Contains("infusion") &&
-                        !m.PackageIdPlayerFacing.ToLower().Contains("autoarm") // Don't detect ourselves
+                        !m.PackageIdPlayerFacing.ToLower().Contains("autoarm")
                     ));
 
                 if (AutoArmMod.settings?.debugLogging == true)
@@ -45,7 +43,6 @@ namespace AutoArm
 
             try
             {
-                // Find ANY component that looks like it handles infusions
                 compInfusionType = GenTypes.AllTypes.FirstOrDefault(t =>
                     t.Name == "CompInfusion" &&
                     t.Namespace != "AutoArm");
@@ -60,7 +57,6 @@ namespace AutoArm
                     return;
                 }
 
-                // Look for ANY method/property that returns a collection
                 var members = compInfusionType.GetMembers(BindingFlags.Public | BindingFlags.Instance);
 
                 foreach (var member in members)
@@ -105,7 +101,6 @@ namespace AutoArm
                    typeof(IEnumerable).IsAssignableFrom(type);
         }
 
-        // Simplified score bonus - just count infusions
         public static float GetInfusionScoreBonus(ThingWithComps weapon)
         {
             if (!IsLoaded() || weapon == null)
@@ -118,7 +113,6 @@ namespace AutoArm
 
             try
             {
-                // Find the component
                 var comp = weapon.AllComps?.FirstOrDefault(c =>
                     c.GetType() == compInfusionType ||
                     c.GetType().Name == "CompInfusion");
@@ -126,7 +120,6 @@ namespace AutoArm
                 if (comp == null)
                     return 0f;
 
-                // Try to get infusions collection
                 IEnumerable infusions = null;
 
                 if (getInfusionsProperty != null)
@@ -140,7 +133,6 @@ namespace AutoArm
 
                 if (infusions == null)
                 {
-                    // Last resort - try common names
                     var possibleNames = new[] { "Infusions", "infusions", "InfusionList", "GetInfusions" };
                     foreach (var name in possibleNames)
                     {
@@ -157,7 +149,6 @@ namespace AutoArm
                     }
                 }
 
-                // Count infusions and apply simple scoring
                 if (infusions != null)
                 {
                     int count = 0;
@@ -171,7 +162,6 @@ namespace AutoArm
                         Log.Message($"[AutoArm] {weapon.Label} has {count} infusions");
                     }
 
-                    // Simple scoring: 25 points per infusion
                     return count * 25f;
                 }
 
@@ -187,19 +177,16 @@ namespace AutoArm
             }
         }
 
-        // Simplified check
         public static bool HasInfusions(ThingWithComps weapon)
         {
             return GetInfusionScoreBonus(weapon) > 0f;
         }
 
-        // Settings integration
         public static float GetInfusionMultiplier()
         {
             return 1.0f;
         }
 
-        // Minimal details for debugging
         public static string GetInfusionDetails(ThingWithComps weapon)
         {
             var bonus = GetInfusionScoreBonus(weapon);
@@ -211,7 +198,6 @@ namespace AutoArm
             return "No infusions";
         }
 
-        // Debug helper
         public static void DebugListInfusionTypes()
         {
             if (!IsLoaded())
@@ -236,7 +222,6 @@ namespace AutoArm
                 Log.Message($"  - {type.FullName}");
             }
 
-            // Look specifically for CompInfusion
             var compType = GenTypes.AllTypes.FirstOrDefault(t =>
                 t.Name == "CompInfusion" && t.Namespace != "AutoArm");
 

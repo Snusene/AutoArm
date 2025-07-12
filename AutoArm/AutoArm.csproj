@@ -89,6 +89,7 @@
   <ItemGroup>
     <Content Include=".gitignore" />
     <Content Include="About\About.xml" />
+    <Content Include="About\icon.png" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
     <Content Include="Languages\English\Keyed\AutoArm.xml" />

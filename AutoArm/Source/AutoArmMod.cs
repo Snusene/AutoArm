@@ -23,7 +23,7 @@ namespace AutoArm
 
         // Performance thresholds
         private const float THRESHOLD_MIN = 1.01f;
-        private const float THRESHOLD_MAX = 1.50f; // Changed from 2.0f to 1.50f
+        private const float THRESHOLD_MAX = 1.50f;
         private const int CHILD_AGE_MIN = 3;
         private const int CHILD_AGE_MAX = 18;
 
@@ -49,18 +49,7 @@ namespace AutoArm
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
-            // Store original color to ensure proper restoration
-            Color originalColor = GUI.color;
-
-            try
-            {
-                DrawSettingsWindow(inRect);
-            }
-            finally
-            {
-                // Always restore original color
-                GUI.color = originalColor;
-            }
+            DrawSettingsWindow(inRect);
         }
 
         private void DrawSettingsWindow(Rect inRect)
@@ -83,7 +72,7 @@ namespace AutoArm
             // Reset button in top right
             DrawResetButton(inRect);
 
-            // Title - Just "Settings" without version
+            // Title
             Text.Font = GameFont.Medium;
             listing.Label("Settings");
             Text.Font = GameFont.Small;
@@ -121,7 +110,6 @@ namespace AutoArm
             var tabRect = listing.GetRect(TAB_BUTTON_HEIGHT);
             var tabWidth = tabRect.width / 4f - 5f;
 
-            // Store original color
             Color originalColor = GUI.color;
 
             // General tab (green - essential)
@@ -182,7 +170,7 @@ namespace AutoArm
             innerListing.End();
         }
 
-        // Helper method for consistent checkbox drawing - UPDATED for left alignment
+        // Helper method for consistent checkbox drawing
         private void DrawCheckbox(Listing_Standard listing, string label, ref bool value, string tooltip = null, float indent = 0f)
         {
             Rect fullRect = listing.GetRect(LINE_HEIGHT);
@@ -268,7 +256,7 @@ namespace AutoArm
         private void DrawCompatibilityTab(Listing_Standard listing)
         {
             Text.Font = GameFont.Medium;
-            listing.Label("Compatibility Patches"); // Changed from "Detected Mods"
+            listing.Label("Compatibility Patches");
             Text.Font = GameFont.Small;
             listing.Gap(SMALL_GAP);
 
@@ -286,10 +274,10 @@ namespace AutoArm
 
         private void DrawModStatus(Listing_Standard listing, string modName, bool isLoaded)
         {
-            using (new ColorBlock(isLoaded ? Color.green : Color.gray))
-            {
-                listing.Label($"{modName}: {(isLoaded ? "✓ Loaded" : "✗ Not found")}");
-            }
+            Color oldColor = GUI.color;
+            GUI.color = isLoaded ? Color.green : Color.gray;
+            listing.Label($"{modName}: {(isLoaded ? "✓ Loaded" : "✗ Not found")}");
+            GUI.color = oldColor;
         }
 
         private void DrawSimpleSidearmsSettings(Listing_Standard listing)
@@ -308,22 +296,22 @@ namespace AutoArm
                 listing.Gap(TINY_GAP);
                 listing.Indent(20f);
 
-                using (new ColorBlock(new Color(1f, 1f, 0.6f))) // Yellow for experimental
-                {
-                    DrawCheckbox(listing, "Allow sidearm upgrades - Experimental",
-                        ref settings.allowSidearmUpgrades,
-                        "When enabled, colonists will upgrade existing sidearms to better weapons.",
-                        20f);
-                }
+                Color oldColor = GUI.color;
+                GUI.color = new Color(1f, 1f, 0.6f); // Yellow for experimental
+                DrawCheckbox(listing, "Allow sidearm upgrades - Experimental",
+                    ref settings.allowSidearmUpgrades,
+                    "When enabled, colonists will upgrade existing sidearms to better weapons.",
+                    20f);
+                GUI.color = oldColor;
 
                 listing.Outdent(20f);
 
                 if (settings.allowSidearmUpgrades)
                 {
-                    using (new ColorBlock(new Color(1f, 0.8f, 0.4f)))
-                    {
-                        listing.Label("⚠ Sidearm upgrades can impact performance in large colonies");
-                    }
+                    oldColor = GUI.color;
+                    GUI.color = new Color(1f, 0.8f, 0.4f);
+                    listing.Label("⚠ Sidearm upgrades can impact performance in large colonies");
+                    GUI.color = oldColor;
                 }
             }
         }
@@ -348,7 +336,7 @@ namespace AutoArm
             Text.Font = GameFont.Small;
             listing.Gap(SMALL_GAP);
 
-            // Weapon upgrade threshold - Updated to 150% max
+            // Weapon upgrade threshold
             DrawSlider(listing, "Weapon upgrade threshold", ref settings.weaponUpgradeThreshold,
                 THRESHOLD_MIN, THRESHOLD_MAX, "P0",
                 "How much better a weapon needs to be before colonists will switch. Lower values mean more frequent switching.");
@@ -356,10 +344,10 @@ namespace AutoArm
             // Performance warning
             if (settings.weaponUpgradeThreshold < 1.10f)
             {
-                using (new ColorBlock(new Color(1f, 0.8f, 0.4f)))
-                {
-                    listing.Label("⚠ Low threshold may cause frequent weapon switching");
-                }
+                Color oldColor = GUI.color;
+                GUI.color = new Color(1f, 0.8f, 0.4f);
+                listing.Label("⚠ Low threshold may cause frequent weapon switching");
+                GUI.color = oldColor;
             }
 
             listing.Gap(SECTION_GAP);
@@ -390,10 +378,10 @@ namespace AutoArm
 
                 if (settings.childrenMinAge < 10)
                 {
-                    using (new ColorBlock(new Color(1f, 0.8f, 0.4f)))
-                    {
-                        listing.Label("⚠ What could go wrong?");
-                    }
+                    Color oldColor = GUI.color;
+                    GUI.color = new Color(1f, 0.8f, 0.4f);
+                    listing.Label("⚠ What could go wrong?");
+                    GUI.color = oldColor;
                 }
             }
         }
@@ -414,10 +402,11 @@ namespace AutoArm
         private void DrawDebugTab(Listing_Standard listing)
         {
             // Warning header
-            using (new ColorBlock(new Color(1f, 0.6f, 0.6f)))
-            {
-                listing.Label("⚠ Debug features can significantly impact performance!");
-            }
+            Color oldColor = GUI.color;
+            GUI.color = new Color(1f, 0.6f, 0.6f);
+            listing.Label("⚠ Debug features can significantly impact performance!");
+            GUI.color = oldColor;
+
             listing.Gap(SMALL_GAP);
 
             DrawCheckbox(listing, "Enable debug logging", ref settings.debugLogging,
@@ -439,10 +428,10 @@ namespace AutoArm
             else
             {
                 listing.Gap(SECTION_GAP);
-                using (new ColorBlock(Color.gray))
-                {
-                    listing.Label("Testing tools require an active game");
-                }
+                oldColor = GUI.color;
+                GUI.color = Color.gray;
+                listing.Label("Testing tools require an active game");
+                GUI.color = oldColor;
             }
         }
 
@@ -486,23 +475,6 @@ namespace AutoArm
         public override string SettingsCategory()
         {
             return "AutoArm";
-        }
-    }
-
-    // Helper class for managing color state
-    public class ColorBlock : IDisposable
-    {
-        private readonly Color originalColor;
-
-        public ColorBlock(Color newColor)
-        {
-            originalColor = GUI.color;
-            GUI.color = newColor;
-        }
-
-        public void Dispose()
-        {
-            GUI.color = originalColor;
         }
     }
 
@@ -583,13 +555,13 @@ namespace AutoArm
             Widgets.BeginScrollView(innerRect, ref scrollPosition,
                 new Rect(0, 0, innerRect.width - 20f, textHeight));
 
+            Color oldColor = GUI.color;
             Color textColor = testResultsText.Contains("FAILED") ?
                 new Color(1f, 0.8f, 0.8f) : new Color(0.8f, 1f, 0.8f);
 
-            using (new ColorBlock(textColor))
-            {
-                Widgets.Label(new Rect(0, 0, innerRect.width - 20f, textHeight), testResultsText);
-            }
+            GUI.color = textColor;
+            Widgets.Label(new Rect(0, 0, innerRect.width - 20f, textHeight), testResultsText);
+            GUI.color = oldColor;
 
             Widgets.EndScrollView();
         }

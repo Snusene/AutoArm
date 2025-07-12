@@ -595,11 +595,6 @@ namespace AutoArm
             if (weapon.ParentHolder != null)
             {
                 // Debug log what the parent holder actually is
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm] {weapon.Label} parent holder type: {weapon.ParentHolder.GetType().FullName}");
-                    Log.Message($"[AutoArm] Spawned: {weapon.Spawned}, Position: {weapon.Position}");
-                }
 
                 // Quick checks for common cases first
                 if (weapon.ParentHolder is Pawn_EquipmentTracker equipTracker)
@@ -625,10 +620,7 @@ namespace AutoArm
                 else if (weapon.ParentHolder is Map)
                 {
                     // Weapons on the ground have Map as parent holder - this is fine!
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        Log.Message($"[AutoArm] {weapon.Label} is on the ground (Map parent)");
-                    }
+
                 }
                 // Check if it's in storage
                 else if (!IsStorageContainer(weapon.ParentHolder))

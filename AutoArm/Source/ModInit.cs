@@ -6,7 +6,6 @@ using System.Linq;
 using System.Reflection;
 using Verse;
 using Verse.AI;
-using static AutoArm.JobGiver_PickUpBetterWeapon_Emergency;
 
 namespace AutoArm
 {
@@ -109,13 +108,6 @@ namespace AutoArm
                 return;
             }
 
-            // Let's log the entire think tree structure before injection
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                Log.Message("[AutoArm] === THINK TREE STRUCTURE BEFORE INJECTION ===");
-                LogThinkTreeStructure(humanlikeThinkTree.thinkRoot, 0);
-            }
-
             // Find the main priority sorter (not root, but the one with actual job nodes)
             ThinkNode_PrioritySorter mainSorter = null;
             FindMainPrioritySorter(humanlikeThinkTree.thinkRoot, ref mainSorter);
@@ -154,45 +146,24 @@ namespace AutoArm
 
             mainSorter.subNodes.Insert(insertIndex, emergencyWeaponNode);
 
-            // Normal upgrades and sidearms go later
+            // Normal upgrades - insert at next position
             var weaponUpgradeNode = new ThinkNode_ConditionalWeaponsInOutfit();
             var upgradeJobGiver = new JobGiver_PickUpBetterWeapon();
             weaponUpgradeNode.subNodes = new List<ThinkNode> { upgradeJobGiver };
 
-            mainSorter.subNodes.Insert(insertIndex + 2, weaponUpgradeNode);
+            mainSorter.subNodes.Insert(insertIndex + 1, weaponUpgradeNode);
+
+            // Sidearm pickup node
+            var sidearmConditionalNode = new ThinkNode_ConditionalShouldCheckSidearms();
+            var sidearmJobGiver = new JobGiver_PickUpSidearm();
+            sidearmConditionalNode.subNodes = new List<ThinkNode> { sidearmJobGiver };
+            mainSorter.subNodes.Insert(insertIndex + 2, sidearmConditionalNode);
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
-                Log.Message($"[AutoArm] Injected emergency weapon check at index {insertIndex} (after critical tasks)");
-            }
-
-            // After injection, log again
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                Log.Message("[AutoArm] === THINK TREE STRUCTURE AFTER INJECTION ===");
-                LogThinkTreeStructure(humanlikeThinkTree.thinkRoot, 0);
-            }
-        }
-
-        private static void LogThinkTreeStructure(ThinkNode node, int depth)
-        {
-            string indent = new string(' ', depth * 2);
-            string nodeInfo = $"{indent}{node.GetType().Name}";
-
-            if (node is ThinkNode_JobGiver jobGiver)
-                nodeInfo += $" [{jobGiver.GetType().Name}]";
-
-            if (node is ThinkNode_PrioritySorter sorter)
-                nodeInfo += $" (priority)";
-
-            Log.Message(nodeInfo);
-
-            if (node.subNodes != null)
-            {
-                foreach (var subNode in node.subNodes)
-                {
-                    LogThinkTreeStructure(subNode, depth + 1);
-                }
+                Log.Message($"[AutoArm] Injected emergency weapon check at index {insertIndex}");
+                Log.Message($"[AutoArm] Injected weapon upgrade check at index {insertIndex + 1}");
+                Log.Message($"[AutoArm] Injected sidearm check at index {insertIndex + 2}");
             }
         }
 
@@ -237,18 +208,34 @@ namespace AutoArm
 
             if (node is ThinkNode_PrioritySorter sorter && sorter.subNodes != null)
             {
-                // Look for the main colonist priority sorter
+                // ADD DEBUG LOG HERE - use the existing 'sorter' variable
                 if (sorter.subNodes.Count >= 10)
                 {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm DEBUG] Found large PrioritySorter at depth {depth} with {sorter.subNodes.Count} nodes");
+                        Log.Message($"[AutoArm DEBUG] Path: {string.Join(" -> ", path)}");
+
+                        // Log what's actually in it
+                        var nodeTypes = sorter.subNodes.Take(5).Select(n => n.GetType().Name).ToList();
+                        Log.Message($"[AutoArm DEBUG] First 5 nodes: {string.Join(", ", nodeTypes)}");
+                    }
+
                     // Check if this contains the key colonist behaviors
                     bool hasGetFood = sorter.subNodes.Any(n => n.GetType().Name == "JobGiver_GetFood");
                     bool hasGetRest = sorter.subNodes.Any(n => n.GetType().Name == "JobGiver_GetRest");
                     bool hasWork = sorter.subNodes.Any(n => n.GetType().Name == "JobGiver_Work");
 
-                    // Look for the one that's under SubtreesByTag
-                    bool isUnderSubtreesByTag = path.Contains("ThinkNode_SubtreesByTag");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm DEBUG] Has GetFood: {hasGetFood}, GetRest: {hasGetRest}, Work: {hasWork}");
+                    }
 
-                    if (hasGetFood && hasGetRest && hasWork && isUnderSubtreesByTag)
+                    // Look for the one that's under SubtreesByTag or Subtree
+                    bool isUnderSubtree = path.Contains("ThinkNode_Subtree") || path.Contains("ThinkNode_SubtreesByTag");
+
+                    // Look for the main colonist behavior sorter
+                    if (hasGetFood && hasGetRest && hasWork && isUnderSubtree)
                     {
                         result = sorter;
                         if (AutoArmMod.settings?.debugLogging == true)
@@ -289,8 +276,9 @@ namespace AutoArm
 
                 bool foundEmergencyNode = false;
                 bool foundUpgradeNode = false;
+                bool foundSidearmNode = false;
 
-                ValidateThinkNode(humanlikeThinkTree.thinkRoot, ref foundEmergencyNode, ref foundUpgradeNode);
+                ValidateThinkNode(humanlikeThinkTree.thinkRoot, ref foundEmergencyNode, ref foundUpgradeNode, ref foundSidearmNode);
 
                 if (!foundEmergencyNode || !foundUpgradeNode)
                 {
@@ -312,7 +300,7 @@ namespace AutoArm
             }
         }
 
-        private static void ValidateThinkNode(ThinkNode node, ref bool foundEmergencyNode, ref bool foundUpgradeNode)
+        private static void ValidateThinkNode(ThinkNode node, ref bool foundEmergencyNode, ref bool foundUpgradeNode, ref bool foundSidearmNode)
         {
             if (node == null) return;
 
@@ -322,11 +310,15 @@ namespace AutoArm
             if (node is ThinkNode_ConditionalWeaponsInOutfit)
                 foundUpgradeNode = true;
 
+            // ADD THIS:
+            if (node is ThinkNode_ConditionalShouldCheckSidearms)
+                foundSidearmNode = true;
+
             if (node.subNodes != null)
             {
                 foreach (var subNode in node.subNodes)
                 {
-                    ValidateThinkNode(subNode, ref foundEmergencyNode, ref foundUpgradeNode);
+                    ValidateThinkNode(subNode, ref foundEmergencyNode, ref foundUpgradeNode, ref foundSidearmNode);
                 }
             }
         }
@@ -425,6 +417,11 @@ namespace AutoArm
             return primary == null || !primary.def.IsWeapon;
 
         }
+
+        public override float GetPriority(Pawn pawn)
+        {
+            return Satisfied(pawn) ? 6.9f : 0f;
+        }
     }
 
     public class JobGiver_PickUpBetterWeapon_Emergency : JobGiver_PickUpBetterWeapon
@@ -450,42 +447,48 @@ namespace AutoArm
 
             return job;
         }
-        // JobGiver for sidearm pickup
-        public class JobGiver_PickUpSidearm : ThinkNode_JobGiver
+    }
+
+    // JobGiver for sidearm pickup
+    public class JobGiver_PickUpSidearm : ThinkNode_JobGiver
+    {
+        protected override Job TryGiveJob(Pawn pawn)
         {
-            protected override Job TryGiveJob(Pawn pawn)
-            {
-                // Skip if Simple Sidearms isn't loaded or sidearms disabled
-                if (!SimpleSidearmsCompat.IsLoaded() ||
-                    AutoArmMod.settings?.autoEquipSidearms != true)
-                    return null;
+            // Skip if Simple Sidearms isn't loaded or sidearms disabled
+            if (!SimpleSidearmsCompat.IsLoaded() ||
+                AutoArmMod.settings?.autoEquipSidearms != true)
+                return null;
 
-                var job = SimpleSidearmsCompat.TryGetSidearmUpgradeJob(pawn);
+            var job = SimpleSidearmsCompat.TryGetSidearmUpgradeJob(pawn);
 
-                // Don't set expiry - let them complete the job!
-                // if (job != null)
-                // {
-                //     job.expiryInterval = 250;
-                //     job.checkOverrideOnExpire = true;
-                // }
+            // Don't set expiry - let them complete the job!
+            // if (job != null)
+            // {
+            //     job.expiryInterval = 250;
+            //     job.checkOverrideOnExpire = true;
+            // }
 
-                return job;
-            }
+            return job;
+        }
+    }
+
+    // Conditional to check if pawn should look for sidearms
+    public class ThinkNode_ConditionalShouldCheckSidearms : ThinkNode_Conditional
+    {
+        protected override bool Satisfied(Pawn pawn)
+        {
+            // Check if sidearms are enabled and pawn is valid
+            return SimpleSidearmsCompat.IsLoaded() &&
+                   AutoArmMod.settings?.autoEquipSidearms == true &&
+                   pawn.IsColonist &&
+                   !pawn.Drafted &&
+                   !pawn.Downed &&
+                   pawn.Spawned;
         }
 
-        // Conditional to check if pawn should look for sidearms
-        public class ThinkNode_ConditionalShouldCheckSidearms : ThinkNode_Conditional
+        public override float GetPriority(Pawn pawn)
         {
-            protected override bool Satisfied(Pawn pawn)
-            {
-                // Check if sidearms are enabled and pawn is valid
-                return SimpleSidearmsCompat.IsLoaded() &&
-                       AutoArmMod.settings?.autoEquipSidearms == true &&
-                       pawn.IsColonist &&
-                       !pawn.Drafted &&
-                       !pawn.Downed &&
-                       pawn.Spawned;
-            }
+            return Satisfied(pawn) ? 6.9f : 0f;
         }
     }
 }

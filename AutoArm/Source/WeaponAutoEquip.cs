@@ -193,9 +193,9 @@ namespace AutoArm
             Scribe_Collections.Look(ref savedPawns, "forcedWeaponPawns", LookMode.Reference);
             Scribe_Collections.Look(ref savedDefs, "forcedWeaponDefs", LookMode.Def);
 
-            // Sidearms
+            // Sidearms - FIXED: Use LookMode.Def for ThingDef
             Scribe_Collections.Look(ref savedSidearmPawns, "forcedSidearmPawns", LookMode.Reference);
-            Scribe_Collections.Look(ref savedSidearmDefs, "forcedSidearmDefs", LookMode.Deep);
+            Scribe_Collections.Look(ref savedSidearmDefs, "forcedSidearmDefs", LookMode.Def);
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
@@ -1087,6 +1087,10 @@ namespace AutoArm
         public bool TestSatisfied(Pawn pawn)
         {
             return Satisfied(pawn);
+        }
+        public override float GetPriority(Pawn pawn)
+        {
+            return Satisfied(pawn) ? 6.9f : 0f;
         }
     }
 
