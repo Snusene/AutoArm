@@ -77,9 +77,72 @@ namespace AutoArm
 
         private static readonly HashSet<JobDef> AlwaysSafeToInterrupt = new HashSet<JobDef>
         {
+            // Vanilla wandering/waiting jobs
             JobDefOf.Wait,
             JobDefOf.Wait_Wander,
-            JobDefOf.GotoWander
+            JobDefOf.GotoWander,
+            JobDefOf.Goto,
+            JobDefOf.LayDownResting,
+    
+            // Low priority work
+            JobDefOf.Clean,
+            JobDefOf.ClearSnow,
+            JobDefOf.RemoveFloor
+        };
+
+        private static readonly HashSet<JobDef> InterruptibleForMajorUpgrade = new HashSet<JobDef>
+        {
+            // Farming
+            JobDefOf.Sow,
+            JobDefOf.Harvest,
+            JobDefOf.CutPlant,
+            JobDefOf.HarvestDesignated,
+            JobDefOf.PlantSeed,
+    
+            // Construction
+            JobDefOf.FinishFrame,
+            JobDefOf.PlaceNoCostFrame,
+            JobDefOf.BuildRoof,
+            JobDefOf.RemoveRoof,
+            JobDefOf.SmoothFloor,
+            JobDefOf.SmoothWall,
+            JobDefOf.Deconstruct,
+            JobDefOf.Uninstall,
+            JobDefOf.Repair,
+            JobDefOf.FixBrokenDownBuilding,
+    
+            // Basic hauling
+            JobDefOf.HaulToCell,
+            JobDefOf.HaulToContainer,
+            JobDefOf.UnloadInventory,
+            JobDefOf.UnloadYourInventory,
+    
+            // Animal handling
+            JobDefOf.Tame,
+            JobDefOf.Train,
+            JobDefOf.Shear,
+            JobDefOf.Milk,
+            JobDefOf.Slaughter,
+    
+            // Crafting (non-urgent)
+            JobDefOf.DoBill,
+    
+            // Mining
+            JobDefOf.Mine,
+            JobDefOf.OperateScanner,
+            JobDefOf.OperateDeepDrill,
+    
+            // Research
+            JobDefOf.Research,
+    
+            // Misc work
+            JobDefOf.RearmTurret,
+            JobDefOf.Refuel,
+            JobDefOf.FillFermentingBarrel,
+            JobDefOf.TakeBeerOutOfFermentingBarrel,
+            JobDefOf.DeliverFood,
+            JobDefOf.Open,
+            JobDefOf.Flick
         };
 
         // Storage type caching
@@ -119,14 +182,65 @@ namespace AutoArm
             return false;
         }
 
-        public static bool IsSafeToInterrupt(JobDef jobDef)
+        public static bool IsSafeToInterrupt(JobDef jobDef, float upgradePercentage = 0f)
         {
             if (AlwaysSafeToInterrupt.Contains(jobDef))
                 return true;
 
+            // For major upgrades (15%+), interrupt medium priority jobs too
+            if (upgradePercentage >= 1.15f && InterruptibleForMajorUpgrade.Contains(jobDef))
+                return true;
+
             var defName = jobDef.defName;
+
+            // String-based checks for modded/DLC content
             return defName.StartsWith("Joy") ||
-                   defName.Contains("Social");
+                   defName.StartsWith("Play") ||
+                   defName.Contains("Social") ||
+                   defName.Contains("Relax") ||
+                   defName.Contains("Clean") ||
+                   defName.Contains("Haul") && !defName.Contains("Urgent") && !defName.Contains("Critical") ||
+                   defName.Contains("Wander") ||
+                   defName.Contains("Wait") ||
+                   defName.Contains("IdleJob") ||
+                   defName.Contains("Skygaze") ||
+                   defName.Contains("Meditate") ||
+                   defName.Contains("ViewArt") ||
+                   defName.Contains("VisitGrave") ||
+                   defName.Contains("BuildSnowman") ||
+                   defName.Contains("CloudWatch") ||
+                   defName.Contains("StandAndBeSociallyActive");
+        }
+        public static bool IsLowPriorityWork(Pawn pawn)
+        {
+            if (pawn.CurJob == null) return true;
+
+            var job = pawn.CurJob;
+            var jobDef = job.def;
+
+            // Always safe to interrupt
+            if (AlwaysSafeToInterrupt.Contains(jobDef))
+                return true;
+
+            // Check work priority if doing work
+            if (pawn.workSettings != null && job.workGiverDef?.workType != null)
+            {
+                var workType = job.workGiverDef.workType;
+                int priority = pawn.workSettings.GetPriority(workType);
+
+                // Priority 4 = low priority, can interrupt
+                if (priority >= 4)
+                    return true;
+
+                // Specific low priority work types
+                if (workType == WorkTypeDefOf.Cleaning ||
+                    workType == WorkTypeDefOf.Hauling ||
+                    workType == WorkTypeDefOf.PlantCutting ||
+                    workType == WorkTypeDefOf.Research)
+                    return true;
+            }
+
+            return false;
         }
 
         // NEW: Pawn validation with detailed reason

@@ -32,7 +32,7 @@ namespace AutoArm
         // NEW: Add configurable limits for performance
         private const int MaxWeaponsPerCache = 1500; // Increased from 500 for better mod compatibility
         private const int MaxWeaponsPerRebuild = 100; // Process in chunks during rebuild
-        private const int RebuildDelayTicks = 5; // Spread rebuild over multiple ticks
+        private const int RebuildDelayTicks = 15; // Spread rebuild over multiple ticks
 
         // NEW: Track incomplete rebuilds
         private static Dictionary<Map, RebuildState> rebuildStates = new Dictionary<Map, RebuildState>();
@@ -373,9 +373,6 @@ namespace AutoArm
                 return false;
 
             if (weapon.Destroyed || !weapon.Spawned)
-                return false;
-
-            if (weapon.IsForbidden(Faction.OfPlayer))
                 return false;
 
             return true;

@@ -108,16 +108,26 @@ namespace AutoArm
     [HarmonyPatch(typeof(Pawn_InventoryTracker), "Notify_ItemRemoved")]
     public static class Pawn_InventoryTracker_Notify_ItemRemoved_Patch
     {
-        [HarmonyPostfix]
-        public static void Postfix(Thing item, Pawn ___pawn)
+        [HarmonyPrefix]
+        public static void Prefix(Thing item, Pawn ___pawn)
         {
-            // NULL CHECK
             if (item == null || ___pawn == null || !___pawn.IsColonist)
                 return;
 
-            if (item is ThingWithComps weapon && weapon.def?.IsWeapon == true)
+            var weapon = item as ThingWithComps;
+            if (weapon == null || !weapon.def.IsWeapon)
+                return;
+
+            // Check if dropping due to outfit policy
+            var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
+            if (filter != null && !filter.Allows(weapon.def) &&
+                AutoArmMod.settings?.showNotifications == true &&
+                PawnUtility.ShouldSendNotificationAbout(___pawn))
             {
-                ForcedWeaponTracker.ClearForcedSidearm(___pawn, weapon.def);
+                Messages.Message("AutoArm_DroppingSidearmDisallowed".Translate(
+                    ___pawn.LabelShort.CapitalizeFirst(),
+                    weapon.Label
+                ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
             }
         }
     }
@@ -374,6 +384,53 @@ namespace AutoArm
             if (__instance is JobGiver_PickUpBetterWeapon && __result.Job != null)
             {
                 Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued job: {__result.Job.def.defName} targeting {__result.Job.targetA.Thing?.Label}");
+            }
+        }
+    }
+    [HarmonyPatch(typeof(Pawn_InventoryTracker), "TryAddItemNotForSale")]
+    public static class Pawn_InventoryTracker_TryAddItemNotForSale_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(bool __result, Thing item, Pawn ___pawn)
+        {
+            // Check if successfully added a weapon to inventory
+            if (!__result || item == null || ___pawn == null || !___pawn.IsColonist)
+                return;
+
+            var weapon = item as ThingWithComps;
+            if (weapon == null || !weapon.def.IsWeapon)
+                return;
+
+            // Check if this was from a sidearm job
+            if (___pawn.CurJob?.def?.defName == "EquipSecondary" &&
+                AutoArmMod.settings?.showNotifications == true &&
+                PawnUtility.ShouldSendNotificationAbout(___pawn))
+            {
+                // Check if it's an upgrade
+                var existingSidearms = ___pawn.inventory?.innerContainer
+                    .OfType<ThingWithComps>()
+                    .Where(t => t.def.IsWeapon && t != weapon && t.def == weapon.def)
+                    .ToList();
+
+                if (existingSidearms?.Any() == true)
+                {
+                    // It's an upgrade of an existing sidearm type
+                    var oldWeapon = existingSidearms.First();
+
+                    Messages.Message("AutoArm_UpgradedSidearm".Translate(
+                        ___pawn.LabelShort.CapitalizeFirst(),
+                        oldWeapon.Label,
+                        weapon.Label
+                    ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                }
+                else
+                {
+                    // It's a new sidearm
+                    Messages.Message("AutoArm_EquippedSidearm".Translate(
+                        ___pawn.LabelShort.CapitalizeFirst(),
+                        weapon.Label
+                    ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                }
             }
         }
     }

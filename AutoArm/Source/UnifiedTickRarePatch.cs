@@ -86,17 +86,15 @@ namespace AutoArm
             var primary = __instance.equipment?.Primary;
             bool hasWeapon = primary != null && primary.def?.IsWeapon == true;
 
-            // Dynamic check intervals based on colony size
+            // MORE AGGRESSIVE CHECK INTERVALS
             int colonistCount = __instance.Map?.mapPawns?.FreeColonistsCount ?? 1;
 
             if (!hasWeapon)
             {
-                // Unarmed - urgent priority, scales with colony size
-                // Small colonies (1-10): check every 30-40 ticks
-                // Medium colonies (11-20): check every 40-60 ticks  
-                // Large colonies (21+): check every 60-100 ticks
-                int baseInterval = 30 + Math.Min(colonistCount * 2, 60);
-                int variance = __instance.thingIDNumber % Math.Max(10, colonistCount);
+                // Unarmed - VERY urgent priority
+                int baseInterval = 15; // Very fast checks for unarmed
+                baseInterval += Math.Min(colonistCount, 30);
+                int variance = __instance.thingIDNumber % Math.Max(5, colonistCount);
 
                 if (__instance.IsHashIntervalTick(baseInterval + variance))
                 {
@@ -106,12 +104,10 @@ namespace AutoArm
             }
             else
             {
-                // Armed - lower priority, more aggressive scaling
-                // Small colonies: check every 150-200 ticks
-                // Medium colonies: check every 200-350 ticks
-                // Large colonies: check every 350-600 ticks
-                int baseInterval = 150 + Math.Min(colonistCount * 10, 450);
-                int variance = __instance.thingIDNumber % Math.Max(50, colonistCount * 5);
+                // Armed - still check frequently
+                int baseInterval = 60; // Much faster than before
+                baseInterval += Math.Min(colonistCount * 5, 200);
+                int variance = __instance.thingIDNumber % Math.Max(20, colonistCount * 2);
 
                 if (__instance.IsHashIntervalTick(baseInterval + variance))
                 {
@@ -122,10 +118,10 @@ namespace AutoArm
 
             if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                // Sidearm checks - scale with colony size
-                // Base 180 ticks + 10 per colonist (up to 500 ticks max)
-                int sidearmInterval = 180 + Math.Min(colonistCount * 10, 320);
-                int sidearmVariance = __instance.thingIDNumber % Math.Max(60, colonistCount * 3);
+                // Sidearm checks - also more aggressive
+                int sidearmInterval = 120;
+                sidearmInterval += Math.Min(colonistCount * 8, 250);
+                int sidearmVariance = __instance.thingIDNumber % Math.Max(40, colonistCount * 2);
 
                 if (__instance.IsHashIntervalTick(sidearmInterval + sidearmVariance))
                 {
@@ -133,9 +129,6 @@ namespace AutoArm
                     CheckSidearmUpgrade(__instance);
                 }
             }
-
-            // Cleanup occasionally - REMOVED, now handled by MemoryCleanupManager
-            // The cleanup is now centralized in MemoryCleanupManager
         }
 
         private static void CheckMainWeaponUpgrade(Pawn pawn)
@@ -202,39 +195,128 @@ namespace AutoArm
                 {
                     shouldInterrupt = true;
                 }
-                else if (isUnarmed) // Unarmed pawns get priority
+                else if (isUnarmed) // Unarmed pawns get ABSOLUTE priority
                 {
-                    // Don't interrupt critical jobs even for unarmed pawns
+                    // Interrupt EVERYTHING except the most critical jobs
                     shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
 
-                    // Even interrupt wander/idle for unarmed
-                    if (pawn.CurJob.def == JobDefOf.Wait_Wander ||
-                        pawn.CurJob.def == JobDefOf.GotoWander ||
-                        pawn.CurJob.def == JobDefOf.Wait)
+                    if (AutoArmMod.settings?.debugLogging == true && shouldInterrupt)
                     {
-                        shouldInterrupt = true;
-                        if (AutoArmMod.settings?.debugLogging == true)
-                        {
-                            Log.Message($"[AutoArm] {pawn.Name} interrupting wander to get weapon!");
-                        }
+                        Log.Message($"[AutoArm] {pawn.Name} is UNARMED - interrupting {pawn.CurJob.def.defName} to get weapon!");
                     }
                 }
                 else
                 {
-                    // Armed pawns interrupt safe jobs OR if upgrade is significant
-                    shouldInterrupt = JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def);
+                    // AGGRESSIVE INTERRUPTION for armed pawns
+                    var currentJobDef = pawn.CurJob.def;
+                    var currentJobDefName = currentJobDef.defName;
 
-                    // Also interrupt for major upgrades (25%+ improvement)
-                    if (!shouldInterrupt && job?.targetA.Thing is ThingWithComps newWeapon)
+                    // ALWAYS interrupt these vanilla low-priority jobs for ANY upgrade
+                    if (currentJobDef == JobDefOf.Wait ||
+                        currentJobDef == JobDefOf.Wait_Wander ||
+                        currentJobDef == JobDefOf.GotoWander ||
+                        currentJobDef == JobDefOf.Goto ||
+                        currentJobDef == JobDefOf.Clean ||
+                        currentJobDef == JobDefOf.ClearSnow ||
+                        currentJobDef == JobDefOf.HaulToCell ||
+                        currentJobDef == JobDefOf.HaulToContainer ||
+                        currentJobDef == JobDefOf.Research ||
+                        currentJobDef == JobDefOf.SmoothFloor ||
+                        currentJobDef == JobDefOf.SmoothWall ||
+                        currentJobDef == JobDefOf.RemoveFloor ||
+                        currentJobDef == JobDefOf.Sow ||
+                        currentJobDef == JobDefOf.CutPlant ||
+                        currentJobDef == JobDefOf.Harvest ||
+                        currentJobDef == JobDefOf.HarvestDesignated ||
+                        currentJobDef == JobDefOf.PlantSeed ||
+                        currentJobDef == JobDefOf.Deconstruct ||
+                        currentJobDef == JobDefOf.Uninstall ||
+                        currentJobDef == JobDefOf.Repair ||
+                        currentJobDef == JobDefOf.FixBrokenDownBuilding ||
+                        currentJobDef == JobDefOf.Tame ||
+                        currentJobDef == JobDefOf.Train ||
+                        currentJobDef == JobDefOf.Milk ||
+                        currentJobDef == JobDefOf.Shear ||
+                        currentJobDef == JobDefOf.Slaughter ||
+                        currentJobDef == JobDefOf.Mine ||
+                        currentJobDef == JobDefOf.OperateScanner ||
+                        currentJobDef == JobDefOf.OperateDeepDrill ||
+                        currentJobDef == JobDefOf.Refuel ||
+                        currentJobDef == JobDefOf.RearmTurret ||
+                        currentJobDef == JobDefOf.FillFermentingBarrel ||
+                        currentJobDef == JobDefOf.TakeBeerOutOfFermentingBarrel ||
+                        currentJobDef == JobDefOf.UnloadInventory ||
+                        currentJobDef == JobDefOf.UnloadYourInventory ||
+                        currentJobDef == JobDefOf.Open ||
+                        currentJobDef == JobDefOf.Flick ||
+                        currentJobDef == JobDefOf.DoBill ||
+                        currentJobDef == JobDefOf.TakeInventory ||
+                        currentJobDef == JobDefOf.GiveToPackAnimal ||
+                        currentJobDef == JobDefOf.LayDown ||
+                        currentJobDef == JobDefOf.LayDownResting)
                     {
-                        float currentScore = jobGiver.GetWeaponScore(pawn, currentEquipment as ThingWithComps);
-                        float newScore = jobGiver.GetWeaponScore(pawn, newWeapon);
-                        if (newScore > currentScore * 1.25f)
+                        shouldInterrupt = true;
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            Log.Message($"[AutoArm] {pawn.Name}: Interrupting low priority {currentJobDef.defName} for weapon upgrade");
+                        }
+                    }
+                    // Check string patterns for modded/DLC jobs
+                    else if (currentJobDefName.StartsWith("Joy") ||
+                             currentJobDefName.StartsWith("Play") ||
+                             currentJobDefName.Contains("Social") ||
+                             currentJobDefName.Contains("Relax") ||
+                             currentJobDefName.Contains("Clean") ||
+                             currentJobDefName.Contains("Idle") ||
+                             currentJobDefName.Contains("Wander") ||
+                             currentJobDefName.Contains("Wait") ||
+                             currentJobDefName.Contains("Skygaze") ||
+                             currentJobDefName.Contains("Meditate") ||
+                             currentJobDefName.Contains("Pray") ||
+                             currentJobDefName.Contains("CloudWatch") ||
+                             currentJobDefName.Contains("StandAndBeSociallyActive") ||
+                             currentJobDefName.Contains("ViewArt") ||
+                             currentJobDefName.Contains("VisitGrave") ||
+                             currentJobDefName.Contains("BuildSnowman"))
+                    {
+                        shouldInterrupt = true;
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            Log.Message($"[AutoArm] {pawn.Name}: Interrupting {currentJobDefName} (matched pattern) for weapon upgrade");
+                        }
+                    }
+                    // Check work priority for other jobs
+                    else if (pawn.workSettings != null && pawn.CurJob.workGiverDef?.workType != null)
+                    {
+                        var workType = pawn.CurJob.workGiverDef.workType;
+                        int priority = pawn.workSettings.GetPriority(workType);
+
+                        // Interrupt priority 3 and 4 work for any upgrade
+                        if (priority >= 3)
                         {
                             shouldInterrupt = true;
                             if (AutoArmMod.settings?.debugLogging == true)
                             {
-                                Log.Message($"[AutoArm] {pawn.Name}: Major upgrade available ({currentScore:F0} -> {newScore:F0})");
+                                Log.Message($"[AutoArm] {pawn.Name}: Interrupting priority {priority} work ({currentJobDef.defName}) for weapon upgrade");
+                            }
+                        }
+                    }
+
+                    // For higher priority work, still interrupt for significant upgrades
+                    if (!shouldInterrupt && job?.targetA.Thing is ThingWithComps newWeapon && currentEquipment is ThingWithComps currentWeaponComp)
+                    {
+                        float currentScore = jobGiver.GetWeaponScore(pawn, currentWeaponComp);
+                        float newScore = jobGiver.GetWeaponScore(pawn, newWeapon);
+                        float upgradePercentage = newScore / currentScore;
+
+                        // Interrupt for 10%+ upgrades (lower threshold than before)
+                        if (upgradePercentage >= 1.10f)
+                        {
+                            shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
+
+                            if (AutoArmMod.settings?.debugLogging == true && shouldInterrupt)
+                            {
+                                Log.Message($"[AutoArm] {pawn.Name}: {(upgradePercentage - 1f) * 100f:F0}% upgrade available - interrupting {currentJobDef.defName}");
                             }
                         }
                     }
@@ -253,15 +335,10 @@ namespace AutoArm
                         Log.Message($"[AutoArm] {pawn.Name}: Interrupting to pick up {job.targetA.Thing?.Label}");
                     }
                 }
-            }
-            else if (AutoArmMod.settings?.debugLogging == true)
-            {
-                string equipped = currentEquipment?.Label ?? "nothing";
-                if (currentEquipment != null && !currentEquipment.def.IsWeapon)
+                else if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    equipped = $"{currentEquipment.Label} (not a weapon)";
+                    Log.Message($"[AutoArm] {pawn.Name}: Found upgrade but not interrupting {pawn.CurJob.def.defName} (critical job)");
                 }
-                Log.Message($"[AutoArm] {pawn.Name}: No upgrade found (has {equipped})");
             }
         }
 
@@ -271,8 +348,10 @@ namespace AutoArm
             if (pawn == null || pawn.CurJob == null)
                 return;
 
-            // Only upgrade sidearms when pawn is doing unimportant work
-            if (!JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def))
+            // AGGRESSIVE SIDEARM CHECKING - interrupt most non-critical jobs
+            bool shouldCheckSidearms = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
+
+            if (!shouldCheckSidearms)
                 return;
 
             // Try to find sidearm upgrade
@@ -295,8 +374,6 @@ namespace AutoArm
                 }
             }
         }
-
-        // REMOVED CleanupOldEntries - now handled by MemoryCleanupManager
 
         // Public method for marking pawns who just became unarmed
         public static void MarkRecentlyUnarmed(Pawn pawn)

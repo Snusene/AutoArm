@@ -22,11 +22,6 @@
         public const float MaxWeaponSearchDistanceSquared = MaxWeaponSearchDistance * MaxWeaponSearchDistance;
 
         // Timing
-        public const int UnarmedCheckInterval = 60;
-        public const int ArmedCheckIntervalSmallColony = 300;
-        public const int ArmedCheckIntervalLargeColony = 600;
-        public const int SmallColonyThreshold = 20;
-        public const int SidearmCheckInterval = 3000;
         public const int CleanupInterval = 10000;
 
         // Weapon scores
