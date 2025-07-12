@@ -63,6 +63,7 @@
     <Compile Include="Source\AutoArmConstants.cs" />
     <Compile Include="Source\AutoArmMod.cs" />
     <Compile Include="Source\AutoArmSettings.cs" />
+    <Compile Include="Source\CombinedHarmonyPatches.cs" />
     <Compile Include="Source\compatibility\CECompat.cs" />
     <Compile Include="Source\compatibility\InfusionCompat.cs" />
     <Compile Include="Source\compatibility\SimpleSidearmsCompat.cs" />
@@ -70,6 +71,7 @@
     <Compile Include="Source\DebugCommands.cs" />
     <Compile Include="Source\JobGiverHelpers.cs" />
     <Compile Include="Source\Logging\AutoArmLogger.cs" />
+    <Compile Include="Source\MemoryCleanupManager.cs" />
     <Compile Include="Source\ModInit.cs" />
     <Compile Include="Source\Testing\TestHelpers.cs" />
     <Compile Include="Source\Testing\TestInterfaces.cs" />
@@ -98,8 +100,6 @@
     <None Include="obj\Debug\AutoArm.csproj.CoreCompileInputs.cache" />
     <None Include="obj\Debug\DesignTimeResolveAssemblyReferencesInput.cache" />
     <None Include="obj\Release\AutoArm.csproj.AssemblyReference.cache" />
-    <None Include="PrioritySystem.md" />
-    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="bin\Release\" />

@@ -12,29 +12,45 @@ namespace AutoArm
     [HarmonyPatch(typeof(Pawn), "TickRare")]
     public static class Pawn_TickRare_Unified_Patch
     {
-        // Add these missing fields
-        private static Dictionary<Pawn, int> lastInterruptionTick = new Dictionary<Pawn, int>();
-        private static Dictionary<Pawn, int> lastSidearmCheckTick = new Dictionary<Pawn, int>();
-        private static Dictionary<Pawn, int> lastWeaponCheckTick = new Dictionary<Pawn, int>();
+        // Changed from private to internal for cleanup access
+        internal static Dictionary<Pawn, int> lastInterruptionTick = new Dictionary<Pawn, int>();
+        internal static Dictionary<Pawn, int> lastSidearmCheckTick = new Dictionary<Pawn, int>();
+        internal static Dictionary<Pawn, int> lastWeaponCheckTick = new Dictionary<Pawn, int>();
         internal static Dictionary<Pawn, int> lastWeaponSearchTick = new Dictionary<Pawn, int>();
         internal static Dictionary<Pawn, Job> cachedWeaponJobs = new Dictionary<Pawn, Job>();
-        private static HashSet<Pawn> recentlyUnarmedPawns = new HashSet<Pawn>();
+        internal static HashSet<Pawn> recentlyUnarmedPawns = new HashSet<Pawn>();
 
         private static int checksThisTick = 0;
         private static int lastTickProcessed = -1;
-        private const int MaxChecksPerTick = 1;
+
+        // Dynamic max checks based on colony size
+        private static int GetMaxChecksPerTick(Map map)
+        {
+            if (map == null) return 3;
+            int colonistCount = map.mapPawns.FreeColonistsCount;
+
+            // Scale checks: 1-10 colonists = 3 checks, 11-20 = 5 checks, 21+ = 7 checks
+            if (colonistCount <= 10) return 3;
+            if (colonistCount <= 20) return 5;
+            return 7;
+        }
 
         [HarmonyPostfix]
         public static void Postfix(Pawn __instance)
         {
+            // NULL CHECK at the very beginning
+            if (__instance == null)
+                return;
+
             if (Find.TickManager.TicksGame != lastTickProcessed)
             {
                 checksThisTick = 0;
                 lastTickProcessed = Find.TickManager.TicksGame;
             }
 
-            // Skip if too many checks this tick
-            if (checksThisTick >= MaxChecksPerTick)
+            // Skip if too many checks this tick (dynamic based on colony size)
+            int maxChecks = GetMaxChecksPerTick(__instance.Map);
+            if (checksThisTick >= maxChecks)
                 return;
 
             // Skip if mod is disabled
@@ -59,60 +75,78 @@ namespace AutoArm
 
             // Only check colonists
             if (!__instance.IsColonist || __instance.Downed ||
-                __instance.InBed() || __instance.WorkTagIsDisabled(WorkTags.Violent))  // Fixed syntax
+                __instance.InBed() || __instance.WorkTagIsDisabled(WorkTags.Violent))
                 return;
 
             // Skip drafted pawns
             if (__instance.Drafted)
                 return;
 
-            // Rest of your existing code...
+            // Check equipment with null safety
             var primary = __instance.equipment?.Primary;
-            bool hasWeapon = primary != null && primary.def.IsWeapon;
+            bool hasWeapon = primary != null && primary.def?.IsWeapon == true;
+
+            // Dynamic check intervals based on colony size
+            int colonistCount = __instance.Map?.mapPawns?.FreeColonistsCount ?? 1;
 
             if (!hasWeapon)
             {
-                // Unarmed - check every 30-60 ticks (0.5-1 second) for faster response
-                if (__instance.IsHashIntervalTick(31 + __instance.thingIDNumber % 37))
+                // Unarmed - urgent priority, scales with colony size
+                // Small colonies (1-10): check every 30-40 ticks
+                // Medium colonies (11-20): check every 40-60 ticks  
+                // Large colonies (21+): check every 60-100 ticks
+                int baseInterval = 30 + Math.Min(colonistCount * 2, 60);
+                int variance = __instance.thingIDNumber % Math.Max(10, colonistCount);
+
+                if (__instance.IsHashIntervalTick(baseInterval + variance))
                 {
-                    checksThisTick++;  // ADD THIS!
+                    checksThisTick++;
                     CheckMainWeaponUpgrade(__instance);
                 }
             }
             else
             {
-                // Armed - check based on colony size
-                int colonistCount = __instance.Map.mapPawns.FreeColonistsCount;
-                int baseInterval = colonistCount < 20 ? 150 : 300;
-                if (__instance.IsHashIntervalTick(baseInterval + __instance.thingIDNumber % 100))
+                // Armed - lower priority, more aggressive scaling
+                // Small colonies: check every 150-200 ticks
+                // Medium colonies: check every 200-350 ticks
+                // Large colonies: check every 350-600 ticks
+                int baseInterval = 150 + Math.Min(colonistCount * 10, 450);
+                int variance = __instance.thingIDNumber % Math.Max(50, colonistCount * 5);
+
+                if (__instance.IsHashIntervalTick(baseInterval + variance))
                 {
-                    checksThisTick++;  // ADD THIS!
+                    checksThisTick++;
                     CheckMainWeaponUpgrade(__instance);
                 }
             }
 
             if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                // Check more often - every 3-5 seconds
-                if (__instance.IsHashIntervalTick(180 + __instance.thingIDNumber % 120))
+                // Sidearm checks - scale with colony size
+                // Base 180 ticks + 10 per colonist (up to 500 ticks max)
+                int sidearmInterval = 180 + Math.Min(colonistCount * 10, 320);
+                int sidearmVariance = __instance.thingIDNumber % Math.Max(60, colonistCount * 3);
+
+                if (__instance.IsHashIntervalTick(sidearmInterval + sidearmVariance))
                 {
                     checksThisTick++;
                     CheckSidearmUpgrade(__instance);
                 }
             }
 
-            // Cleanup occasionally
-            if (Find.TickManager.TicksGame % 2500 == 0 && __instance.IsHashIntervalTick(100))
-            {
-                CleanupOldEntries();
-            }
+            // Cleanup occasionally - REMOVED, now handled by MemoryCleanupManager
+            // The cleanup is now centralized in MemoryCleanupManager
         }
 
         private static void CheckMainWeaponUpgrade(Pawn pawn)
         {
+            // NULL CHECK
+            if (pawn == null || pawn.equipment == null)
+                return;
+
             // Check if pawn has a WEAPON (not just any equipment like beer)
-            var currentEquipment = pawn.equipment?.Primary;
-            bool hasWeapon = currentEquipment != null && currentEquipment.def.IsWeapon;
+            var currentEquipment = pawn.equipment.Primary;
+            bool hasWeapon = currentEquipment != null && currentEquipment.def?.IsWeapon == true;
 
             // NEW: Check if current weapon is disallowed by outfit
             if (hasWeapon && pawn.IsColonist && pawn.Faction == Faction.OfPlayer)
@@ -198,7 +232,7 @@ namespace AutoArm
                         if (newScore > currentScore * 1.25f)
                         {
                             shouldInterrupt = true;
-                            if (AutoArmMod.settings.debugLogging)
+                            if (AutoArmMod.settings?.debugLogging == true)
                             {
                                 Log.Message($"[AutoArm] {pawn.Name}: Major upgrade available ({currentScore:F0} -> {newScore:F0})");
                             }
@@ -233,15 +267,19 @@ namespace AutoArm
 
         private static void CheckSidearmUpgrade(Pawn pawn)
         {
+            // NULL CHECK
+            if (pawn == null || pawn.CurJob == null)
+                return;
+
             // Only upgrade sidearms when pawn is doing unimportant work
-            if (pawn.CurJob != null && !JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def))
+            if (!JobGiverHelpers.IsSafeToInterrupt(pawn.CurJob.def))
                 return;
 
             // Try to find sidearm upgrade
             var job = SimpleSidearmsCompat.TryGetSidearmUpgradeJob(pawn);
-            if (job != null)
+            if (job != null && pawn.jobs != null)
             {
-                if (AutoArmMod.settings.debugLogging)
+                if (AutoArmMod.settings?.debugLogging == true)
                 {
                     Log.Message($"[AutoArm] Found sidearm job for {pawn.Name}: {job.def.defName} targeting {job.targetA.Thing?.Label}");
                 }
@@ -251,57 +289,14 @@ namespace AutoArm
                 // Update cooldown
                 lastSidearmCheckTick[pawn] = Find.TickManager.TicksGame;
 
-                if (AutoArmMod.settings.debugLogging)
+                if (AutoArmMod.settings?.debugLogging == true)
                 {
                     Log.Message($"[AutoArm] Started sidearm job for {pawn.Name} (was doing {pawn.CurJob?.def.defName ?? "nothing"})");
                 }
             }
         }
 
-        private static void CleanupOldEntries()
-        {
-            var invalidJobPawns = cachedWeaponJobs
-                .Where(kvp => kvp.Value != null &&
-                       (kvp.Value.targetA.Thing?.DestroyedOrNull() ?? true))
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            // Remove entries for dead/despawned pawns
-            var toRemove = lastInterruptionTick.Keys
-                .Where(p => p.DestroyedOrNull() || p.Dead || !p.Spawned)
-                .ToList();
-
-            foreach (var pawn in toRemove)
-            {
-                lastInterruptionTick.Remove(pawn);
-                lastSidearmCheckTick.Remove(pawn);
-                lastWeaponCheckTick.Remove(pawn);
-                lastWeaponSearchTick.Remove(pawn);
-                cachedWeaponJobs.Remove(pawn);
-                recentlyUnarmedPawns.Remove(pawn);
-            }
-
-            // Clean up weapon cache for null or destroyed maps
-            var cacheMapsToRemove = JobGiver_PickUpBetterWeapon.weaponCache.Keys
-                .Where(m => m == null || m.Tile < 0 || !Find.Maps.Contains(m))
-                .ToList();
-            foreach (var map in cacheMapsToRemove)
-            {
-                JobGiver_PickUpBetterWeapon.weaponCache.Remove(map);
-                JobGiver_PickUpBetterWeapon.weaponCacheAge.Remove(map);
-            }
-
-            // Limit recently unarmed pawns set size
-            if (recentlyUnarmedPawns.Count > 20)
-            {
-                recentlyUnarmedPawns.Clear();
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message("[AutoArm] Cleared recentlyUnarmedPawns set - was getting too large");
-                }
-            }
-        }
+        // REMOVED CleanupOldEntries - now handled by MemoryCleanupManager
 
         // Public method for marking pawns who just became unarmed
         public static void MarkRecentlyUnarmed(Pawn pawn)

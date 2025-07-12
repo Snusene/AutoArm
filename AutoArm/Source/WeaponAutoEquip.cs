@@ -742,21 +742,21 @@ namespace AutoArm
 
         public class CompositeWeaponScorer : IWeaponScorer
         {
-            private readonly List<IWeaponScorer> scorers;
+            private static readonly List<IWeaponScorer> scorers = new List<IWeaponScorer>
+            {
+                new OutfitPolicyScorer(),
+                new TraitScorer(),
+                new SkillScorer(),
+                new QualityScorer(),
+                new DamageScorer(),
+                new RangeScorer(),
+                new ModCompatibilityScorer(),
+                new PersonaWeaponScorer()
+            };
 
             public CompositeWeaponScorer()
             {
-                scorers = new List<IWeaponScorer>
-                {
-                    new OutfitPolicyScorer(),
-                    new TraitScorer(),
-                    new SkillScorer(),
-                    new QualityScorer(),
-                    new DamageScorer(),
-                    new RangeScorer(),
-                    new ModCompatibilityScorer(),
-                    new PersonaWeaponScorer()
-                };
+                // Scorers are now static and initialized once
             }
 
             public float GetScore(Pawn pawn, ThingWithComps weapon)
@@ -1053,349 +1053,17 @@ namespace AutoArm
         }
     }
 
-    // Harmony patches for forced weapon tracking
-    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
-    [HarmonyPriority(Priority.High)]
-    public static class Pawn_JobTracker_TrackForcedEquip_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Job newJob, Pawn ___pawn)
-        {
-            if (newJob?.def == JobDefOf.Equip && newJob.playerForced && ___pawn.IsColonist)
-            {
-                var targetWeapon = newJob.targetA.Thing as ThingWithComps;
-                if (targetWeapon?.def.IsWeapon == true)
-                {
-                    ForcedWeaponTracker.SetForced(___pawn, targetWeapon);
-                }
-            }
-            else if (newJob?.def == JobDefOf.Equip && ___pawn.IsColonist)
-            {
-                var targetWeapon = newJob.targetA.Thing as ThingWithComps;
-                if (targetWeapon?.def.IsWeapon == true && SimpleSidearmsCompat.IsSimpleSidearmsSwitch(___pawn, targetWeapon))
-                {
-                    ForcedWeaponTracker.SetForced(___pawn, targetWeapon);
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
-    [HarmonyPriority(Priority.High)]
-    public static class Pawn_JobTracker_TrackForcedSidearmEquip_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Job newJob, Pawn ___pawn)
-        {
-            if (!___pawn.IsColonist || !SimpleSidearmsCompat.IsLoaded())
-                return;
-
-            if (newJob?.def?.defName == "EquipSecondary" && newJob.playerForced)
-            {
-                var targetWeapon = newJob.targetA.Thing as ThingWithComps;
-                if (targetWeapon?.def.IsWeapon == true)
-                {
-                    ForcedWeaponTracker.SetForcedSidearm(___pawn, targetWeapon.def);
-
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        Log.Message($"[AutoArm] Player manually equipped {targetWeapon.Label} as sidearm for {___pawn.Name}");
-                    }
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_EquipmentTracker), "TryDropEquipment")]
-    public static class Pawn_EquipmentTracker_ClearForcedOnDrop_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(bool __result, Pawn ___pawn)
-        {
-            if (__result && ___pawn.IsColonist)
-            {
-                ForcedWeaponTracker.ClearForced(___pawn);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_EquipmentTracker), "DestroyEquipment")]
-    public static class Pawn_EquipmentTracker_ClearForcedOnDestroy_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Pawn ___pawn)
-        {
-            if (___pawn.IsColonist)
-            {
-                ForcedWeaponTracker.ClearForced(___pawn);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_InventoryTracker), "Notify_ItemRemoved")]
-    public static class Pawn_InventoryTracker_ClearForcedSidearm_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Thing item, Pawn ___pawn)
-        {
-            if (item is ThingWithComps weapon && weapon.def.IsWeapon && ___pawn.IsColonist)
-            {
-                ForcedWeaponTracker.ClearForcedSidearm(___pawn, weapon.def);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_EquipmentTracker), "AddEquipment")]
-    public static class Pawn_EquipmentTracker_NotifyAutoEquip_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ThingWithComps newEq, Pawn ___pawn)
-        {
-            if (___pawn.IsColonist && ___pawn.CurJob?.def == JobDefOf.Equip &&
-                AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
-            {
-                if (newEq != null && PawnUtility.ShouldSendNotificationAbout(___pawn) &&
-                    AutoArmMod.settings?.showNotifications == true)
-                {
-                    var previousWeapon = AutoEquipTracker.GetPreviousWeapon(___pawn);
-
-                    if (previousWeapon != null)
-                    {
-                        Messages.Message("AutoArm_UpgradedWeapon".Translate(
-                            ___pawn.LabelShort.CapitalizeFirst(),
-                            previousWeapon.label,
-                            newEq.Label
-                        ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
-                    }
-                    else
-                    {
-                        Messages.Message("AutoArm_EquippedWeapon".Translate(
-                            ___pawn.LabelShort.CapitalizeFirst(),
-                            newEq.Label
-                        ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
-                    }
-                }
-
-                AutoEquipTracker.Clear(___pawn.CurJob);
-                AutoEquipTracker.ClearPreviousWeapon(___pawn);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_OutfitTracker), "CurrentApparelPolicy", MethodType.Setter)]
-    public static class Pawn_OutfitTracker_PolicyChanged_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Pawn ___pawn)
-        {
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-
-            if (___pawn.IsColonist && ___pawn.Spawned && !___pawn.Dead &&
-                ___pawn.equipment?.Primary != null && !___pawn.Drafted)
-            {
-                var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
-                if (filter != null && !filter.Allows(___pawn.equipment.Primary.def))
-                {
-                    ForcedWeaponTracker.ClearForced(___pawn);
-
-                    var dropJob = new Job(JobDefOf.DropEquipment, ___pawn.equipment.Primary);
-                    ___pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
-
-                    if (AutoArmMod.settings.debugLogging)
-                    {
-                        Log.Message($"[AutoArm] {___pawn.Name}: Outfit changed, dropping {___pawn.equipment.Primary.Label}");
-                    }
-
-                    if (PawnUtility.ShouldSendNotificationAbout(___pawn))
-                    {
-                        Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                            ___pawn.LabelShort.CapitalizeFirst(),
-                            ___pawn.equipment.Primary.Label
-                        ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
-                    }
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(ThingFilter), "SetDisallowAll")]
-    public static class ThingFilter_SetDisallowAll_CheckWeapons_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ThingFilter __instance)
-        {
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-
-            if (Current.Game == null || Find.Maps == null)
-                return;
-
-            var pawnsToDropWeapons = new List<(Pawn pawn, ThingWithComps weapon)>();
-
-            foreach (var map in Find.Maps)
-            {
-                if (map?.mapPawns?.FreeColonists == null)
-                    continue;
-
-                foreach (var pawn in map.mapPawns.FreeColonists)
-                {
-                    if (pawn.Drafted || pawn.jobs == null)
-                        continue;
-
-                    if (pawn.outfits?.CurrentApparelPolicy?.filter == __instance &&
-                        pawn.equipment?.Primary != null)
-                    {
-                        pawnsToDropWeapons.Add((pawn, pawn.equipment.Primary));
-                    }
-                }
-            }
-
-            if (pawnsToDropWeapons.Count > 0)
-            {
-                LongEventHandler.ExecuteWhenFinished(() =>
-                {
-                    foreach (var (pawn, weapon) in pawnsToDropWeapons)
-                    {
-                        if (pawn.equipment?.Primary == weapon && !pawn.Drafted)
-                        {
-                            ForcedWeaponTracker.ClearForced(pawn);
-
-                            var dropJob = new Job(JobDefOf.DropEquipment, weapon);
-                            pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
-
-                            if (AutoArmMod.settings.debugLogging)
-                            {
-                                Log.Message($"[AutoArm] {pawn.Name}: All items disallowed, dropping weapon");
-                            }
-
-                            if (PawnUtility.ShouldSendNotificationAbout(pawn))
-                            {
-                                Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                                    pawn.LabelShort.CapitalizeFirst(),
-                                    weapon.Label
-                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
-                            }
-                        }
-                    }
-                });
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_OutfitTracker), "CurrentApparelPolicy", MethodType.Setter)]
-    public static class Pawn_OutfitTracker_CurrentPolicy_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Pawn_OutfitTracker __instance)
-        {
-            var pawn = __instance.pawn;
-            if (pawn != null && Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.ContainsKey(pawn))
-            {
-                Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.Remove(pawn);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_JobTracker), "EndCurrentJob")]
-    public static class Debug_JobTracker_EndCurrentJob_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Pawn ___pawn, JobCondition condition, Job ___curJob)
-        {
-            if (AutoArmMod.settings?.debugLogging == true &&
-                ___curJob?.def == JobDefOf.Equip &&
-                AutoEquipTracker.IsAutoEquip(___curJob))
-            {
-                Log.Message($"[AutoArm DEBUG] {___pawn.Name}: Ending equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
-    public static class Debug_JobTracker_StartJob_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Pawn ___pawn, Job newJob)
-        {
-            if (AutoArmMod.settings?.debugLogging == true &&
-                newJob?.def == JobDefOf.Equip &&
-                AutoEquipTracker.IsAutoEquip(newJob))
-            {
-                Log.Message($"[AutoArm DEBUG] {___pawn.Name}: Starting equip job for {newJob.targetA.Thing?.Label}");
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(ThinkNode_JobGiver), "TryIssueJobPackage")]
-    public static class Debug_ThinkNode_JobGiver_TryIssueJobPackage_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ThinkNode_JobGiver __instance, Pawn pawn, JobIssueParams jobParams, ThinkResult __result)
-        {
-            if (AutoArmMod.settings?.debugLogging == true &&
-                __instance is JobGiver_PickUpBetterWeapon)
-            {
-                if (__result.Job != null)
-                {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued job: {__result.Job.def.defName} targeting {__result.Job.targetA.Thing?.Label}");
-                }
-                else
-                {
-                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: {__instance.GetType().Name} issued NO job");
-                }
-            }
-        }
-    }
-    // Weapon spawn/despawn tracking
-    [HarmonyPatch(typeof(Thing), "SpawnSetup")]
-    public static class Thing_SpawnSetup_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Thing __instance)
-        {
-            // Quick early exit for non-weapons
-            if (__instance.def.category != ThingCategory.Item || !__instance.def.IsWeapon)
-                return;
-
-            if (__instance is ThingWithComps weapon)
-            {
-                ImprovedWeaponCacheManager.AddWeaponToCache(weapon);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Thing), "DeSpawn")]
-    public static class Thing_DeSpawn_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Thing __instance)
-        {
-            if (__instance.def.category != ThingCategory.Item || !__instance.def.IsWeapon)
-                return;
-
-            if (__instance is ThingWithComps weapon)
-            {
-                ImprovedWeaponCacheManager.RemoveWeaponFromCache(weapon);
-            }
-        }
-    }
-
-    // Position tracking - more complex due to property setter
-    [HarmonyPatch(typeof(Thing), "set_Position")]
-    public static class Thing_SetPosition_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Thing __instance, IntVec3 value)
-        {
-            if (__instance.def.category != ThingCategory.Item || !__instance.def.IsWeapon)
-                return;
-
-            if (__instance is ThingWithComps weapon && __instance.Spawned)
-            {
-                ImprovedWeaponCacheManager.UpdateWeaponPosition(weapon, __instance.Position, value);
-            }
-        }
-    }
-
+    // Note: The following patches have been moved to CombinedHarmonyPatches.cs to avoid duplication:
+    // - Pawn_JobTracker_TrackForcedEquip_Patch and Pawn_JobTracker_TrackForcedSidearmEquip_Patch (combined into one)
+    // - Pawn_EquipmentTracker_TryDropEquipment_Patch (renamed with null checks)
+    // - Pawn_EquipmentTracker_DestroyEquipment_Patch (renamed with null checks)
+    // - Pawn_InventoryTracker_Notify_ItemRemoved_Patch (renamed with null checks)
+    // - Pawn_EquipmentTracker_AddEquipment_Patch (renamed with null checks)
+    // - Pawn_OutfitTracker_CurrentApparelPolicy_Patch (renamed with null checks)
+    // - ThingFilter_SetDisallowAll_CheckWeapons_Patch (renamed with null checks)
+    // - Pawn_JobTracker_EndCurrentJob_Patch (renamed with null checks)
+    // - Thing_SpawnSetup_Patch (moved with null checks)
+    // - Thing_DeSpawn_Patch (moved with null checks)
+    // - Thing_SetPosition_Patch (moved with null checks)
+    // - ThinkNode_JobGiver_TryIssueJobPackage_Patch (renamed with null checks)
 }

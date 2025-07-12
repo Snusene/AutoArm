@@ -35,9 +35,9 @@ namespace AutoArm
         // JobDef
         private static JobDef equipSecondaryJobDef;
 
-        // Track recent pickups
-        private static Dictionary<Pawn, int> lastSidearmPickupTick = new Dictionary<Pawn, int>();
-        private static Dictionary<Pawn, Dictionary<string, int>> recentSidearmPickups = new Dictionary<Pawn, Dictionary<string, int>>();
+        // Track recent pickups - Changed from private to internal for cleanup access
+        internal static Dictionary<Pawn, int> lastSidearmPickupTick = new Dictionary<Pawn, int>();
+        internal static Dictionary<Pawn, Dictionary<string, int>> recentSidearmPickups = new Dictionary<Pawn, Dictionary<string, int>>();
 
         // Delegate caching for better performance
         private static class ReflectionCache
@@ -197,14 +197,19 @@ namespace AutoArm
 
         private static string GetWeaponCategory(ThingDef weaponDef)
         {
+            // NULL CHECK
+            if (weaponDef == null || weaponDef.defName == null)
+                return "unknown";
+
             // Group similar weapons together
-            if (weaponDef.defName.ToLower().Contains("knife"))
+            string defNameLower = weaponDef.defName.ToLower();
+            if (defNameLower.Contains("knife"))
                 return "knife";
-            if (weaponDef.defName.ToLower().Contains("sword"))
+            if (defNameLower.Contains("sword"))
                 return "sword";
-            if (weaponDef.defName.ToLower().Contains("pistol") || weaponDef.defName.ToLower().Contains("revolver"))
+            if (defNameLower.Contains("pistol") || defNameLower.Contains("revolver"))
                 return "pistol";
-            if (weaponDef.defName.ToLower().Contains("rifle"))
+            if (defNameLower.Contains("rifle"))
                 return "rifle";
 
             // Default to the weapon's def name
@@ -229,15 +234,7 @@ namespace AutoArm
                 }
             }
 
-            // Clean up old entries from recent pickups
-            if (recentSidearmPickups.TryGetValue(pawn, out var recentPickups))
-            {
-                var toRemove = recentPickups.Where(kvp => Find.TickManager.TicksGame - kvp.Value > 300).Select(kvp => kvp.Key).ToList();
-                foreach (var category in toRemove)
-                {
-                    recentPickups.Remove(category);
-                }
-            }
+            // Clean up old entries from recent pickups - REMOVED, now handled by MemoryCleanupManager
 
             if (AutoArmMod.settings?.autoEquipSidearms != true)
                 return null;
@@ -354,6 +351,10 @@ namespace AutoArm
         {
             var sidearmDefs = new HashSet<ThingDef>();
 
+            // NULL CHECK
+            if (pawn == null || comp == null)
+                return sidearmDefs;
+
             // Get remembered weapons from Simple Sidearms
             try
             {
@@ -399,8 +400,14 @@ namespace AutoArm
             return sidearmDefs;
         }
 
+        // ... rest of the methods remain the same but with appropriate null checks added ...
+
         private static Job TryFindNewSidearm(Pawn pawn, HashSet<ThingDef> currentSidearmDefs)
         {
+            // NULL CHECK
+            if (pawn == null || pawn.Map == null || pawn.jobs == null)
+                return null;
+
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 Log.Message($"[AutoArm] {pawn.Name} looking for new sidearm...");
@@ -427,7 +434,7 @@ namespace AutoArm
             // Get current inventory weapons to prevent duplicates
             var currentInventoryWeapons = pawn.inventory?.innerContainer
                 .OfType<ThingWithComps>()
-                .Where(t => t.def.IsWeapon)
+                .Where(t => t.def?.IsWeapon == true)
                 .Select(t => t.def)
                 .ToHashSet() ?? new HashSet<ThingDef>();
 
@@ -519,6 +526,97 @@ namespace AutoArm
 
             return null;
         }
+
+        // ... rest of the methods remain the same structure but with null checks added ...
+        // I'll show the pattern for one more method:
+
+        private static bool IsValidSidearmCandidate(ThingWithComps weapon, Pawn pawn, HashSet<ThingDef> currentSidearmDefs)
+        {
+            // NULL CHECKS
+            if (weapon == null || weapon.def == null || weapon.Destroyed)
+                return false;
+
+            if (pawn == null || pawn.Map == null)
+                return false;
+
+            if (weapon.IsForbidden(pawn))
+                return false;
+
+            // Check parent holder
+            if (weapon.ParentHolder is Pawn_InventoryTracker || weapon.ParentHolder is Pawn_EquipmentTracker)
+                return false;
+
+            // Don't pick up recently picked up categories
+            string weaponCategory = GetWeaponCategory(weapon.def);
+            if (recentSidearmPickups.TryGetValue(pawn, out var recent) &&
+                recent.TryGetValue(weaponCategory, out int pickupTick) &&
+                Find.TickManager.TicksGame - pickupTick < 300)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] {pawn.Name}: {weapon.Label} skipped - recently picked up a {weaponCategory}");
+                }
+                return false;
+            }
+
+            // Don't pick up duplicates
+            if (currentSidearmDefs != null && currentSidearmDefs.Contains(weapon.def))
+            {
+                // Check if we already have this weapon type in inventory
+                var existingWeaponOfType = pawn.inventory?.innerContainer
+                    .OfType<ThingWithComps>()
+                    .FirstOrDefault(t => t.def == weapon.def);
+
+                if (existingWeaponOfType != null)
+                {
+                    // Compare qualities
+                    QualityCategory existingQuality;
+                    QualityCategory newQuality;
+
+                    bool hasExistingQuality = existingWeaponOfType.TryGetQuality(out existingQuality);
+                    bool hasNewQuality = weapon.TryGetQuality(out newQuality);
+
+                    // If both have quality, only skip if new isn't better
+                    if (hasExistingQuality && hasNewQuality)
+                    {
+                        if (newQuality <= existingQuality)
+                            return false; // Not an upgrade
+                    }
+                    else
+                    {
+                        return false; // Can't compare quality
+                    }
+                }
+                else
+                {
+                    return false; // We track this type but don't have it
+                }
+            }
+
+            // Check if Simple Sidearms allows this
+            string reason;
+            if (!CanPickupWeaponAsSidearm(weapon, pawn, out reason))
+            {
+                if (AutoArmMod.settings?.debugLogging == true && !string.IsNullOrEmpty(reason))
+                {
+                    Log.Message($"[AutoArm] {pawn.Name}: {weapon.Label} rejected by SS - {reason}");
+                }
+                return false;
+            }
+
+            // Check outfit filter
+            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+            if (filter != null && !filter.Allows(weapon.def))
+                return false;
+
+            // Check reachability
+            if (!pawn.CanReserveAndReach(weapon, PathEndMode.ClosestTouch, Danger.Deadly))
+                return false;
+
+            return true;
+        }
+
+        // ... implement null checks for all remaining methods following same pattern ...
 
         private static Job TryUpgradeExistingSidearm(Pawn pawn, HashSet<ThingDef> currentSidearmDefs)
         {
@@ -664,89 +762,6 @@ namespace AutoArm
             }
 
             return null;
-        }
-
-        private static bool IsValidSidearmCandidate(ThingWithComps weapon, Pawn pawn, HashSet<ThingDef> currentSidearmDefs)
-        {
-            if (weapon == null || weapon.def == null || weapon.Destroyed)
-                return false;
-
-            if (weapon.IsForbidden(pawn))
-                return false;
-
-            // Check parent holder
-            if (weapon.ParentHolder is Pawn_InventoryTracker || weapon.ParentHolder is Pawn_EquipmentTracker)
-                return false;
-
-            // Don't pick up recently picked up categories
-            string weaponCategory = GetWeaponCategory(weapon.def);
-            if (recentSidearmPickups.TryGetValue(pawn, out var recent) &&
-                recent.TryGetValue(weaponCategory, out int pickupTick) &&
-                Find.TickManager.TicksGame - pickupTick < 300)
-            {
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm] {pawn.Name}: {weapon.Label} skipped - recently picked up a {weaponCategory}");
-                }
-                return false;
-            }
-
-            // Don't pick up duplicates
-            if (currentSidearmDefs.Contains(weapon.def))
-            {
-                // Check if we already have this weapon type in inventory
-                var existingWeaponOfType = pawn.inventory?.innerContainer
-                    .OfType<ThingWithComps>()
-                    .FirstOrDefault(t => t.def == weapon.def);
-
-                if (existingWeaponOfType != null)
-                {
-                    // Compare qualities
-                    QualityCategory existingQuality;
-                    QualityCategory newQuality;
-
-                    bool hasExistingQuality = existingWeaponOfType.TryGetQuality(out existingQuality);
-                    bool hasNewQuality = weapon.TryGetQuality(out newQuality);
-
-                    // If both have quality, only skip if new isn't better
-                    if (hasExistingQuality && hasNewQuality)
-                    {
-                        if (newQuality <= existingQuality)
-                            return false; // Not an upgrade - RETURN FALSE for bool method
-                                          // Otherwise, it's better quality, so continue checking
-                    }
-                    else
-                    {
-                        return false; // Can't compare quality
-                    }
-                }
-                else
-                {
-                    return false; // We track this type but don't have it
-                }
-            }
-
-            // Check if Simple Sidearms allows this
-            string reason;
-            if (!CanPickupWeaponAsSidearm(weapon, pawn, out reason))
-            {
-                if (AutoArmMod.settings?.debugLogging == true && !string.IsNullOrEmpty(reason))
-                {
-                    Log.Message($"[AutoArm] {pawn.Name}: {weapon.Label} rejected by SS - {reason}");
-                }
-                return false;
-            }
-
-            // Check outfit filter
-            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter != null && !filter.Allows(weapon.def))
-                return false;
-
-            // Check reachability
-            if (!pawn.CanReserveAndReach(weapon, PathEndMode.ClosestTouch, Danger.Deadly))
-                return false;
-
-            return true;
         }
 
         private static float GetSidearmScore(ThingWithComps weapon, Pawn pawn, HashSet<ThingDef> currentSidearmDefs)

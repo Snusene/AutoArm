@@ -1,5 +1,4 @@
-﻿// 1. Improved Weapon Cache Manager - Fix the existing one
-using RimWorld;
+﻿using RimWorld;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -11,15 +10,15 @@ namespace AutoArm
     {
         private class WeaponCacheEntry
         {
-            public HashSet<ThingWithComps> Weapons { get; set; }  // Changed from List to HashSet
+            public HashSet<ThingWithComps> Weapons { get; set; }
             public int LastUpdateTick { get; set; }
-            public int LastChangeDetectedTick { get; set; } // Track when weapons actually changed
+            public int LastChangeDetectedTick { get; set; }
             public Dictionary<IntVec3, List<ThingWithComps>> SpatialIndex { get; set; }
-            public Dictionary<ThingWithComps, IntVec3> WeaponToGrid { get; set; } // Track weapon grid positions
+            public Dictionary<ThingWithComps, IntVec3> WeaponToGrid { get; set; }
 
             public WeaponCacheEntry()
             {
-                Weapons = new HashSet<ThingWithComps>();  // Changed to HashSet
+                Weapons = new HashSet<ThingWithComps>();
                 SpatialIndex = new Dictionary<IntVec3, List<ThingWithComps>>();
                 WeaponToGrid = new Dictionary<ThingWithComps, IntVec3>();
                 LastChangeDetectedTick = 0;
@@ -27,8 +26,24 @@ namespace AutoArm
         }
 
         private static Dictionary<Map, WeaponCacheEntry> weaponCache = new Dictionary<Map, WeaponCacheEntry>();
-        private const int CacheLifetime = 10000; // Keep as is
-        private const int GridCellSize = 20;  // Removed GridSize - was unused
+        private const int CacheLifetime = 10000;
+        private const int GridCellSize = 20;
+
+        // NEW: Add configurable limits for performance
+        private const int MaxWeaponsPerCache = 1500; // Increased from 500 for better mod compatibility
+        private const int MaxWeaponsPerRebuild = 100; // Process in chunks during rebuild
+        private const int RebuildDelayTicks = 5; // Spread rebuild over multiple ticks
+
+        // NEW: Track incomplete rebuilds
+        private static Dictionary<Map, RebuildState> rebuildStates = new Dictionary<Map, RebuildState>();
+
+        private class RebuildState
+        {
+            public int ProcessedCount { get; set; }
+            public int LastProcessTick { get; set; }
+            public List<Thing> RemainingWeapons { get; set; }
+            public WeaponCacheEntry PartialCache { get; set; }
+        }
 
         // Add a single weapon to existing cache
         public static void AddWeaponToCache(ThingWithComps weapon)
@@ -38,14 +53,21 @@ namespace AutoArm
 
             var cache = GetOrCreateCache(weapon.Map);
 
-            // Check if already in cache (HashSet makes this O(1))
+            // NEW: Check cache size limit
+            if (cache.Weapons.Count >= MaxWeaponsPerCache)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Cache full ({MaxWeaponsPerCache} weapons), skipping {weapon.Label}");
+                }
+                return;
+            }
+
             if (cache.Weapons.Contains(weapon))
                 return;
 
-            // Add to weapons set
             cache.Weapons.Add(weapon);
 
-            // Add to spatial index
             var gridPos = new IntVec3(weapon.Position.x / GridCellSize, 0, weapon.Position.z / GridCellSize);
             if (!cache.SpatialIndex.ContainsKey(gridPos))
             {
@@ -53,10 +75,7 @@ namespace AutoArm
             }
             cache.SpatialIndex[gridPos].Add(weapon);
 
-            // Track grid position
             cache.WeaponToGrid[weapon] = gridPos;
-
-            // Mark change detected
             cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
 
             if (AutoArmMod.settings?.debugLogging == true)
@@ -76,7 +95,6 @@ namespace AutoArm
 
             if (cache.Weapons.Remove(weapon))
             {
-                // Remove from spatial index using tracked position
                 if (cache.WeaponToGrid.TryGetValue(weapon, out var gridPos))
                 {
                     if (cache.SpatialIndex.TryGetValue(gridPos, out var list))
@@ -90,7 +108,6 @@ namespace AutoArm
                     cache.WeaponToGrid.Remove(weapon);
                 }
 
-                // Mark change detected
                 cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
 
                 if (AutoArmMod.settings?.debugLogging == true)
@@ -106,25 +123,21 @@ namespace AutoArm
             if (weapon?.Map == null || oldPos == newPos)
                 return;
 
-            // Safety check - don't update destroyed or despawned weapons
             if (!weapon.Spawned || weapon.Destroyed)
                 return;
 
             if (!weaponCache.TryGetValue(weapon.Map, out var cache))
                 return;
 
-            // Only update if weapon is in cache
             if (!cache.Weapons.Contains(weapon))
                 return;
 
             var oldGridPos = new IntVec3(oldPos.x / GridCellSize, 0, oldPos.z / GridCellSize);
             var newGridPos = new IntVec3(newPos.x / GridCellSize, 0, newPos.z / GridCellSize);
 
-            // If grid position hasn't changed, nothing to do
             if (oldGridPos == newGridPos)
                 return;
 
-            // Remove from old grid position
             if (cache.SpatialIndex.TryGetValue(oldGridPos, out var oldList))
             {
                 oldList.Remove(weapon);
@@ -134,14 +147,12 @@ namespace AutoArm
                 }
             }
 
-            // Add to new grid position
             if (!cache.SpatialIndex.ContainsKey(newGridPos))
             {
                 cache.SpatialIndex[newGridPos] = new List<ThingWithComps>();
             }
             cache.SpatialIndex[newGridPos].Add(weapon);
 
-            // Update tracked position
             cache.WeaponToGrid[weapon] = newGridPos;
 
             if (AutoArmMod.settings?.debugLogging == true && weapon.def.defName == "Gun_AssaultRifle")
@@ -156,7 +167,6 @@ namespace AutoArm
             var result = new List<ThingWithComps>();
             var maxDistSquared = maxDistance * maxDistance;
 
-            // Calculate grid cells to check
             int minX = (position.x - (int)maxDistance) / GridCellSize;
             int maxX = (position.x + (int)maxDistance) / GridCellSize;
             int minZ = (position.z - (int)maxDistance) / GridCellSize;
@@ -166,7 +176,6 @@ namespace AutoArm
             {
                 for (int z = minZ; z <= maxZ; z++)
                 {
-                    // IMPORTANT: Grid key should just be (x, 0, z), NOT multiplied by GridCellSize
                     var gridKey = new IntVec3(x, 0, z);
                     if (cache.SpatialIndex.TryGetValue(gridKey, out var weapons))
                     {
@@ -181,10 +190,8 @@ namespace AutoArm
                 }
             }
 
-            // Only do debug logging if explicitly looking for assault rifles
             if (AutoArmMod.settings?.debugLogging == true && result.Count == 0)
             {
-                // Check if assault rifles exist but weren't found
                 var assaultRiflesInCache = cache.Weapons.Where(w => w.def.defName == "Gun_AssaultRifle").ToList();
                 if (assaultRiflesInCache.Any())
                 {
@@ -203,11 +210,17 @@ namespace AutoArm
             if (weaponCache.ContainsKey(map))
             {
                 weaponCache.Remove(map);
+            }
 
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Message($"[AutoArm] Invalidated weapon cache for {map}");
-                }
+            // NEW: Also remove rebuild state
+            if (rebuildStates.ContainsKey(map))
+            {
+                rebuildStates.Remove(map);
+            }
+
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message($"[AutoArm] Invalidated weapon cache for {map}");
             }
         }
 
@@ -221,6 +234,7 @@ namespace AutoArm
                 foreach (var map in mapsToRemove)
                 {
                     weaponCache.Remove(map);
+                    rebuildStates.Remove(map); // NEW: Clean rebuild states too
                 }
 
                 if (AutoArmMod.settings?.debugLogging == true)
@@ -234,87 +248,124 @@ namespace AutoArm
         {
             if (!weaponCache.TryGetValue(map, out var cache))
             {
-                // First time - do full rebuild
-                cache = RebuildCache(map);
-                weaponCache[map] = cache;
+                // Check if we're in the middle of a rebuild
+                if (rebuildStates.TryGetValue(map, out var rebuildState))
+                {
+                    // Continue incremental rebuild
+                    if (Find.TickManager.TicksGame - rebuildState.LastProcessTick >= RebuildDelayTicks)
+                    {
+                        ContinueRebuild(map, rebuildState);
+                    }
+                    return rebuildState.PartialCache;
+                }
+                else
+                {
+                    // Start new rebuild
+                    StartRebuild(map);
+                    return weaponCache.TryGetValue(map, out cache) ? cache : new WeaponCacheEntry();
+                }
             }
-            // Removed periodic rebuild - incremental updates handle everything
             return cache;
         }
 
-        private static WeaponCacheEntry RebuildCache(Map map)
+        // NEW: Start incremental rebuild
+        private static void StartRebuild(Map map)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var entry = new WeaponCacheEntry();
-            entry.LastUpdateTick = Find.TickManager.TicksGame;
-            var allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
+            var allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).ToList();
 
-            // Move heavy debug logging outside the main processing
-            bool isDebugging = AutoArmMod.settings?.debugLogging == true;
-            int totalWeaponCount = 0;
-
-            if (isDebugging)
+            if (AutoArmMod.settings?.debugLogging == true)
             {
-                totalWeaponCount = allWeapons.Count();
-                Log.Message($"[AutoArm] Rebuilding weapon cache for {map} - found {totalWeaponCount} total weapons");
+                Log.Message($"[AutoArm] Starting incremental rebuild for {map} - {allWeapons.Count} total weapons");
             }
 
-            // Process ALL weapons - removed the 100 limit
-            int processedCount = 0;
-
-            foreach (var thing in allWeapons)
+            var state = new RebuildState
             {
-                var weapon = thing as ThingWithComps;
-                if (weapon?.def == null)
-                    continue;
+                ProcessedCount = 0,
+                LastProcessTick = Find.TickManager.TicksGame,
+                RemainingWeapons = allWeapons,
+                PartialCache = new WeaponCacheEntry
+                {
+                    LastUpdateTick = Find.TickManager.TicksGame
+                }
+            };
 
-                if (!IsValidWeapon(weapon))
+            // Process first chunk immediately
+            ProcessRebuildChunk(map, state, MaxWeaponsPerRebuild);
+
+            // If we processed everything in one go, finalize immediately
+            if (state.RemainingWeapons.Count == 0)
+            {
+                weaponCache[map] = state.PartialCache;
+                rebuildStates.Remove(map);
+
+                sw.Stop();
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Completed rebuild immediately with {state.PartialCache.Weapons.Count} weapons in {sw.ElapsedMilliseconds}ms");
+                }
+            }
+            else
+            {
+                rebuildStates[map] = state;
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Processed {state.ProcessedCount} weapons, {state.RemainingWeapons.Count} remaining");
+                }
+            }
+        }
+
+        // NEW: Continue incremental rebuild
+        private static void ContinueRebuild(Map map, RebuildState state)
+        {
+            ProcessRebuildChunk(map, state, MaxWeaponsPerRebuild);
+            state.LastProcessTick = Find.TickManager.TicksGame;
+
+            if (state.RemainingWeapons.Count == 0 || state.PartialCache.Weapons.Count >= MaxWeaponsPerCache)
+            {
+                // Rebuild complete or cache full
+                weaponCache[map] = state.PartialCache;
+                rebuildStates.Remove(map);
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] Completed incremental rebuild with {state.PartialCache.Weapons.Count} weapons");
+                }
+            }
+        }
+
+        // NEW: Process a chunk of weapons during rebuild
+        private static void ProcessRebuildChunk(Map map, RebuildState state, int chunkSize)
+        {
+            int processed = 0;
+            var entry = state.PartialCache;
+
+            while (processed < chunkSize && state.RemainingWeapons.Count > 0 && entry.Weapons.Count < MaxWeaponsPerCache)
+            {
+                var thing = state.RemainingWeapons[0];
+                state.RemainingWeapons.RemoveAt(0);
+
+                var weapon = thing as ThingWithComps;
+                if (weapon?.def == null || !IsValidWeapon(weapon))
                     continue;
 
                 entry.Weapons.Add(weapon);
 
-                // Add to spatial index
                 var gridPos = new IntVec3(weapon.Position.x / GridCellSize, 0, weapon.Position.z / GridCellSize);
                 if (!entry.SpatialIndex.ContainsKey(gridPos))
                 {
                     entry.SpatialIndex[gridPos] = new List<ThingWithComps>();
                 }
                 entry.SpatialIndex[gridPos].Add(weapon);
-
-                // Track grid position
                 entry.WeaponToGrid[weapon] = gridPos;
 
-                processedCount++;
+                state.ProcessedCount++;
+                processed++;
             }
-
-            // Only do expensive debug operations after main processing
-            if (isDebugging)
-            {
-                Log.Message($"[AutoArm] Cache rebuilt with {entry.Weapons.Count} valid weapons");
-
-                // Only count assault rifles if really needed
-                if (entry.Weapons.Count < 50) // Only for small caches
-                {
-                    var assaultRifleCount = entry.Weapons.Count(w => w.def.defName == "Gun_AssaultRifle");
-                    if (assaultRifleCount > 0)
-                    {
-                        Log.Message($"[AutoArm] Cache contains {assaultRifleCount} assault rifles");
-                    }
-                }
-            }
-
-            sw.Stop();
-            if (sw.ElapsedMilliseconds > 10)
-            {
-                Log.Warning($"[AutoArm] Cache rebuild took {sw.ElapsedMilliseconds}ms for {entry.Weapons.Count} weapons");
-            }
-
-            return entry;
         }
 
         private static bool IsValidWeapon(ThingWithComps weapon)
         {
-            // Quick checks first
             if (!weapon.def.IsWeapon || weapon.def.IsApparel)
                 return false;
 
