@@ -101,61 +101,98 @@ namespace AutoArm
             {
                 Log.Message("[AutoArm] Starting think tree injection...");
             }
+
             var humanlikeThinkTree = DefDatabase<ThinkTreeDef>.GetNamed("Humanlike");
             if (humanlikeThinkTree?.thinkRoot == null)
             {
                 Log.Error("[AutoArm] Could not find Humanlike think tree!");
                 return;
             }
-            // Find the main priority sorter
+
+            // Let's log the entire think tree structure before injection
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message("[AutoArm] === THINK TREE STRUCTURE BEFORE INJECTION ===");
+                LogThinkTreeStructure(humanlikeThinkTree.thinkRoot, 0);
+            }
+
+            // Find the main priority sorter (not root, but the one with actual job nodes)
             ThinkNode_PrioritySorter mainSorter = null;
             FindMainPrioritySorter(humanlikeThinkTree.thinkRoot, ref mainSorter);
+
             if (mainSorter == null)
             {
                 Log.Error("[AutoArm] Failed to find main priority sorter in think tree!");
                 return;
             }
-            // Create properly structured weapon nodes
-            // 1. Emergency weapon node for unarmed pawns (high priority)
-            var emergencyPriorityNode = new ThinkNode_PriorityAutoArm();
-            emergencyPriorityNode.SetPriority(7f); // Use SetPriority method
+
+            // Find where critical tasks end and normal tasks begin
+            int criticalIndex = 0;
+            for (int i = 0; i < mainSorter.subNodes.Count; i++)
+            {
+                var node = mainSorter.subNodes[i];
+                var nodeName = node.GetType().Name;
+
+                // These are typically critical and should stay higher priority
+                if (nodeName.Contains("SelfDefense") ||
+                    nodeName.Contains("AttackMelee") ||
+                    nodeName.Contains("Fire") ||
+                    nodeName.Contains("Flee") ||
+                    nodeName.Contains("Medical"))
+                {
+                    criticalIndex = i + 1;
+                }
+            }
+
+            // Insert right after critical tasks
+            int insertIndex = Math.Min(criticalIndex + 1, mainSorter.subNodes.Count);
+
+            // Create nodes
             var emergencyWeaponNode = new ThinkNode_ConditionalUnarmed();
             var emergencyJobGiver = new JobGiver_PickUpBetterWeapon_Emergency();
             emergencyWeaponNode.subNodes = new List<ThinkNode> { emergencyJobGiver };
-            emergencyPriorityNode.subNodes = new List<ThinkNode> { emergencyWeaponNode };
 
-            // 2. Normal weapon upgrade node (lower priority)
-            var upgradePriorityNode = new ThinkNode_PriorityAutoArm();
-            upgradePriorityNode.SetPriority(5.5f); // Use SetPriority method
+            mainSorter.subNodes.Insert(insertIndex, emergencyWeaponNode);
+
+            // Normal upgrades and sidearms go later
             var weaponUpgradeNode = new ThinkNode_ConditionalWeaponsInOutfit();
             var upgradeJobGiver = new JobGiver_PickUpBetterWeapon();
             weaponUpgradeNode.subNodes = new List<ThinkNode> { upgradeJobGiver };
-            upgradePriorityNode.subNodes = new List<ThinkNode> { weaponUpgradeNode };
 
-            // 3. Sidearm node (even lower priority)
-            var sidearmPriorityNode = new ThinkNode_PriorityAutoArm();
-            sidearmPriorityNode.SetPriority(5f); // Lower than weapon upgrades
-            var sidearmConditionalNode = new ThinkNode_ConditionalShouldCheckSidearms();
-            var sidearmJobGiver = new JobGiver_PickUpSidearm();
-            sidearmConditionalNode.subNodes = new List<ThinkNode> { sidearmJobGiver };
-            sidearmPriorityNode.subNodes = new List<ThinkNode> { sidearmConditionalNode };
+            mainSorter.subNodes.Insert(insertIndex + 2, weaponUpgradeNode);
 
-            // Insert nodes at appropriate positions
-            // Emergency node goes early (high priority)
-            int emergencyIndex = Math.Min(3, mainSorter.subNodes.Count);
-            mainSorter.subNodes.Insert(emergencyIndex, emergencyPriorityNode);
-
-            // Upgrade and sidearm nodes go near the end (before last few nodes)
-            int upgradeIndex = Math.Max(emergencyIndex + 1, mainSorter.subNodes.Count - 2);
-            mainSorter.subNodes.Insert(upgradeIndex, upgradePriorityNode);
-
-            int sidearmIndex = upgradeIndex + 1;
-            mainSorter.subNodes.Insert(sidearmIndex, sidearmPriorityNode);
-
-            // Only log if debug is enabled
             if (AutoArmMod.settings?.debugLogging == true)
             {
-                Log.Message($"[AutoArm] Injected emergency weapon check at index {emergencyIndex}, upgrade check at index {upgradeIndex}, and sidearm check at index {sidearmIndex}");
+                Log.Message($"[AutoArm] Injected emergency weapon check at index {insertIndex} (after critical tasks)");
+            }
+
+            // After injection, log again
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                Log.Message("[AutoArm] === THINK TREE STRUCTURE AFTER INJECTION ===");
+                LogThinkTreeStructure(humanlikeThinkTree.thinkRoot, 0);
+            }
+        }
+
+        private static void LogThinkTreeStructure(ThinkNode node, int depth)
+        {
+            string indent = new string(' ', depth * 2);
+            string nodeInfo = $"{indent}{node.GetType().Name}";
+
+            if (node is ThinkNode_JobGiver jobGiver)
+                nodeInfo += $" [{jobGiver.GetType().Name}]";
+
+            if (node is ThinkNode_PrioritySorter sorter)
+                nodeInfo += $" (priority)";
+
+            Log.Message(nodeInfo);
+
+            if (node.subNodes != null)
+            {
+                foreach (var subNode in node.subNodes)
+                {
+                    LogThinkTreeStructure(subNode, depth + 1);
+                }
             }
         }
 
@@ -177,36 +214,51 @@ namespace AutoArm
             return false;
         }
 
-        private static void FindMainPrioritySorter(ThinkNode node, ref ThinkNode_PrioritySorter result, int depth = 0)
+        private static void FindMainPrioritySorter(ThinkNode node, ref ThinkNode_PrioritySorter result, int depth = 0, List<string> path = null)
         {
-            if (depth > 10) return;
+            if (depth > 20) return;
+
+            if (path == null) path = new List<string>();
+            path.Add(node.GetType().Name);
+
+            // Skip nodes that are inside special conditions we don't want
+            bool skipThisPath = path.Any(p =>
+                p.Contains("JoinVoluntarilyJoinableLord") ||
+                p.Contains("ConditionalHasLordDuty") ||
+                p.Contains("ConditionalPawnKind") ||
+                p.Contains("ConditionalPrisoner") ||
+                p.Contains("ConditionalGuest"));
+
+            if (skipThisPath)
+            {
+                path.RemoveAt(path.Count - 1);
+                return;
+            }
 
             if (node is ThinkNode_PrioritySorter sorter && sorter.subNodes != null)
             {
-                // Look for sorters with many sub-nodes that contain recognizable nodes
-                if (sorter.subNodes.Count >= 5)
+                // Look for the main colonist priority sorter
+                if (sorter.subNodes.Count >= 10)
                 {
-                    bool hasRecognizableNodes = sorter.subNodes.Any(n =>
-                        IsWorkNode(n) ||
-                        n.GetType().Name.Contains("Satisfy") ||
-                        n.GetType().Name.Contains("JobGiver") ||
-                        n.GetType().Name.Contains("Priority"));
+                    // Check if this contains the key colonist behaviors
+                    bool hasGetFood = sorter.subNodes.Any(n => n.GetType().Name == "JobGiver_GetFood");
+                    bool hasGetRest = sorter.subNodes.Any(n => n.GetType().Name == "JobGiver_GetRest");
+                    bool hasWork = sorter.subNodes.Any(n => n.GetType().Name == "JobGiver_Work");
 
-                    if (hasRecognizableNodes)
+                    // Look for the one that's under SubtreesByTag
+                    bool isUnderSubtreesByTag = path.Contains("ThinkNode_SubtreesByTag");
+
+                    if (hasGetFood && hasGetRest && hasWork && isUnderSubtreesByTag)
                     {
                         result = sorter;
                         if (AutoArmMod.settings?.debugLogging == true)
                         {
-                            Log.Message($"[AutoArm] Found priority sorter at depth {depth} with {sorter.subNodes.Count} nodes");
+                            Log.Message($"[AutoArm] Found main colonist priority sorter at depth {depth} with {sorter.subNodes.Count} nodes");
+                            Log.Message($"[AutoArm] Path: {string.Join(" -> ", path)}");
                         }
+                        path.RemoveAt(path.Count - 1);
                         return;
                     }
-                }
-
-                // Keep the best candidate
-                if (result == null || sorter.subNodes.Count > result.subNodes.Count)
-                {
-                    result = sorter;
                 }
             }
 
@@ -215,9 +267,16 @@ namespace AutoArm
             {
                 foreach (var subNode in node.subNodes)
                 {
-                    FindMainPrioritySorter(subNode, ref result, depth + 1);
+                    FindMainPrioritySorter(subNode, ref result, depth + 1, new List<string>(path));
+                    if (result != null)
+                    {
+                        path.RemoveAt(path.Count - 1);
+                        return;
+                    }
                 }
             }
+
+            path.RemoveAt(path.Count - 1);
         }
 
         private static bool ValidateThinkTreeInjection()
@@ -379,9 +438,10 @@ namespace AutoArm
 
             if (job != null)
             {
-                // Emergency jobs should re-evaluate even more frequently
-                job.expiryInterval = 100; // Re-check every ~1.7 seconds
-                job.checkOverrideOnExpire = true;
+                // Don't set expiry interval - let the pawn complete the job!
+                // Only set expiry for jobs that might become invalid
+                job.expiryInterval = -1; // Never expire
+                job.checkOverrideOnExpire = false;
             }
             else if (AutoArmMod.settings?.debugLogging == true)
             {
@@ -402,17 +462,12 @@ namespace AutoArm
 
                 var job = SimpleSidearmsCompat.TryGetSidearmUpgradeJob(pawn);
 
-                if (job != null)
-                {
-                    // Make sidearm jobs re-evaluate frequently too
-                    job.expiryInterval = 250; // Re-check every ~4 seconds
-                    job.checkOverrideOnExpire = true;
-
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        Log.Message($"[AutoArm] {pawn.Name} got sidearm job with fast expiry");
-                    }
-                }
+                // Don't set expiry - let them complete the job!
+                // if (job != null)
+                // {
+                //     job.expiryInterval = 250;
+                //     job.checkOverrideOnExpire = true;
+                // }
 
                 return job;
             }

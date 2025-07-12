@@ -391,14 +391,19 @@ namespace AutoArm
     public static class Pawn_InventoryTracker_TryAddItemNotForSale_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(bool __result, Thing item, Pawn ___pawn)
+        public static void Postfix(Thing item, Pawn ___pawn)
         {
-            // Check if successfully added a weapon to inventory
-            if (!__result || item == null || ___pawn == null || !___pawn.IsColonist)
+            // Remove the bool __result parameter since TryAddItemNotForSale is void
+            if (item == null || ___pawn == null || !___pawn.IsColonist)
                 return;
 
             var weapon = item as ThingWithComps;
             if (weapon == null || !weapon.def.IsWeapon)
+                return;
+
+            // Since we can't check if the add was successful via return value,
+            // check if the item is now in the inventory
+            if (!___pawn.inventory.innerContainer.Contains(item))
                 return;
 
             // Check if this was from a sidearm job

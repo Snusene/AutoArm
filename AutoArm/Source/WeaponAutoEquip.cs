@@ -343,6 +343,12 @@ namespace AutoArm
 
         protected override Job TryGiveJob(Pawn pawn)
         {
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                var stackTrace = new System.Diagnostics.StackTrace();
+                var callingMethod = stackTrace.GetFrame(1)?.GetMethod()?.Name;
+                Log.Message($"[AutoArm DEBUG] TryGiveJob called from: {callingMethod}");
+            }
             // Add immediate debug logging
             if (AutoArmMod.settings?.debugLogging == true)
             {
@@ -424,19 +430,6 @@ namespace AutoArm
 
             var job = FindBetterWeaponJob(pawn);
 
-            if (job == null && AutoArmMod.settings?.debugLogging == true)
-            {
-                // Check what weapons are available
-                var nearbyWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, MaxSearchDistance);
-                Log.Message($"[AutoArm DEBUG] {pawn.Name} at {pawn.Position} - {nearbyWeapons.Count()} weapons in range");
-
-                var assaultRifles = nearbyWeapons.Where(w => w.def.defName == "Gun_AssaultRifle").Count();
-                if (assaultRifles > 0)
-                {
-                    Log.Message($"[AutoArm DEBUG] {assaultRifles} assault rifles available but not chosen!");
-                }
-            }
-
             // Track results
             if (job == null)
             {
@@ -446,9 +439,53 @@ namespace AutoArm
             {
                 lastSuccessfulSearchTick.Remove(pawn); // Reset on success
 
-                // ADD THIS: Make job re-evaluate frequently to interrupt low-priority tasks
-                job.expiryInterval = 200; // Re-check every ~3 seconds
-                job.checkOverrideOnExpire = true; // Force re-evaluation when expired
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: TryGiveJob returning job to equip {job.targetA.Thing?.Label}");
+                    Log.Message($"[AutoArm DEBUG] {pawn.Name}: Current job is {pawn.CurJob?.def?.defName ?? "null"} (playerForced: {pawn.CurJob?.playerForced})");
+
+                    // Check think tree position
+                    var thinkNode = pawn.thinker?.MainThinkNodeRoot;
+                    if (thinkNode != null)
+                    {
+                        Log.Message($"[AutoArm DEBUG] {pawn.Name}: Think tree root type: {thinkNode.GetType().Name}");
+                    }
+                }
+
+                // OPTION 1: Selective expiry based on weapon quality
+                if (currentWeapon == null || !currentWeapon.def.IsWeapon)
+                {
+                    // Unarmed - don't set expiry, let them get weapon ASAP
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm DEBUG] {pawn.Name}: Unarmed - no expiry set");
+                    }
+                }
+                else if (job.targetA.Thing is ThingWithComps newWeapon)
+                {
+                    float currentScore = GetWeaponScore(pawn, currentWeapon);
+                    float newScore = GetWeaponScore(pawn, newWeapon);
+                    float improvement = newScore / currentScore;
+
+                    if (improvement >= 1.15f) // 15%+ better
+                    {
+                        // Significant upgrade - set long expiry to eventually interrupt low-priority tasks
+                        job.expiryInterval = 2500; // ~40 seconds
+                        job.checkOverrideOnExpire = true;
+
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            Log.Message($"[AutoArm DEBUG] {pawn.Name}: Set 40s expiry for {(improvement - 1f) * 100f:F0}% weapon upgrade");
+                        }
+                    }
+                    else
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            Log.Message($"[AutoArm DEBUG] {pawn.Name}: Minor upgrade ({(improvement - 1f) * 100f:F0}%) - no expiry");
+                        }
+                    }
+                }
             }
 
             return job;

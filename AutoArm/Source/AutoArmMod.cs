@@ -23,7 +23,7 @@ namespace AutoArm
 
         // Performance thresholds
         private const float THRESHOLD_MIN = 1.01f;
-        private const float THRESHOLD_MAX = 2.0f;
+        private const float THRESHOLD_MAX = 1.50f; // Changed from 2.0f to 1.50f
         private const int CHILD_AGE_MIN = 3;
         private const int CHILD_AGE_MAX = 18;
 
@@ -40,23 +40,6 @@ namespace AutoArm
             Compatibility,
             Advanced,
             Debug
-        }
-
-        // Preset configurations
-        private enum PerformancePreset
-        {
-            Responsive,
-            Balanced,
-            Performance
-        }
-
-        // Performance impact levels
-        private enum PerformanceImpact
-        {
-            None,
-            Low,
-            Medium,
-            High
         }
 
         public AutoArmMod(ModContentPack content) : base(content)
@@ -100,17 +83,11 @@ namespace AutoArm
             // Reset button in top right
             DrawResetButton(inRect);
 
-            // Title
+            // Title - Just "Settings" without version
             Text.Font = GameFont.Medium;
-            listing.Label("AutoArm Settings v1.0");
+            listing.Label("Settings");
             Text.Font = GameFont.Small;
 
-            // Performance impact
-            DrawPerformanceImpact(listing, "Overall Performance Impact", CalculateOverallImpact());
-            listing.Gap(TINY_GAP);
-
-            // Preset buttons
-            DrawPresetButtons(listing);
             listing.Gap(SMALL_GAP);
         }
 
@@ -205,29 +182,35 @@ namespace AutoArm
             innerListing.End();
         }
 
-        // Helper method for consistent checkbox drawing
+        // Helper method for consistent checkbox drawing - UPDATED for left alignment
         private void DrawCheckbox(Listing_Standard listing, string label, ref bool value, string tooltip = null, float indent = 0f)
         {
-            Rect labelRect = listing.GetRect(LINE_HEIGHT);
+            Rect fullRect = listing.GetRect(LINE_HEIGHT);
+            Rect labelRect = fullRect;
+
+            // Put checkbox on the LEFT of the text
             Rect checkRect = new Rect(
-                labelRect.x + LABEL_WIDTH - indent,
-                labelRect.y + (LINE_HEIGHT - CHECKBOX_SIZE) / 2f,
+                fullRect.x + indent,
+                fullRect.y + (LINE_HEIGHT - CHECKBOX_SIZE) / 2f,
                 CHECKBOX_SIZE,
                 CHECKBOX_SIZE
             );
 
-            // Draw label with current value
-            string displayLabel = tooltip != null ? $"{label} ({(value ? "Enabled" : "Disabled")})" : label;
-            Widgets.Label(labelRect, displayLabel);
+            // Adjust label rect to start after checkbox
+            labelRect.x += CHECKBOX_SIZE + 5f + indent;
+            labelRect.width -= CHECKBOX_SIZE + 5f + indent;
 
-            // Draw checkbox
+            // Draw checkbox first
             bool oldValue = value;
             Widgets.Checkbox(checkRect.x, checkRect.y, ref value, CHECKBOX_SIZE);
 
-            // Show tooltip
-            if (tooltip != null && Mouse.IsOver(labelRect.ExpandedBy(10f)))
+            // Draw label
+            Widgets.Label(labelRect, label);
+
+            // Show tooltip on entire row
+            if (tooltip != null && Mouse.IsOver(fullRect))
             {
-                TooltipHandler.TipRegion(labelRect, tooltip);
+                TooltipHandler.TipRegion(fullRect, tooltip);
             }
 
             // Log setting change if debug mode
@@ -270,13 +253,6 @@ namespace AutoArm
 
         private void DrawGeneralTab(Listing_Standard listing)
         {
-            // Status indicator
-            using (new ColorBlock(settings.modEnabled ? Color.green : Color.red))
-            {
-                listing.Label($"Mod Status: {(settings.modEnabled ? "ACTIVE" : "DISABLED")}");
-            }
-            listing.Gap(SMALL_GAP);
-
             // Main settings
             DrawCheckbox(listing, "Enable AutoArm", ref settings.modEnabled,
                 "When enabled, colonists will automatically equip better weapons based on their outfit policy.");
@@ -287,33 +263,12 @@ namespace AutoArm
                 "Shows blue notification messages when colonists equip or drop weapons.");
 
             listing.Gap(SECTION_GAP);
-
-            // Colony info
-            DrawColonyInfo(listing);
-        }
-
-        private void DrawColonyInfo(Listing_Standard listing)
-        {
-            if (Current.Game?.CurrentMap == null) return;
-
-            Text.Font = GameFont.Tiny;
-            using (new ColorBlock(Color.gray))
-            {
-                int colonistCount = Find.CurrentMap.mapPawns.FreeColonistsCount;
-                listing.Label($"Current colony size: {colonistCount} colonists");
-
-                string recommended = colonistCount < 10 ? "Small Colony" :
-                                   colonistCount < 20 ? "Large Colony" :
-                                   "Heavily Modded";
-                listing.Label($"Recommended preset: {recommended}");
-            }
-            Text.Font = GameFont.Small;
         }
 
         private void DrawCompatibilityTab(Listing_Standard listing)
         {
             Text.Font = GameFont.Medium;
-            listing.Label("Detected Mods");
+            listing.Label("Compatibility Patches"); // Changed from "Detected Mods"
             Text.Font = GameFont.Small;
             listing.Gap(SMALL_GAP);
 
@@ -393,7 +348,7 @@ namespace AutoArm
             Text.Font = GameFont.Small;
             listing.Gap(SMALL_GAP);
 
-            // Weapon upgrade threshold
+            // Weapon upgrade threshold - Updated to 150% max
             DrawSlider(listing, "Weapon upgrade threshold", ref settings.weaponUpgradeThreshold,
                 THRESHOLD_MIN, THRESHOLD_MAX, "P0",
                 "How much better a weapon needs to be before colonists will switch. Lower values mean more frequent switching.");
@@ -437,7 +392,7 @@ namespace AutoArm
                 {
                     using (new ColorBlock(new Color(1f, 0.8f, 0.4f)))
                     {
-                        listing.Label("⚠ Very young children with weapons may be controversial");
+                        listing.Label("⚠ What could go wrong?");
                     }
                 }
             }
@@ -467,11 +422,6 @@ namespace AutoArm
 
             DrawCheckbox(listing, "Enable debug logging", ref settings.debugLogging,
                 "Outputs detailed information to the debug log for troubleshooting.");
-
-            if (settings.debugLogging)
-            {
-                DrawPerformanceImpact(listing, "Debug Logging Impact", PerformanceImpact.High);
-            }
 
             // Debug tools button
             if (Current.Game?.CurrentMap != null)
@@ -512,110 +462,6 @@ namespace AutoArm
             {
                 debugWindow.SetFocus();
             }
-        }
-
-        private void DrawPerformanceImpact(Listing_Standard listing, string label, PerformanceImpact impact)
-        {
-            Rect rect = listing.GetRect(22f);
-            Color impactColor;
-            string impactText;
-
-            switch (impact)
-            {
-                case PerformanceImpact.None:
-                    impactColor = Color.green;
-                    impactText = "No impact";
-                    break;
-                case PerformanceImpact.Low:
-                    impactColor = new Color(0.7f, 1f, 0.7f);
-                    impactText = "Low impact";
-                    break;
-                case PerformanceImpact.Medium:
-                    impactColor = Color.yellow;
-                    impactText = "Medium impact";
-                    break;
-                case PerformanceImpact.High:
-                    impactColor = new Color(1f, 0.6f, 0.6f);
-                    impactText = "High impact";
-                    break;
-                default:
-                    impactColor = Color.white;
-                    impactText = "Unknown";
-                    break;
-            }
-
-            using (new ColorBlock(impactColor))
-            {
-                Widgets.Label(rect, $"{label}: {impactText}");
-            }
-        }
-
-        private void DrawPresetButtons(Listing_Standard listing)
-        {
-            Rect rect = listing.GetRect(35f);
-            float buttonWidth = rect.width / 3f - 5f;
-
-            if (Widgets.ButtonText(new Rect(rect.x, rect.y, buttonWidth, 30f), "Small Colony"))
-            {
-                ApplyPreset(PerformancePreset.Responsive);
-                Messages.Message("Applied Small Colony preset - Most responsive settings", MessageTypeDefOf.NeutralEvent, false);
-            }
-
-            if (Widgets.ButtonText(new Rect(rect.x + buttonWidth + 5f, rect.y, buttonWidth, 30f), "Large Colony"))
-            {
-                ApplyPreset(PerformancePreset.Balanced);
-                Messages.Message("Applied Large Colony preset - Balanced for 20+ colonists", MessageTypeDefOf.NeutralEvent, false);
-            }
-
-            if (Widgets.ButtonText(new Rect(rect.x + (buttonWidth + 5f) * 2, rect.y, buttonWidth, 30f), "Heavily Modded"))
-            {
-                ApplyPreset(PerformancePreset.Performance);
-                Messages.Message("Applied Heavily Modded preset - Optimized for performance", MessageTypeDefOf.NeutralEvent, false);
-            }
-        }
-
-        private void ApplyPreset(PerformancePreset preset)
-        {
-            switch (preset)
-            {
-                case PerformancePreset.Responsive:
-                    settings.weaponUpgradeThreshold = 1.05f;
-                    settings.autoEquipSidearms = true;
-                    settings.allowSidearmUpgrades = true;
-                    settings.checkCEAmmo = true;
-                    break;
-
-                case PerformancePreset.Balanced:
-                    settings.weaponUpgradeThreshold = 1.10f;
-                    settings.autoEquipSidearms = true;
-                    settings.allowSidearmUpgrades = false;
-                    settings.checkCEAmmo = true;
-                    break;
-
-                case PerformancePreset.Performance:
-                    settings.weaponUpgradeThreshold = 1.15f;
-                    settings.autoEquipSidearms = false;
-                    settings.allowSidearmUpgrades = false;
-                    settings.checkCEAmmo = false;
-                    break;
-            }
-        }
-
-        private PerformanceImpact CalculateOverallImpact()
-        {
-            int score = 0;
-
-            if (settings.debugLogging) score += 3;
-            if (settings.autoEquipSidearms) score += 2;
-            if (settings.allowSidearmUpgrades) score += 2;
-            if (settings.checkCEAmmo) score += 1;
-            if (settings.weaponUpgradeThreshold < 1.10f) score += 1;
-            if (settings.showNotifications) score += 1;
-
-            if (score <= 2) return PerformanceImpact.None;
-            if (score <= 5) return PerformanceImpact.Low;
-            if (score <= 8) return PerformanceImpact.Medium;
-            return PerformanceImpact.High;
         }
 
         public override void WriteSettings()

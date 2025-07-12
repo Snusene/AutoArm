@@ -42,6 +42,28 @@ namespace AutoArm
             if (__instance == null)
                 return;
 
+            // Skip if mod is disabled
+            if (AutoArmMod.settings?.modEnabled != true)
+                return;
+
+            // Basic validation that applies to both modes
+            if (!__instance.Spawned || __instance.Map == null || __instance.Dead ||
+                __instance.Destroyed || !__instance.IsColonist || __instance.Drafted)
+                return;
+
+            // IMPORTANT: Check if think tree injection is working
+            if (!AutoArmMod.settings.thinkTreeInjectionFailed)
+            {
+                // Think tree is working - only do minimal outfit policy checks
+                if (__instance.IsHashIntervalTick(500)) // Check every ~8 seconds
+                {
+                    CheckOutfitPolicyOnly(__instance);
+                }
+                return; // Exit early - let think tree handle weapon upgrades
+            }
+
+            // ===== FALLBACK MODE BELOW (only runs when think tree injection failed) =====
+
             if (Find.TickManager.TicksGame != lastTickProcessed)
             {
                 checksThisTick = 0;
@@ -53,33 +75,11 @@ namespace AutoArm
             if (checksThisTick >= maxChecks)
                 return;
 
-            // Skip if mod is disabled
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-
-            // EARLY EXIT: Check if pawn is actually spawned
-            if (!__instance.Spawned || __instance.Map == null)
-                return;
-
-            // Skip dead or destroyed pawns
-            if (__instance.Dead || __instance.Destroyed)
-                return;
-
-            // Skip if in container (cryptosleep, transport pod, etc)
-            if (__instance.InContainerEnclosed)
-                return;
-
-            // Skip if in caravan or world pawn
-            if (__instance.IsCaravanMember() || __instance.IsWorldPawn())
-                return;
-
-            // Only check colonists
-            if (!__instance.IsColonist || __instance.Downed ||
-                __instance.InBed() || __instance.WorkTagIsDisabled(WorkTags.Violent))
-                return;
-
-            // Skip drafted pawns
-            if (__instance.Drafted)
+            // Additional validation for fallback mode
+            if (__instance.Downed || __instance.InBed() ||
+                __instance.WorkTagIsDisabled(WorkTags.Violent) ||
+                __instance.InContainerEnclosed ||
+                __instance.IsCaravanMember() || __instance.IsWorldPawn())
                 return;
 
             // Check equipment with null safety
@@ -127,6 +127,44 @@ namespace AutoArm
                 {
                     checksThisTick++;
                     CheckSidearmUpgrade(__instance);
+                }
+            }
+        }
+
+        // New minimal method for when think tree is working
+        private static void CheckOutfitPolicyOnly(Pawn pawn)
+        {
+            // Only check if current weapon violates outfit policy
+            if (pawn.equipment?.Primary == null || pawn.jobs == null)
+                return;
+
+            var currentWeapon = pawn.equipment.Primary;
+
+            // Make sure it's actually a weapon
+            if (!currentWeapon.def.IsWeapon)
+                return;
+
+            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+            if (filter != null && !filter.Allows(currentWeapon.def))
+            {
+                // Weapon is now disallowed - drop it
+                ForcedWeaponTracker.ClearForced(pawn);
+
+                var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, currentWeapon);
+                pawn.jobs.StartJob(dropJob, JobCondition.InterruptForced);
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] {pawn.Name}: Dropping {currentWeapon.Label} - no longer allowed by outfit");
+                }
+
+                if (AutoArmMod.settings?.showNotifications == true &&
+                    PawnUtility.ShouldSendNotificationAbout(pawn))
+                {
+                    Messages.Message("AutoArm_DroppingDisallowed".Translate(
+                        pawn.LabelShort.CapitalizeFirst(),
+                        currentWeapon.Label
+                    ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
                 }
             }
         }
