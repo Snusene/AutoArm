@@ -307,7 +307,7 @@ namespace AutoArm.Testing
 
             if (pistolDef != null && rifleDef != null)
             {
-                // Create current weapon
+                // Create current weapon WITHOUT spawning it on the map
                 currentWeapon = ThingMaker.MakeThing(pistolDef) as ThingWithComps;
                 if (currentWeapon != null)
                 {
@@ -316,20 +316,31 @@ namespace AutoArm.Testing
                     {
                         compQuality.SetQuality(QualityCategory.Poor, ArtGenerationContext.Colony);
                     }
+
+                    // Directly add to equipment without spawning
                     testPawn.equipment.AddEquipment(currentWeapon);
                     Log.Message($"[TEST] Equipped pawn with {currentWeapon.Label}");
                 }
 
-                // Create better weapon on ground
+                // Create better weapon on ground - this one should be spawned
                 var weaponPos = testPawn.Position + new IntVec3(3, 0, 0);
                 if (!weaponPos.InBounds(map) || !weaponPos.Standable(map))
                 {
                     weaponPos = testPawn.Position + new IntVec3(0, 0, 3);
                 }
 
-                betterWeapon = TestHelpers.CreateWeapon(map, rifleDef, weaponPos, QualityCategory.Good);
+                // Create and spawn the better weapon
+                betterWeapon = ThingMaker.MakeThing(rifleDef) as ThingWithComps;
                 if (betterWeapon != null)
                 {
+                    var compQuality = betterWeapon.TryGetComp<CompQuality>();
+                    if (compQuality != null)
+                    {
+                        compQuality.SetQuality(QualityCategory.Good, ArtGenerationContext.Colony);
+                    }
+
+                    // Spawn it properly
+                    GenSpawn.Spawn(betterWeapon, weaponPos, map);
                     betterWeapon.SetForbidden(false, false);
 
                     // Force outfit to allow both weapon types
@@ -349,6 +360,17 @@ namespace AutoArm.Testing
                     }
 
                     Log.Message($"[TEST] Created {betterWeapon.Label} at {betterWeapon.Position}");
+
+                    // IMPORTANT: Force the weapon cache to rebuild after creating test weapons
+                    ImprovedWeaponCacheManager.InvalidateCache(map);
+
+                    // Log what's in the cache now
+                    var nearbyWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(map, testPawn.Position, 50f);
+                    Log.Message($"[TEST] Weapons in cache after rebuild: {nearbyWeapons.Count()}");
+                    foreach (var w in nearbyWeapons)
+                    {
+                        Log.Message($"[TEST] - {w.Label} at {w.Position}, destroyed: {w.Destroyed}, spawned: {w.Spawned}");
+                    }
                 }
             }
         }

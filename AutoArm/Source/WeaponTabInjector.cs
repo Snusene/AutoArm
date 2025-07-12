@@ -30,13 +30,13 @@ namespace AutoArm
             {
                 apparel.childCategories.Add(weapons);
                 weapons.parent = apparel;
-                Log.Message("<color=#4287f5>[AutoArm]</color> Weapons moved under Apparel category.");
+                Log.Message("<color=#4287f5>[AutoArm]</color> Weapons moved under Apparel category");
             }
 
             // Report weapon counts
             int rangedCount = WeaponThingFilterUtility.RangedWeapons.Count;
             int meleeCount = WeaponThingFilterUtility.MeleeWeapons.Count;
-            Log.Message($"<color=#4287f5>[AutoArm]</color> Found {rangedCount} ranged and {meleeCount} melee weapon definitions.");
+            Log.Message($"<color=#4287f5>[AutoArm]</color> Found {rangedCount} ranged and {meleeCount} melee weapon definitions");
         }
     }
 

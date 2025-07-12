@@ -82,6 +82,10 @@ namespace AutoArm
             JobDefOf.GotoWander
         };
 
+        // Storage type caching
+        private static readonly HashSet<Type> knownStorageTypes = new HashSet<Type>();
+        private static readonly HashSet<Type> knownNonStorageTypes = new HashSet<Type>();
+
         // Existing methods
         public static bool IsCriticalJob(Pawn pawn, bool hasNoSidearms = false)
         {
@@ -267,6 +271,96 @@ namespace AutoArm
             return true;
         }
 
+        // Storage container helper method
+        // Replace the IsStorageContainer method with this version:
+        private static bool IsStorageContainer(IThingHolder holder)
+        {
+            if (holder == null) return false;
+
+            var holderType = holder.GetType();
+
+            // Check cache first
+            if (knownStorageTypes.Contains(holderType))
+                return true;
+            if (knownNonStorageTypes.Contains(holderType))
+                return false;
+
+            // Check if it's a Building with storage
+            if (holder is Building building)
+            {
+                // Check if it has storage settings or a storage group
+                if (building.def.building?.fixedStorageSettings != null || // Vanilla storage
+                    building.GetSlotGroup() != null) // Has storage slots
+                {
+                    knownStorageTypes.Add(holderType);
+                    return true;
+                }
+
+                // Check for shelves specifically
+                if (building.def.thingClass?.Name == "Building_Storage" ||
+                    building.def.defName.ToLower().Contains("shelf") ||
+                    building.def.defName.ToLower().Contains("rack"))
+                {
+                    knownStorageTypes.Add(holderType);
+                    return true;
+                }
+
+                // Check for deep storage comp by name (mod compatibility without reference)
+                var comps = building.AllComps;
+                if (comps != null)
+                {
+                    foreach (var comp in comps)
+                    {
+                        if (comp != null && comp.GetType().Name == "CompDeepStorage")
+                        {
+                            knownStorageTypes.Add(holderType);
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // Check if it's a vanilla storage zone/stockpile
+            if (holder is Zone_Stockpile)
+            {
+                knownStorageTypes.Add(holderType);
+                return true;
+            }
+
+            // For shelves and other vanilla storage, check the base type
+            var baseType = holderType.BaseType;
+            while (baseType != null && baseType != typeof(object))
+            {
+                if (baseType.Name == "Building_Storage")
+                {
+                    knownStorageTypes.Add(holderType);
+                    return true;
+                }
+                baseType = baseType.BaseType;
+            }
+
+            // Fallback to name checking (only once per type)
+            var holderName = holderType.Name.ToLower();
+            var holderNamespace = holderType.Namespace?.ToLower() ?? "";
+
+            bool isStorage = holderName.Contains("storage") ||
+                             holderName.Contains("rack") ||
+                             holderName.Contains("locker") ||
+                             holderName.Contains("cabinet") ||
+                             holderName.Contains("armory") ||
+                             holderName.Contains("shelf") ||
+                             holderNamespace.Contains("storage") ||
+                             holderNamespace.Contains("weaponstorage");
+
+            // Cache the result
+            if (isStorage)
+                knownStorageTypes.Add(holderType);
+            else
+                knownNonStorageTypes.Add(holderType);
+
+            return isStorage;
+        }
+
         // NEW: Weapon validation with detailed reason
         public static bool IsValidWeaponCandidate(ThingWithComps weapon, Pawn pawn, out string reason)
         {
@@ -383,19 +477,51 @@ namespace AutoArm
                 return false;
             }
 
-            // Parent holder check
-            if (weapon.ParentHolder is Pawn_EquipmentTracker equipTracker)
+            // Parent holder check with storage compatibility
+            if (weapon.ParentHolder != null)
             {
-                // This weapon is equipped by someone
-                var equipperPawn = equipTracker.pawn;
-                if (equipperPawn != null && equipperPawn != pawn)
-                    return false;
-            }
+                // Debug log what the parent holder actually is
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    Log.Message($"[AutoArm] {weapon.Label} parent holder type: {weapon.ParentHolder.GetType().FullName}");
+                    Log.Message($"[AutoArm] Spawned: {weapon.Spawned}, Position: {weapon.Position}");
+                }
 
-            if (weapon.ParentHolder is Pawn_InventoryTracker)
-            {
-                reason = "In someone's inventory";
-                return false;
+                // Quick checks for common cases first
+                if (weapon.ParentHolder is Pawn_EquipmentTracker equipTracker)
+                {
+                    var equipperPawn = equipTracker.pawn;
+                    if (equipperPawn != null && equipperPawn != pawn)
+                    {
+                        reason = "Equipped by someone else";
+                        return false;
+                    }
+                }
+                else if (weapon.ParentHolder is Pawn_InventoryTracker)
+                {
+                    reason = "In someone's inventory";
+                    return false;
+                }
+                else if (weapon.ParentHolder is MinifiedThing)
+                {
+                    reason = "Minified";
+                    return false;
+                }
+                // Check if it's a map (weapons on ground)
+                else if (weapon.ParentHolder is Map)
+                {
+                    // Weapons on the ground have Map as parent holder - this is fine!
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message($"[AutoArm] {weapon.Label} is on the ground (Map parent)");
+                    }
+                }
+                // Check if it's in storage
+                else if (!IsStorageContainer(weapon.ParentHolder))
+                {
+                    reason = "In non-storage container";
+                    return false;
+                }
             }
 
             if (weapon.IsBurning())

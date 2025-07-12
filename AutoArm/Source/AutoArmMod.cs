@@ -30,11 +30,41 @@ namespace AutoArm
             settings = GetSettings<AutoArmSettings>();
         }
 
+        // Helper method for left-aligned checkboxes
+        private void DrawLeftAlignedCheckbox(Listing_Standard listing, string labelKey, ref bool value, string tooltipKey = null, float indent = 0f)
+        {
+            float lineHeight = 30f;
+            float checkboxSize = 24f;
+            float labelWidth = 250f;
+
+            Rect labelRect = listing.GetRect(lineHeight);
+            // Compensate for indent in checkbox position
+            Rect checkRect = new Rect(labelRect.x + labelWidth - indent, labelRect.y + (lineHeight - checkboxSize) / 2f, checkboxSize, checkboxSize);
+
+            Widgets.Label(labelRect, labelKey);
+            Widgets.Checkbox(checkRect.x, checkRect.y, ref value, checkboxSize);
+
+            if (tooltipKey != null && Mouse.IsOver(labelRect.ExpandedBy(10f)))
+            {
+                TooltipHandler.TipRegion(labelRect, tooltipKey);
+            }
+        }
+
         public override void DoSettingsWindowContents(Rect inRect)
         {
             // Use simpler UI approach for better compatibility
             var listing = new Listing_Standard();
             listing.Begin(inRect);
+
+            // Draw small reset button in top right BEFORE other content
+            float buttonWidth = 100f;
+            float buttonHeight = 30f;
+            Rect resetButtonRect = new Rect(inRect.width - buttonWidth - 5f, 5f, buttonWidth, buttonHeight);
+
+            if (Widgets.ButtonText(resetButtonRect, "Reset Config", drawBackground: true, doMouseoverSound: true))
+            {
+                settings.ResetToDefaults();
+            }
 
             // Title
             Text.Font = GameFont.Medium;
@@ -90,46 +120,40 @@ namespace AutoArm
         private void DrawGeneralTab(Listing_Standard listing)
         {
             // Main settings
-            listing.CheckboxLabeled("Enable AutoArm", ref settings.modEnabled,
+            DrawLeftAlignedCheckbox(listing, "Enable AutoArm", ref settings.modEnabled,
                 "When enabled, colonists will automatically equip better weapons based on their outfit policy.");
 
             listing.Gap(12f);
 
-            listing.CheckboxLabeled("Show notifications", ref settings.showNotifications,
+            DrawLeftAlignedCheckbox(listing, "Show notifications", ref settings.showNotifications,
                 "Shows blue notification messages when colonists equip or drop weapons.");
 
             listing.Gap(20f);
 
             // Status
-            Text.Font = GameFont.Medium;
-            listing.Label("Mod Status");
-            Text.Font = GameFont.Small;
+            //Text.Font = GameFont.Medium;
+            //listing.Label("Mod Status");
+            //Text.Font = GameFont.Small;
 
-            listing.Label($"Think tree injection: {(settings.thinkTreeInjectionFailed ? "FAILED - using fallback" : "OK")}");
+            // listing.Label($"Think tree injection: {(settings.thinkTreeInjectionFailed ? "FAILED - using fallback" : "OK")}");
 
             listing.Gap(20f);
 
-            // Reset button
-            if (listing.ButtonText("Reset to defaults"))
-            {
-                settings.ResetToDefaults();
-                Messages.Message("Settings have been reset to defaults", MessageTypeDefOf.TaskCompletion, false);
-            }
         }
 
         private void DrawCompatibilityTab(Listing_Standard listing)
         {
             Text.Font = GameFont.Medium;
             listing.Label("Detected Mods");
-            Text.Font = GameFont.Small;
+            //Text.Font = GameFont.Small;
             listing.Gap(12f);
 
             // Show detected mods
-            listing.Label($"Simple Sidearms: {(SimpleSidearmsCompat.IsLoaded() ? "Loaded" : "Not found")}");
-            listing.Label($"Combat Extended: {(CECompat.IsLoaded() ? "Loaded" : "Not found")}");
-            listing.Label($"Infusion 2: {(InfusionCompat.IsLoaded() ? "Loaded" : "Not found")}");
+            //listing.Label($"Simple Sidearms: {(SimpleSidearmsCompat.IsLoaded() ? "Loaded" : "Not found")}");
+            //listing.Label($"Combat Extended: {(CECompat.IsLoaded() ? "Loaded" : "Not found")}");
+            //listing.Label($"Infusion 2: {(InfusionCompat.IsLoaded() ? "Loaded" : "Not found")}");
 
-            listing.Gap(20f);
+            //listing.Gap(20f);
 
             // Mod-specific settings
             if (SimpleSidearmsCompat.IsLoaded())
@@ -138,8 +162,20 @@ namespace AutoArm
                 listing.Label("Simple Sidearms");
                 Text.Font = GameFont.Small;
 
-                listing.CheckboxLabeled("Auto-equip sidearms", ref settings.autoEquipSidearms,
+                DrawLeftAlignedCheckbox(listing, "Auto-equip sidearms", ref settings.autoEquipSidearms,
                     "Allows colonists to automatically pick up additional weapons as sidearms.");
+
+                // New setting - only show if auto-equip is enabled
+                if (settings.autoEquipSidearms)
+                {
+                    listing.Gap(6f);
+
+                    // Indent the sub-option
+                    listing.Indent(20f);
+                    DrawLeftAlignedCheckbox(listing, "Allow sidearm upgrades - Experimental", ref settings.allowSidearmUpgrades,
+                        "When enabled, colonists will upgrade existing sidearms to better weapons. When disabled, they will only fill empty sidearm slots.", 20f);
+                    listing.Outdent(20f);
+                }
             }
 
             if (CECompat.IsLoaded())
@@ -149,7 +185,7 @@ namespace AutoArm
                 listing.Label("Combat Extended");
                 Text.Font = GameFont.Small;
 
-                listing.CheckboxLabeled("Check for ammunition", ref settings.checkCEAmmo,
+                DrawLeftAlignedCheckbox(listing, "Check for ammunition", ref settings.checkCEAmmo,
                     "When enabled, colonists will only pick up weapons if they have access to appropriate ammunition.");
             }
         }
@@ -174,8 +210,8 @@ namespace AutoArm
                 listing.Label("Age Restrictions");
                 Text.Font = GameFont.Small;
 
-                listing.CheckboxLabeled("Allow children to equip weapons", ref settings.allowChildrenToEquipWeapons,
-                    "When enabled, child colonists can pick up and use weapons.");
+                DrawLeftAlignedCheckbox(listing, "Allow children to equip weapons", ref settings.allowChildrenToEquipWeapons,
+                    "When enabled, child colonists can pick up and use weapons. What could go wrong?");
 
                 if (settings.allowChildrenToEquipWeapons)
                 {
@@ -192,14 +228,14 @@ namespace AutoArm
                 listing.Label("Nobility");
                 Text.Font = GameFont.Small;
 
-                listing.CheckboxLabeled("Respect conceited nobles", ref settings.respectConceitedNobles,
+                DrawLeftAlignedCheckbox(listing, "Respect conceited nobles", ref settings.respectConceitedNobles,
                     "When enabled, conceited nobles won't automatically switch weapons.");
             }
         }
 
         private void DrawDebugTab(Listing_Standard listing, Rect contentRect)
         {
-            listing.CheckboxLabeled("Enable debug logging", ref settings.debugLogging,
+            DrawLeftAlignedCheckbox(listing, "Enable debug logging", ref settings.debugLogging,
                 "Outputs detailed information to the debug log for troubleshooting.");
 
             if (settings.debugLogging && Current.Game != null && Find.CurrentMap != null)
@@ -219,7 +255,7 @@ namespace AutoArm
                     TestPawnValidation();
                 }
 
-                if (listing.ButtonText("Run All Tests"))
+                if (listing.ButtonText("Run All Tests(Outdated)"))
                 {
                     RunAllTests();
                 }

@@ -12,6 +12,7 @@ namespace AutoArm
 
         // Mod compatibility settings
         public bool autoEquipSidearms = true;
+        public bool allowSidearmUpgrades = true;  // NEW SETTING
         public bool checkCEAmmo = true;
 
         // Advanced settings (for future use)
@@ -27,6 +28,7 @@ namespace AutoArm
             Scribe_Values.Look(ref showNotifications, "showNotifications", true);
             Scribe_Values.Look(ref thinkTreeInjectionFailed, "thinkTreeInjectionFailed", false);
             Scribe_Values.Look(ref autoEquipSidearms, "autoEquipSidearms", true);
+            Scribe_Values.Look(ref allowSidearmUpgrades, "allowSidearmUpgrades", true);  // NEW
             Scribe_Values.Look(ref checkCEAmmo, "checkCEAmmo", true);
             Scribe_Values.Look(ref weaponUpgradeThreshold, "weaponUpgradeThreshold", 1.05f);
             Scribe_Values.Look(ref childrenMinAge, "childrenMinAge", 13);
@@ -41,6 +43,7 @@ namespace AutoArm
             debugLogging = false;
             showNotifications = true;
             autoEquipSidearms = true;
+            allowSidearmUpgrades = true;  // NEW
             checkCEAmmo = true;
             weaponUpgradeThreshold = 1.05f;
             childrenMinAge = 13;
