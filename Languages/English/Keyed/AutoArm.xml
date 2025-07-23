@@ -1,0 +1,38 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<LanguageData>
+	<!-- Mod Settings -->
+	<AutoArm_ModName>AutoArm</AutoArm_ModName>
+	<AutoArm_SettingsCategory>AutoArm</AutoArm_SettingsCategory>
+	<AutoArm_EnableMod>Enable AutoArm</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>When enabled, colonists will automatically equip better weapons based on their outfit policy. When disabled, all automatic weapon management is turned off.</AutoArm_EnableModDesc>
+	<AutoArm_EnableDebugLogging>Enable Debug Logging</AutoArm_EnableDebugLogging>
+	<AutoArm_EnableDebugLoggingDesc>Outputs detailed information to the debug log for troubleshooting. This will create many log entries and may impact performance. Only enable when reporting issues.</AutoArm_EnableDebugLoggingDesc>
+
+	<!-- Notifications -->
+	<AutoArm_ShowNotifications>Show notifications</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>Shows blue notification messages when colonists equip or drop weapons. Disabling this will make weapon changes silent but they will still happen.</AutoArm_ShowNotificationsDesc>
+	<AutoArm_EquippedWeapon>{0} equipped {1}.</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} upgraded from {1} to {2}.</AutoArm_UpgradedWeapon>
+	<AutoArm_UpgradedSidearm>{0} upgraded sidearm from {1} to {2}.</AutoArm_UpgradedSidearm>
+	<AutoArm_DroppingDisallowed>{0} will drop {1} (outfit policy).</AutoArm_DroppingDisallowed>
+	<AutoArm_DroppingSidearmDisallowed>{0} will drop {1} (outfit policy)</AutoArm_DroppingSidearmDisallowed>
+	<!-- Mod Compatibility Settings -->
+	<AutoArm_EnableSidearmAutoEquip>Auto-equip sidearms</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Allows colonists to automatically pick up additional weapons as sidearms. Simple Sidearms must be installed and configured. This may impact performance with many colonists.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_CheckCEAmmo>Check for ammunition</AutoArm_CheckCEAmmo>
+	<AutoArm_CheckCEAmmoDesc>When enabled, colonists will only pick up weapons if they have access to appropriate ammunition. Disabling this may result in colonists carrying weapons they cannot use. Only affects Combat Extended games.</AutoArm_CheckCEAmmoDesc>
+
+	<!-- Detected Mods Section -->
+	<AutoArm_DetectedMods>Detected compatible mods</AutoArm_DetectedMods>
+	<AutoArm_NoCompatModsDetected>None - using base game features only</AutoArm_NoCompatModsDetected>
+
+	<!-- Reset Button -->
+	<AutoArm_ResetToDefaults>Reset to defaults</AutoArm_ResetToDefaults>
+	<AutoArm_SettingsReset>Settings have been reset to defaults</AutoArm_SettingsReset>
+
+	<AutoArm_TestRunner>Test Runner</AutoArm_TestRunner>
+	<AutoArm_RunAllTests>Run All AutoArm Tests</AutoArm_RunAllTests>
+	<AutoArm_RunSpecificTest>Run Specific Test</AutoArm_RunSpecificTest>
+	<AutoArm_ExportLogs>Export Debug Logs</AutoArm_ExportLogs>
+	<AutoArm_TestResults>Test Results</AutoArm_TestResults>
+</LanguageData>

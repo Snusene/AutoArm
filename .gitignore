@@ -1,0 +1,39 @@
+# Ignore build and user/junk files
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+*.pdb
+*.rws
+Thumbs.db
+.DS_Store
+
+# Ignore backup and temp files
+*~
+*.tmp
+
+# Ignore build files in Assemblies except DLLs (optional, if you want only DLLs):
+Assemblies/*.pdb
+Assemblies/*.xml
+
+# Explicitly track these folders and all normal files
+!Source/
+!Languages/
+!Defs/
+!Patches/
+!About/
+!Assemblies/
+!*.csproj
+!*.sln
+
+# Do not ignore files inside desired folders
+!Source/**
+!Languages/**
+!Defs/**
+!About/**
+!Assemblies/**
+
+# If you want to keep an empty Assemblies folder:
+!Assemblies/.gitkeep
