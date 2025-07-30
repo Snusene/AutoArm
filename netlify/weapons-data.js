@@ -82,22 +82,26 @@
     ];
 
     // Modded weapons from popular mods - GREATLY EXPANDED
+    // NOTE: Some modded weapon stats may be estimates or outdated. Verify critical values from:
+    // - Vanilla Weapons Expanded Wiki: https://rimworld-ve.fandom.com/wiki/Vanilla_Weapons_Expanded
+    // - Mod Steam pages or official documentation
+    // - In-game using dev mode or weapon stat mods
     const moddedRangedWeapons = [
-        // Vanilla Weapons Expanded Core
-        { name: "[VWE] Service Rifle", dps: 12, range: 26, damage: 12, burst: 3, mod: "VWE", acc: [0.65, 0.70, 0.70, 0.60] },
-        { name: "[VWE] Battle Rifle", dps: 10.5, range: 32, damage: 16, burst: 2, mod: "VWE", acc: [0.65, 0.75, 0.80, 0.70] },
-        { name: "[VWE] Compound Bow", dps: 7, range: 22, damage: 18, burst: 1, mod: "VWE", acc: [0.65, 0.82, 0.75, 0.55] },
+        // Vanilla Weapons Expanded Core (verified from official wiki)
+        { name: "[VWE] Service Rifle", dps: 9.8, range: 31, damage: 10, burst: 4, mod: "VWE", acc: [0.60, 0.60, 0.55, 0.45] },
+        { name: "[VWE] Battle Rifle", dps: 7.5, range: 34, damage: 12, burst: 2, mod: "VWE", acc: [0.55, 0.65, 0.75, 0.60] },
+        { name: "[VWE] Compound Bow", dps: 6.4, range: 30, damage: 14, burst: 1, mod: "VWE", acc: [0.70, 0.78, 0.65, 0.35] },
         { name: "[VWE] Flintlock Rifle", dps: 6, range: 26, damage: 18, burst: 1, mod: "VWE", acc: [0.55, 0.70, 0.75, 0.60] },
         { name: "[VWE] Hand Cannon", dps: 8, range: 12, damage: 20, burst: 1, mod: "VWE", acc: [0.65, 0.60, 0.40, 0.25] },
         { name: "[VWE] Charged LMG", dps: 18, range: 23, damage: 12, burst: 6, ap: 0.30, mod: "VWE", acc: [0.40, 0.50, 0.60, 0.40] },
         { name: "[VWE] Ion Rifle", dps: 16, range: 27, damage: 14, burst: 3, ap: 0.40, mod: "VWE", acc: [0.70, 0.75, 0.75, 0.70] },
         { name: "[VWE] Crossbow", dps: 5.5, range: 20, damage: 15, burst: 1, mod: "VWE", acc: [0.65, 0.80, 0.70, 0.45] },
         { name: "[VWE] Musket", dps: 7, range: 24, damage: 22, burst: 1, mod: "VWE", acc: [0.60, 0.75, 0.80, 0.65] },
-        { name: "[VWE] Designated Marksman Rifle", dps: 11, range: 35, damage: 20, burst: 1, mod: "VWE", acc: [0.65, 0.80, 0.88, 0.85] },
-        { name: "[VWE] Anti-Material Rifle", dps: 14, range: 45, damage: 40, burst: 1, ap: 0.60, mod: "VWE", acc: [0.55, 0.75, 0.90, 0.92] },
+        { name: "[VWE] Marksman Rifle", dps: 9.5, range: 37, damage: 16, burst: 2, mod: "VWE", acc: [0.65, 0.70, 0.80, 0.70] },
+        { name: "[VWE] Anti-Material Rifle", dps: 9.8, range: 43, damage: 56, burst: 1, ap: 0.84, mod: "VWE", acc: [0.30, 0.45, 0.75, 0.92] },
         { name: "[VWE] Grenade Launcher", dps: 10, range: 20, damage: 35, burst: 1, ap: 0.15, mod: "VWE", acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 2.5 },
         { name: "[VWE] Charge Shotgun", dps: 18, range: 11, damage: 20, burst: 1, ap: 0.38, mod: "VWE", acc: [0.85, 0.85, 0.80, 0.70] },
-        { name: "[VWE] Carbine", dps: 10, range: 20, damage: 10, burst: 3, mod: "VWE", acc: [0.70, 0.68, 0.60, 0.45] },
+        { name: "[VWE] Carbine", dps: 8.3, range: 23, damage: 11, burst: 3, mod: "VWE", acc: [0.60, 0.80, 0.75, 0.45] },
         { name: "[VWE] Throwing Rocks", dps: 3, range: 8, damage: 8, burst: 1, mod: "VWE", acc: [0.40, 0.30, 0.20, 0.10] },
         { name: "[VWE] Javelin", dps: 8, range: 14, damage: 18, burst: 1, mod: "VWE", acc: [0.60, 0.75, 0.45, 0.25] },
 
@@ -162,13 +166,13 @@
         { name: "[VWEL] Laser Pistol", dps: 11, range: 20, damage: 10, burst: 2, ap: 0.45, mod: "VWE Laser" },
 
         // Combat Extended Guns
-        { name: "[CE] SKS", dps: 10, range: 32, damage: 18, burst: 1, mod: "CE Guns" },
-        { name: "[CE] AK-47", dps: 12.5, range: 28, damage: 11, burst: 3, mod: "CE Guns" },
-        { name: "[CE] FN FAL", dps: 11, range: 35, damage: 20, burst: 1, mod: "CE Guns" },
+        { name: "[CE] SKS", dps: 11.1, range: 34, damage: 12.5, burst: 2, mod: "CE Guns" },
+        { name: "[CE] AK-47", dps: 12.5, range: 29, damage: 12.5, burst: 3, mod: "CE Guns" },
+        { name: "[CE] FN FAL", dps: 12.5, range: 32, damage: 12.5, burst: 3, mod: "CE Guns" },
         { name: "[CE] SVD Dragunov", dps: 10.5, range: 42, damage: 28, burst: 1, mod: "CE Guns" },
         { name: "[CE] Hecate II", dps: 15, range: 50, damage: 50, burst: 1, ap: 0.75, mod: "CE Guns" },
-        { name: "[CE] RPD", dps: 14, range: 25, damage: 11, burst: 5, mod: "CE Guns" },
-        { name: "[CE] PKM", dps: 16, range: 28, damage: 12, burst: 6, mod: "CE Guns" },
+        { name: "[CE] RPD", dps: 14.5, range: 26, damage: 12.5, burst: 6, mod: "CE Guns" },
+        { name: "[CE] PKM", dps: 15, range: 32, damage: 14, burst: 5, mod: "CE Guns" },
         { name: "[CE] M60", dps: 18, range: 30, damage: 13, burst: 7, mod: "CE Guns" },
         { name: "[CE] RPG-7", dps: 25, range: 25, damage: 80, burst: 1, ap: 0.65, mod: "CE Guns" },
         { name: "[CE] M72 LAW", dps: 20, range: 22, damage: 70, burst: 1, ap: 0.60, mod: "CE Guns" },
