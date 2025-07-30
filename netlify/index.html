@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="container">
+        <h1>AutoArm Weapon Balance Analyzer</h1>
 
         <div id="loadingMessage" class="loading">Loading weapon data...</div>
         <div id="errorMessage" class="error" style="display: none;"></div>
@@ -83,9 +84,11 @@
                 <div class="note">
                     <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons.
                     <br><br>
-                    <strong>Note:</strong> Orange DPS values with an asterisk (*) indicate weapons affected by power creep protection. Hover over them to see the original value.
+                    <strong>Note:</strong> Orange DPS values indicate weapons affected by power creep protection. Hover over them to see the original value.
                     <br>
                     Accuracy values for vanilla weapons are exact. Modded weapons without accuracy data use estimates based on weapon type. Situational weapons (grenades, launchers) show "-" for accuracy since they use area effects.
+                    <br><br>
+                    <strong>Score Tiers:</strong> <span style="color: #FFD700;">■ Legendary (600+)</span> | <span style="color: #8A2BE2;">■ Excellent (400+)</span> | <span style="color: #1E90FF;">■ Good (250+)</span> | <span style="color: #808080;">■ Average (150+)</span> | <span style="color: #8B4513;">■ Poor (<150)</span>
                 </div>
             </div>
 
@@ -217,6 +220,27 @@
             // DOM is already ready, wait a moment for weapons-data.js
             setTimeout(initializeApp, 100);
         }
+        
+        // Add scroll detection for table containers
+        document.addEventListener('DOMContentLoaded', function() {
+            const tableContainers = document.querySelectorAll('.table-container');
+            tableContainers.forEach(container => {
+                container.addEventListener('scroll', function() {
+                    if (this.scrollTop > 10) {
+                        this.classList.add('scrolled');
+                    } else {
+                        this.classList.remove('scrolled');
+                    }
+                });
+            });
+            
+            // Initialize range sliders with visual feedback
+            const rangeInputs = document.querySelectorAll('input[type="range"]');
+            rangeInputs.forEach(input => {
+                const percent = ((input.value - input.min) / (input.max - input.min)) * 100;
+                input.style.setProperty('--range-percent', percent + '%');
+            });
+        });
 
         // Workshop mod URLs mapping
         const modWorkshopUrls = {
@@ -270,6 +294,9 @@
 
         function updateSkillDisplay(slider, displayId) {
             document.getElementById(displayId).textContent = slider.value;
+            // Update the visual fill of the range slider
+            const percent = ((slider.value - slider.min) / (slider.max - slider.min)) * 100;
+            slider.style.setProperty('--range-percent', percent + '%');
         }
 
         function handleSearchInput() {
@@ -606,10 +633,24 @@
                     // Display accuracy as "-" for situational weapons
                     const accuracyDisplay = weapon.situational ? '-' : `${(scores.accuracy * 100).toFixed(0)}%`;
 
-                    row.className = rowClass;
+                    // Add tier classification based on score
+                    let tierClass = '';
+                    if (scores.total >= 600) tierClass = 'legendary-tier';
+                    else if (scores.total >= 400) tierClass = 'excellent-tier';
+                    else if (scores.total >= 250) tierClass = 'good-tier';
+                    else if (scores.total >= 150) tierClass = 'average-tier';
+                    else tierClass = 'poor-tier';
+                    
+                    row.className = `${rowClass} ${tierClass}`;
+                    
+                    // Check if DPS was adjusted for power creep
+                    const dpsDisplay = scores.qualityDPS > 25 ? 
+                        `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` : 
+                        scores.qualityDPS.toFixed(1);
+                    
                     row.innerHTML = `
                                                                 <td>${processedName}</td>
-                                                                <td>${scores.qualityDPS.toFixed(1)}</td>
+                                                                <td>${dpsDisplay}</td>
                                                                 <td class="acc-value">${accuracyDisplay}</td>
                                                                 <td>${burstText}</td>
                                                                 <td>${weapon.range}</td>
@@ -663,10 +704,24 @@
                     const weaponName = weapon.mod ? weapon.name : weapon.name;
                     const processedName = processWeaponNameWithLinks(weaponName, searchText);
 
-                    row.className = rowClass;
+                    // Add tier classification based on score
+                    let tierClass = '';
+                    if (scores.total >= 400) tierClass = 'legendary-tier';
+                    else if (scores.total >= 300) tierClass = 'excellent-tier';
+                    else if (scores.total >= 200) tierClass = 'good-tier';
+                    else if (scores.total >= 100) tierClass = 'average-tier';
+                    else tierClass = 'poor-tier';
+                    
+                    row.className = `${rowClass} ${tierClass}`;
+                    
+                    // Check if DPS was adjusted for power creep
+                    const dpsDisplay = scores.qualityDPS > 25 ? 
+                        `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` : 
+                        scores.qualityDPS.toFixed(1);
+                    
                     row.innerHTML = `
                                                                 <td>${processedName}</td>
-                                                                <td>${scores.qualityDPS.toFixed(1)}</td>
+                                                                <td>${dpsDisplay}</td>
                                                                 <td class="ap-value">${scores.ap.toFixed(3)}</td>
                                                                 <td>${scores.baseTotal.toFixed(1)}</td>
                                                                 <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>

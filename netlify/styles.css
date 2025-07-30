@@ -43,10 +43,6 @@ h1 {
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
     font-size: 2.5em;
     margin-bottom: 30px;
-    background: linear-gradient(to right, #66c0f4 0%, #4b9ce2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
 }
 
 .controls {
@@ -283,10 +279,6 @@ th, td {
     color: #c7d5e0;
 }
 
-tbody tr {
-    transition: all 0.2s ease;
-}
-
 tbody tr:nth-child(even) {
     background-color: rgba(0, 0, 0, 0.1);
 }
@@ -498,4 +490,396 @@ p {
 #rangedCount, #meleeCount {
     color: #8f98a0;
     font-weight: normal;
+}
+
+/* ===== ENHANCEMENT 1: Enhanced Visual Hierarchy ===== */
+
+/* Animate rows on data update */
+tbody tr {
+    animation: fadeIn 0.3s ease-out;
+    transition: all 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Highlight score changes */
+.score {
+    transition: all 0.5s ease;
+}
+
+.score.updated {
+    animation: scoreFlash 0.6s ease;
+}
+
+@keyframes scoreFlash {
+    0%, 100% { transform: scale(1); }
+    50% { 
+        transform: scale(1.1); 
+        text-shadow: 0 0 8px rgba(102, 192, 244, 0.8);
+    }
+}
+
+/* ===== ENHANCEMENT 2: Interactive Enhancements ===== */
+
+/* Add glow effect for active controls */
+input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102, 192, 244, 0.3), 
+                0 0 10px rgba(102, 192, 244, 0.4);
+}
+
+/* Enhanced checkbox styling */
+input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: rgba(0,0,0,0.4);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 3px;
+    position: relative;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+input[type="checkbox"]:hover {
+    border-color: rgba(102, 192, 244, 0.5);
+}
+
+input[type="checkbox"]:checked {
+    background: #66c0f4;
+    border-color: #66c0f4;
+}
+
+input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: -2px;
+    left: 2px;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* Enhanced range slider with filled track */
+input[type="range"] {
+    --range-percent: 50%;
+    background: linear-gradient(to right, 
+        #66c0f4 0%, 
+        #66c0f4 var(--range-percent), 
+        rgba(0,0,0,0.4) var(--range-percent), 
+        rgba(0,0,0,0.4) 100%);
+}
+
+/* ===== ENHANCEMENT 3: Data Visualization ===== */
+
+/* Color-code rows by score ranges */
+tbody tr {
+    position: relative;
+}
+
+tbody tr.legendary-tier { 
+    background: linear-gradient(to right, rgba(255, 215, 0, 0.05), transparent);
+}
+tbody tr.excellent-tier { 
+    background: linear-gradient(to right, rgba(138, 43, 226, 0.05), transparent);
+}
+tbody tr.good-tier { 
+    background: linear-gradient(to right, rgba(30, 144, 255, 0.05), transparent);
+}
+tbody tr.average-tier { 
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.05), transparent);
+}
+tbody tr.poor-tier { 
+    background: linear-gradient(to right, rgba(139, 69, 19, 0.05), transparent);
+}
+
+/* Add tier indicator bar */
+tbody tr::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--tier-color, transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+tbody tr:hover::before {
+    opacity: 1;
+}
+
+tbody tr.legendary-tier { --tier-color: #FFD700; }
+tbody tr.excellent-tier { --tier-color: #8A2BE2; }
+tbody tr.good-tier { --tier-color: #1E90FF; }
+tbody tr.average-tier { --tier-color: #808080; }
+tbody tr.poor-tier { --tier-color: #8B4513; }
+
+/* Progress bars for stats */
+.stat-bar {
+    position: relative;
+    background: rgba(0,0,0,0.3);
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+    width: 100%;
+}
+
+.stat-bar::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: linear-gradient(to right, #66c0f4, #4b9ce2);
+    width: var(--percentage, 0%);
+    transition: width 0.3s ease;
+}
+
+/* ===== ENHANCEMENT 4: Improved Readability ===== */
+
+/* Better styled mod tags as badges */
+.mod-link {
+    display: inline-block;
+    padding: 2px 6px;
+    background: rgba(102, 192, 244, 0.15);
+    border: 1px solid rgba(102, 192, 244, 0.3);
+    border-radius: 3px;
+    font-size: 0.85em;
+    transition: all 0.2s ease;
+    margin-right: 4px;
+}
+
+.mod-link:hover {
+    background: rgba(102, 192, 244, 0.25);
+    border-color: rgba(102, 192, 244, 0.5);
+    transform: translateY(-1px);
+    text-decoration: none;
+}
+
+/* Improve sticky header visibility */
+thead th {
+    backdrop-filter: blur(10px);
+    background: linear-gradient(to bottom, 
+        rgba(23, 29, 37, 0.98) 0%, 
+        rgba(16, 20, 24, 0.98) 100%);
+}
+
+/* Add shadow when scrolled */
+.table-container.scrolled thead {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+/* ===== ENHANCEMENT 5: Mobile/Responsive Improvements ===== */
+
+@media (max-width: 1200px) {
+    .comparison {
+        grid-template-columns: 1fr;
+    }
+    
+    .weapon-section {
+        height: 600px;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+    
+    .control-row {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .control-group {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    
+    /* Horizontal scroll for tables */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    table {
+        min-width: 600px;
+    }
+    
+    /* Adjust font sizes for mobile */
+    body {
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 1.8em;
+    }
+    
+    .quality-info {
+        padding: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 1.5em;
+    }
+    
+    .controls {
+        padding: 15px;
+    }
+    
+    input[type="range"] {
+        width: 100%;
+    }
+}
+
+/* ===== ENHANCEMENT 6: Polish & Details ===== */
+
+/* Skeleton loading effect */
+.loading-skeleton {
+    background: linear-gradient(90deg, 
+        rgba(255,255,255,0.05) 25%, 
+        rgba(255,255,255,0.1) 50%, 
+        rgba(255,255,255,0.05) 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: 4px;
+    height: 20px;
+    margin: 5px 0;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Custom tooltips */
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.8);
+    background: rgba(0, 0, 0, 0.95);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    z-index: 100;
+    border: 1px solid rgba(102, 192, 244, 0.3);
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+}
+
+/* Gradient text animation for headers */
+h1 {
+    background: linear-gradient(135deg, #66c0f4 0%, #ffffff 50%, #66c0f4 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s ease infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}
+
+/* Enhanced glass morphism */
+.container {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Neon glow for important values */
+.score {
+    text-shadow: 0 0 10px currentColor;
+}
+
+/* Power creep indicator enhancement */
+.power-creep-adjusted {
+    position: relative;
+}
+
+.power-creep-adjusted::before {
+    content: '*';
+    position: absolute;
+    right: -8px;
+    top: -2px;
+    color: #ff9800;
+    font-weight: bold;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ===== ENHANCEMENT 7: Performance Optimizations ===== */
+
+/* Use CSS containment for better performance */
+.table-container {
+    contain: layout style paint;
+}
+
+.weapon-section {
+    will-change: transform;
+}
+
+/* Optimize animations for performance */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Hardware acceleration for transforms */
+.container, .weapon-section, tbody tr {
+    transform: translateZ(0);
+}
+
+/* Additional enhancement: Pulsing glow for top weapons */
+tbody tr:first-child .score {
+    animation: topWeaponPulse 2s ease-in-out infinite;
+}
+
+@keyframes topWeaponPulse {
+    0%, 100% { 
+        text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+    }
+    50% { 
+        text-shadow: 0 0 20px rgba(255, 215, 0, 0.8),
+                     0 0 30px rgba(255, 215, 0, 0.4);
+    }
 }
