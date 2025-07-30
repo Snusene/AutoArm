@@ -171,7 +171,6 @@
         { name: "[CE] M60", dps: 18, range: 30, damage: 13, burst: 7, mod: "CE Guns" },
         { name: "[CE] RPG-7", dps: 25, range: 25, damage: 80, burst: 1, ap: 0.65, mod: "CE Guns" },
         { name: "[CE] M72 LAW", dps: 20, range: 22, damage: 70, burst: 1, ap: 0.60, mod: "CE Guns" },
-        { name: "[CE] 105mm Howitzer", dps: 40, range: 45, damage: 150, burst: 1, ap: 0.80, mod: "CE Guns" },
         { name: "[CE] Flamethrower", dps: 22, range: 10, damage: 10, burst: 1, ap: 0.08, mod: "CE Guns" },
 
         // Popular franchise weapon mods
