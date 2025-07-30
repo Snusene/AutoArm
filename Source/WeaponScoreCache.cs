@@ -154,6 +154,19 @@ namespace AutoArm
 
             if (weapon.def.IsRangedWeapon)
             {
+                // TODO: Implement situational weapon detection here
+                // Cap situational weapons (grenades, launchers) at ~80 points total
+                // 
+                // if (IsSituationalWeapon(weapon))
+                //     return -420f; // Results in ~80 total score after other bonuses
+                // 
+                // Where IsSituationalWeapon would be:
+                // // If it explodes OR doesn't do health damage OR has forced miss
+                // var verb = weapon.def.Verbs?[0];
+                // var projectile = verb?.defaultProjectile?.projectile;
+                // return projectile?.explosionRadius > 0 || 
+                //        projectile?.damageDef?.harmsHealth == false ||
+                //        verb?.ForcedMissRadius > 0;
                 if (weapon.def.Verbs?.Count > 0 && weapon.def.Verbs[0] != null)
                 {
                     var verb = weapon.def.Verbs[0];
@@ -214,11 +227,11 @@ namespace AutoArm
                     // Burst bonus - with diminishing returns for larger bursts
                     if (burstShots > 1)
                     {
-                        // Diminishing returns: first extra shot worth 25, second worth 15, third+ worth 5 each
+                        // Diminishing returns: first extra shot worth 30, second worth 18, third+ worth 6 each
                         float burstBonus = 0f;
-                        if (burstShots >= 2) burstBonus += 25f; // 2-shot gets +25
-                        if (burstShots >= 3) burstBonus += 15f; // 3-shot gets +40 total
-                        if (burstShots >= 4) burstBonus += (burstShots - 3) * 5f; // 4+ shots get +5 each
+                        if (burstShots >= 2) burstBonus += 30f; // 2-shot gets +30
+                        if (burstShots >= 3) burstBonus += 18f; // 3-shot gets +48 total
+                        if (burstShots >= 4) burstBonus += (burstShots - 3) * 6f; // 4+ shots get +6 each
                         
                         score += burstBonus;
                         

@@ -10,6 +10,17 @@ namespace AutoArm
     /// </summary>
     public static class WeaponScoringHelper
     {
+        // TODO: Add situational weapon detection for future implementation
+        // Situational weapons (grenades, launchers, etc) should score lower (~80 points)
+        // to ensure they're only used when specifically needed.
+        // 
+        // Detection code:
+        // // If it explodes OR doesn't do health damage OR has forced miss
+        // var verb = weapon.def.Verbs?[0];
+        // var projectile = verb?.defaultProjectile?.projectile;
+        // return projectile?.explosionRadius > 0 || 
+        //        projectile?.damageDef?.harmsHealth == false ||
+        //        verb?.ForcedMissRadius > 0;
         /// <summary>
         /// Get the total score for a weapon/pawn combination
         /// </summary>
