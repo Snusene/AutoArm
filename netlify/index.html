@@ -4,284 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoArm Weapon Balance Analyzer</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f0f0f0;
-            background-image: url('https://i.redd.it/0406lf9xw68f1.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background-color: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            backdrop-filter: blur(5px);
-        }
-
-        h1 {
-            color: #333;
-            text-align: center;
-            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
-        }
-
-        .controls {
-            margin-bottom: 30px;
-            padding: 15px;
-            background-color: rgba(232, 244, 253, 0.95);
-            border-radius: 5px;
-        }
-
-        .control-row {
-            display: flex;
-            gap: 30px;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        label {
-            font-weight: bold;
-        }
-
-        input[type="number"] {
-            width: 80px;
-            padding: 5px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-        }
-
-        input[type="checkbox"] {
-            margin-right: 5px;
-            cursor: pointer;
-        }
-
-        select {
-            padding: 5px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-        }
-
-        .note {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 10px;
-            padding: 10px;
-            background-color: rgba(249, 249, 249, 0.95);
-            border-left: 3px solid #2196F3;
-        }
-
-        .search-container {
-            position: relative;
-            display: inline-block;
-        }
-
-        #weaponSearch {
-            width: 220px;
-            padding: 5px 25px 5px 8px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-        }
-
-        .clear-search {
-            position: absolute;
-            right: 5px;
-            top: 50%;
-            transform: translateY(-50%);
-            cursor: pointer;
-            color: #999;
-            display: none;
-            font-size: 16px;
-            padding: 0 5px;
-        }
-
-            .clear-search:hover {
-                color: #333;
-            }
-
-        .no-results {
-            text-align: center;
-            padding: 20px;
-            color: #666;
-            font-style: italic;
-        }
-
-        .highlight {
-            background-color: rgba(255, 235, 59, 0.5);
-            font-weight: bold;
-        }
-
-        .mod-link {
-            color: #1976d2;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-            .mod-link:hover {
-                text-decoration: underline;
-                color: #1565c0;
-            }
-
-            .mod-link .highlight {
-                background-color: rgba(255, 235, 59, 0.7);
-            }
-
-        .comparison {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .weapon-section {
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: rgba(255, 255, 255, 0.9);
-            display: flex;
-            flex-direction: column;
-            height: 1000px; /* Fixed height for the section */
-        }
-
-            .weapon-section h2 {
-                margin-top: 0;
-                color: #555;
-                flex-shrink: 0; /* Keep header fixed */
-            }
-
-        .table-container {
-            flex: 1;
-            overflow-y: auto;
-            margin-top: 10px;
-            border: 1px solid #eee;
-            border-radius: 3px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: rgba(255, 255, 255, 0.8);
-        }
-
-        th, td {
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        tbody tr:nth-child(even) {
-            background-color: rgba(250, 250, 250, 0.5);
-        }
-
-        tbody tr:hover {
-            background-color: rgba(240, 240, 240, 0.8);
-        }
-
-        th {
-            background-color: rgba(248, 248, 248, 0.95);
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .score {
-            font-weight: bold;
-            color: #0066cc;
-        }
-
-        .ap-value {
-            color: #8b4513;
-            font-weight: 600;
-        }
-
-        .acc-value {
-            color: #2e7d32;
-            font-weight: 600;
-        }
-
-        .mod-tag {
-            font-size: 0.8em;
-            color: #666;
-            font-style: italic;
-        }
-
-        .modded-weapon {
-            background-color: rgba(245, 245, 255, 0.7);
-        }
-
-            .modded-weapon .mod-link {
-                color: #1565c0;
-            }
-
-                .modded-weapon .mod-link:hover {
-                    color: #0d47a1;
-                }
-
-        .skill-score {
-            font-weight: 600;
-        }
-
-        .power-creep-adjusted {
-            color: #ff6b00;
-            font-weight: bold;
-            cursor: help;
-        }
-
-        .recommendation {
-            margin-top: 30px;
-            padding: 20px;
-            background-color: rgba(255, 248, 220, 0.95);
-            border-radius: 5px;
-            border: 1px solid #daa520;
-        }
-
-            .recommendation h3 {
-                margin-top: 0;
-                color: #b8860b;
-            }
-
-        .quality-info {
-            background-color: rgba(227, 242, 253, 0.95);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-
-            .quality-info h4 {
-                margin-top: 0;
-                color: #1976d2;
-            }
-
-        .loading {
-            text-align: center;
-            padding: 50px;
-            font-size: 1.2em;
-            color: #666;
-        }
-
-        .error {
-            background-color: #fee;
-            border: 1px solid #fcc;
-            padding: 15px;
-            border-radius: 5px;
-            color: #c00;
-            margin: 20px 0;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
@@ -303,9 +26,8 @@
                     <li><strong>Skill Preferences:</strong> Colonist shooting vs melee skills</li>
                     <li><strong>Power Creep Protection:</strong> Extreme DPS (>25) has diminishing returns to prevent modded weapons from breaking balance</li>
                 </ul>
-                <p style="font-style: italic; color: #555; margin-top: 10px; font-weight: 500;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance.</p>
-                <p style="font-style: italic; color: #c00; margin-top: 10px; font-weight: 600;">⚠️ Important: Vanilla weapon stats are accurate. Some modded weapon stats may be estimates or outdated - use them as general references only. Verify critical stats in-game or from mod documentation.</p>
-                <div class="note" style="margin-top: 15px; background-color: rgba(255, 255, 255, 0.95);">
+                <p style="font-style: italic; color: #8f98a0; margin-top: 10px; font-weight: 500; text-align: center;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance.</p>
+                <div class="note" style="margin-top: 15px;">
                     <p><strong>About this system:</strong> Since vanilla RimWorld lacks automatic weapon equipping and therefore has no weapon evaluation formula to reference, AutoArm creates its own scoring system from scratch. No formula is perfect for every playstyle, but this aims to work well for most situations while also trying to respect modded behaviors (e.g., "Hunters Use Melee" mods).</p>
                     <p><strong>Override options:</strong> Force-equip weapons (right-click) to prevent replacement, or use outfit filters to restrict weapon types per colonist.</p>
                 </div>
@@ -345,12 +67,12 @@
                     <div class="control-group">
                         <label>Shooting Skill:</label>
                         <input type="range" id="shootingSkill" min="0" max="20" value="10" oninput="updateSkillDisplay(this, 'shootingDisplay'); updateScores()">
-                        <span id="shootingDisplay" style="width: 30px; display: inline-block;">10</span>
+                        <span id="shootingDisplay" style="width: 30px; display: inline-block; color: #66c0f4; font-weight: bold;">10</span>
                     </div>
                     <div class="control-group">
                         <label>Melee Skill:</label>
                         <input type="range" id="meleeSkill" min="0" max="20" value="10" oninput="updateSkillDisplay(this, 'meleeDisplay'); updateScores()">
-                        <span id="meleeDisplay" style="width: 30px; display: inline-block;">10</span>
+                        <span id="meleeDisplay" style="width: 30px; display: inline-block; color: #66c0f4; font-weight: bold;">10</span>
                     </div>
                     <div class="control-group">
                         <label><input type="checkbox" id="brawlerTrait" onchange="updateScores()"> Brawler</label>
@@ -359,7 +81,7 @@
                         <label><input type="checkbox" id="hunterRole" onchange="updateScores()"> Hunting Work</label>
                     </div>
                 </div>
-                <div class="note" style="background-color: rgba(255, 255, 255, 0.95);">
+                <div class="note">
                     <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons.
                     <br><br>
                     <strong>Note:</strong> Orange DPS values with an asterisk (*) indicate weapons affected by power creep protection. Hover over them to see the original value.
