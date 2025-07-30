@@ -83,6 +83,61 @@
             border-left: 3px solid #2196F3;
         }
 
+        .search-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        #weaponSearch {
+            width: 220px;
+            padding: 5px 25px 5px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        .clear-search {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #999;
+            display: none;
+            font-size: 16px;
+            padding: 0 5px;
+        }
+
+            .clear-search:hover {
+                color: #333;
+            }
+
+        .no-results {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .highlight {
+            background-color: rgba(255, 235, 59, 0.5);
+            font-weight: bold;
+        }
+
+        .mod-link {
+            color: #1976d2;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+            .mod-link:hover {
+                text-decoration: underline;
+                color: #1565c0;
+            }
+
+            .mod-link .highlight {
+                background-color: rgba(255, 235, 59, 0.7);
+            }
+
         .comparison {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -95,17 +150,28 @@
             border: 1px solid #ddd;
             border-radius: 5px;
             background-color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            height: 600px; /* Fixed height for the section */
         }
 
             .weapon-section h2 {
                 margin-top: 0;
                 color: #555;
+                flex-shrink: 0; /* Keep header fixed */
             }
+
+        .table-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-top: 10px;
+            border: 1px solid #eee;
+            border-radius: 3px;
+        }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
             background-color: rgba(255, 255, 255, 0.8);
         }
 
@@ -126,6 +192,10 @@
         th {
             background-color: rgba(248, 248, 248, 0.95);
             font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
         }
 
         .score {
@@ -147,6 +217,14 @@
         .modded-weapon {
             background-color: rgba(245, 245, 255, 0.7);
         }
+
+            .modded-weapon .mod-link {
+                color: #1565c0;
+            }
+
+                .modded-weapon .mod-link:hover {
+                    color: #0d47a1;
+                }
 
         .skill-score {
             font-weight: 600;
@@ -212,7 +290,7 @@
                     <li><strong>Armor Penetration:</strong> Effectiveness against late-game threats</li>
                     <li><strong>Skill Preferences:</strong> Colonist shooting vs melee skills</li>
                 </ul>
-                <p style="font-style: italic; color: #555; margin-top: 10px; font-weight: 500;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance.</p>
+                <p style="font-style: italic; color: #555; margin-top: 10px; font-weight: 500;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance. <span style="color: #1976d2;">Click any [MOD] tag to visit its Steam Workshop page!</span></p>
                 <div class="note" style="margin-top: 15px; background-color: rgba(255, 255, 255, 0.95);">
                     <p><strong>About this system:</strong> Since vanilla RimWorld lacks automatic weapon equipping and therefore has no weapon evaluation formula to reference, AutoArm creates its own scoring system from scratch. No formula is perfect for every playstyle, but this aims to work well for most situations while also trying to respect modded behaviors (e.g., "Hunters Use Melee" mods).</p>
                     <p><strong>Override options:</strong> Force-equip weapons (right-click) to prevent replacement, or use outfit filters to restrict weapon types per colonist.</p>
@@ -262,6 +340,13 @@
                             <option value="all">Vanilla + Modded</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <label>Search:</label>
+                        <div class="search-container">
+                            <input type="text" id="weaponSearch" placeholder="e.g. rifle, [VWE], sword..." oninput="handleSearchInput()">
+                            <span class="clear-search" onclick="clearSearch()">×</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="control-row">
                     <div class="control-group">
@@ -282,45 +367,49 @@
                     </div>
                 </div>
                 <div class="note" style="background-color: rgba(255, 255, 255, 0.95);">
-                    <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons.
+                    <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons. Mod tags like [VWE] and [RS] are clickable links to their Steam Workshop pages.
                 </div>
             </div>
 
             <div class="comparison">
                 <div class="weapon-section">
-                    <h2>Ranged Weapons</h2>
-                    <table id="rangedTable">
-                        <thead>
-                            <tr>
-                                <th>Weapon</th>
-                                <th>DPS (w/Q)</th>
-                                <th>Burst</th>
-                                <th>Range</th>
-                                <th>AP</th>
-                                <th>Base Score</th>
-                                <th>Skill Score</th>
-                                <th>Total Score</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
+                    <h2>Ranged Weapons <span id="rangedCount" style="font-size: 0.8em; color: #666;"></span></h2>
+                    <div class="table-container">
+                        <table id="rangedTable">
+                            <thead>
+                                <tr>
+                                    <th>Weapon</th>
+                                    <th>DPS (w/Q)</th>
+                                    <th>Burst</th>
+                                    <th>Range</th>
+                                    <th>AP</th>
+                                    <th>Base Score</th>
+                                    <th>Skill Score</th>
+                                    <th>Total Score</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div class="weapon-section">
-                    <h2>Melee Weapons</h2>
-                    <table id="meleeTable">
-                        <thead>
-                            <tr>
-                                <th>Weapon</th>
-                                <th>DPS (w/Q)</th>
-                                <th>AP</th>
-                                <th>Base Score</th>
-                                <th>Skill Score</th>
-                                <th>Total Score</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
+                    <h2>Melee Weapons <span id="meleeCount" style="font-size: 0.8em; color: #666;"></span></h2>
+                    <div class="table-container">
+                        <table id="meleeTable">
+                            <thead>
+                                <tr>
+                                    <th>Weapon</th>
+                                    <th>DPS (w/Q)</th>
+                                    <th>AP</th>
+                                    <th>Base Score</th>
+                                    <th>Skill Score</th>
+                                    <th>Total Score</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -410,6 +499,93 @@
             setTimeout(initializeApp, 100);
         }
 
+        // Workshop mod URLs mapping
+        const modWorkshopUrls = {
+            '[VWE]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=1814383360', // Vanilla Weapons Expanded
+            '[VWEQ]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=1906780517', // VWE - Quickdraw
+            '[VWEF]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=2023513450', // VWE - Frontier
+            '[VWEH]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=2329126791', // VWE - Heavy Weapons
+            '[VWEB]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=2854967482', // VWE - Bioferrite (might be Anomaly weapons)
+            '[VWEL]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=1814987817', // VWE - Laser
+            '[RS]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=849231601', // Rimsenal - Core
+            '[RSA]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=849232906', // Rimsenal - Augmented
+            '[CE]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=2890901044', // Combat Extended
+            '[W+]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=1528163280', // Weapons+
+            '[MT]': 'https://steamcommunity.com/sharedfiles/filedetails/?id=2007052872', // Medieval Times
+            '[40K]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=warhammer+40k+weapons', // Warhammer 40K (search)
+            '[SW]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=star+wars+weapons', // Star Wars (search)
+            '[XCOM]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=xcom+weapons', // XCOM (search)
+            '[TF]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=titanfall+weapons', // Titanfall (search)
+            '[ME]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=mass+effect+weapons', // Mass Effect (search)
+            '[BB]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=bloodborne+weapons', // Bloodborne (search)
+            '[SK]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=skyrim+weapons'  // Skyrim (search)
+        };
+
+        function processWeaponNameWithLinks(weaponName, searchText) {
+            let processedName = weaponName;
+
+            // First, add mod links
+            const modTagRegex = /(\[[^\]]+\])/g;
+            processedName = processedName.replace(modTagRegex, (match) => {
+                const url = modWorkshopUrls[match];
+                if (url) {
+                    return `<a href="${url}" target="_blank" class="mod-link" title="View on Steam Workshop">${match}</a>`;
+                }
+                return match;
+            });
+
+            // Then highlight search terms (but not inside links)
+            if (searchText) {
+                const searchTerms = searchText.split(' ').filter(term => term.length > 0);
+                searchTerms.forEach(term => {
+                    // Escape special regex characters
+                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    // Only highlight text that's not inside HTML tags
+                    const regex = new RegExp(`(?![^<]*>)(${escapedTerm})`, 'gi');
+                    processedName = processedName.replace(regex, '<span class="highlight">$1</span>');
+                });
+            }
+
+            return processedName;
+        }
+
+        function updateSkillDisplay(slider, displayId) {
+            document.getElementById(displayId).textContent = slider.value;
+        }
+
+        function handleSearchInput() {
+            const searchBox = document.getElementById('weaponSearch');
+            const clearButton = document.querySelector('.clear-search');
+
+            if (searchBox.value.length > 0) {
+                clearButton.style.display = 'block';
+            } else {
+                clearButton.style.display = 'none';
+            }
+
+            updateScores();
+        }
+
+        function clearSearch() {
+            document.getElementById('weaponSearch').value = '';
+            document.querySelector('.clear-search').style.display = 'none';
+            updateScores();
+        }
+
+        function calculateArmorPenetrationScore(ap) {
+            // Based on the C# implementation thresholds
+            if (ap >= 0.75) // Can penetrate marine armor
+                return 150;
+            else if (ap >= 0.52) // Can penetrate flak vest
+                return 100;
+            else if (ap >= 0.40) // Can penetrate recon armor
+                return 75;
+            else if (ap >= 0.20) // Can penetrate basic armor
+                return 50;
+            else
+                return ap * 100; // Linear scale for low AP
+        }
+
         // Updated skill scoring with gradual exponential growth
         function calculateSkillScore(shootingSkill, meleeSkill, isRanged) {
             const skillDifference = Math.abs(shootingSkill - meleeSkill);
@@ -471,24 +647,6 @@
                 rangedWeapons = [...vanillaRangedWeapons, ...moddedRangedWeapons];
                 meleeWeapons = [...vanillaMeleeWeapons, ...moddedMeleeWeapons];
             }
-        }
-
-        function updateSkillDisplay(slider, displayId) {
-            document.getElementById(displayId).textContent = slider.value;
-        }
-
-        function calculateArmorPenetrationScore(ap) {
-            // Based on the C# implementation thresholds
-            if (ap >= 0.75) // Can penetrate marine armor
-                return 150;
-            else if (ap >= 0.52) // Can penetrate flak vest
-                return 100;
-            else if (ap >= 0.40) // Can penetrate recon armor
-                return 75;
-            else if (ap >= 0.20) // Can penetrate basic armor
-                return 50;
-            else
-                return ap * 100; // Linear scale for low AP
         }
 
         function calculateRangedScore(weapon, multiplier, qualityMult, shootingSkill, meleeSkill) {
@@ -641,6 +799,7 @@
             const qualityMult = parseFloat(document.getElementById('qualityLevel').value);
             const shootingSkill = parseInt(document.getElementById('shootingSkill').value);
             const meleeSkill = parseInt(document.getElementById('meleeSkill').value);
+            const searchText = document.getElementById('weaponSearch').value.toLowerCase();
 
             // Update ranged weapons table
             const rangedTbody = document.querySelector('#rangedTable tbody');
@@ -649,8 +808,20 @@
             let totalRangedScore = 0;
             let rangedCount = 0;
 
+            // Filter weapons based on search text
+            const filteredRangedWeapons = rangedWeapons.filter(weapon => {
+                const searchableText = weapon.name.toLowerCase();
+                const searchTerms = searchText.split(' ').filter(term => term.length > 0);
+
+                // If no search terms, show all
+                if (searchTerms.length === 0) return true;
+
+                // Check if all search terms are found in the weapon name
+                return searchTerms.every(term => searchableText.includes(term));
+            });
+
             // Calculate scores for all weapons first
-            const rangedScores = rangedWeapons.map(weapon => {
+            const rangedScores = filteredRangedWeapons.map(weapon => {
                 const scores = calculateRangedScore(weapon, rangedMult, qualityMult, shootingSkill, meleeSkill);
                 totalRangedScore += scores.total;
                 rangedCount++;
@@ -661,25 +832,31 @@
             rangedScores.sort((a, b) => b.scores.total - a.scores.total);
 
             // Add sorted rows to table
-            rangedScores.forEach(({ weapon, scores }) => {
+            if (rangedScores.length === 0) {
                 const row = rangedTbody.insertRow();
-                const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
-                const burstText = weapon.burst > 1 ? `${weapon.burst}x` : '-';
-                const rowClass = weapon.mod ? 'modded-weapon' : '';
-                const weaponName = weapon.mod ? weapon.name : weapon.name;
+                row.innerHTML = '<td colspan="8" class="no-results">No weapons match your search</td>';
+            } else {
+                rangedScores.forEach(({ weapon, scores }) => {
+                    const row = rangedTbody.insertRow();
+                    const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
+                    const burstText = weapon.burst > 1 ? `${weapon.burst}x` : '-';
+                    const rowClass = weapon.mod ? 'modded-weapon' : '';
+                    const weaponName = weapon.mod ? weapon.name : weapon.name;
+                    const processedName = processWeaponNameWithLinks(weaponName, searchText);
 
-                row.className = rowClass;
-                row.innerHTML = `
-                                <td>${weaponName}</td>
-                                <td>${scores.qualityDPS.toFixed(1)}</td>
-                                <td>${burstText}</td>
-                                <td>${weapon.range}</td>
-                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                <td>${scores.baseTotal.toFixed(1)}</td>
-                                <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                                <td class="score">${scores.total.toFixed(1)}</td>
-                            `;
-            });
+                    row.className = rowClass;
+                    row.innerHTML = `
+                                            <td>${processedName}</td>
+                                            <td>${scores.qualityDPS.toFixed(1)}</td>
+                                            <td>${burstText}</td>
+                                            <td>${weapon.range}</td>
+                                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                            <td>${scores.baseTotal.toFixed(1)}</td>
+                                            <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                                            <td class="score">${scores.total.toFixed(1)}</td>
+                                        `;
+                });
+            }
 
             // Update melee weapons table
             const meleeTbody = document.querySelector('#meleeTable tbody');
@@ -688,8 +865,20 @@
             let totalMeleeScore = 0;
             let meleeCount = 0;
 
+            // Filter weapons based on search text
+            const filteredMeleeWeapons = meleeWeapons.filter(weapon => {
+                const searchableText = weapon.name.toLowerCase();
+                const searchTerms = searchText.split(' ').filter(term => term.length > 0);
+
+                // If no search terms, show all
+                if (searchTerms.length === 0) return true;
+
+                // Check if all search terms are found in the weapon name
+                return searchTerms.every(term => searchableText.includes(term));
+            });
+
             // Calculate scores for all weapons first
-            const meleeScores = meleeWeapons.map(weapon => {
+            const meleeScores = filteredMeleeWeapons.map(weapon => {
                 const scores = calculateMeleeScore(weapon, meleeMult, qualityMult, shootingSkill, meleeSkill);
                 totalMeleeScore += scores.total;
                 meleeCount++;
@@ -700,27 +889,44 @@
             meleeScores.sort((a, b) => b.scores.total - a.scores.total);
 
             // Add sorted rows to table
-            meleeScores.forEach(({ weapon, scores }) => {
+            if (meleeScores.length === 0) {
                 const row = meleeTbody.insertRow();
-                const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
-                const rowClass = weapon.mod ? 'modded-weapon' : '';
-                const weaponName = weapon.mod ? weapon.name : weapon.name;
+                row.innerHTML = '<td colspan="6" class="no-results">No weapons match your search</td>';
+            } else {
+                meleeScores.forEach(({ weapon, scores }) => {
+                    const row = meleeTbody.insertRow();
+                    const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
+                    const rowClass = weapon.mod ? 'modded-weapon' : '';
+                    const weaponName = weapon.mod ? weapon.name : weapon.name;
+                    const processedName = processWeaponNameWithLinks(weaponName, searchText);
 
-                row.className = rowClass;
-                row.innerHTML = `
-                                <td>${weaponName}</td>
-                                <td>${scores.qualityDPS.toFixed(1)}</td>
-                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                <td>${scores.baseTotal.toFixed(1)}</td>
-                                <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                                <td class="score">${scores.total.toFixed(1)}</td>
-                            `;
-            });
+                    row.className = rowClass;
+                    row.innerHTML = `
+                                            <td>${processedName}</td>
+                                            <td>${scores.qualityDPS.toFixed(1)}</td>
+                                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                            <td>${scores.baseTotal.toFixed(1)}</td>
+                                            <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                                            <td class="score">${scores.total.toFixed(1)}</td>
+                                        `;
+                });
+            }
+
+            // Update weapon counts
+            document.getElementById('rangedCount').textContent =
+                filteredRangedWeapons.length === rangedWeapons.length ?
+                    `(${filteredRangedWeapons.length})` :
+                    `(${filteredRangedWeapons.length} of ${rangedWeapons.length})`;
+
+            document.getElementById('meleeCount').textContent =
+                filteredMeleeWeapons.length === meleeWeapons.length ?
+                    `(${filteredMeleeWeapons.length})` :
+                    `(${filteredMeleeWeapons.length} of ${meleeWeapons.length})`;
 
             // Update recommendation
             updateRecommendation(rangedMult, meleeMult, qualityMult, shootingSkill, meleeSkill,
-                totalRangedScore / rangedCount,
-                totalMeleeScore / meleeCount);
+                rangedCount > 0 ? totalRangedScore / rangedCount : 0,
+                meleeCount > 0 ? totalMeleeScore / meleeCount : 0);
         }
 
         function updateRecommendation(rangedMult, meleeMult, qualityMult, shootingSkill, meleeSkill,
@@ -762,45 +968,45 @@
             const filterNote = '';
 
             document.getElementById('recommendation').innerHTML = `
-                            <h3>Balance Analysis at ${qualityName}</h3>
-                            ${filterNote}
-                            ${skillPref}
-                            <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
-                            <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
-                            <hr>
-                            <h4>Current Configuration Notes:</h4>
-                            <ul>
-                            <ul>
-                                <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
-                                <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
-                                <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
-                                <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
-                                <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
-                                <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
-                                <li>Quality affects both DPS and armor penetration values</li>
-                                <li>Armor penetration adds significant value for late-game effectiveness</li>
-                                <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
-                                <li>Pawn traits and work assignments will further modify these scores</li>
-                                <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
-                                <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
-                            </ul>
-                            <h4>Notable Weapon Insights:</h4>
-                            <ul>
-                                <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
-                                <li><strong>Hunter preferences:</strong> Bolt-action and sniper rifles get +300 bonus, but hunters can still use melee if needed</li>
-                                <li><strong>Brawler penalties:</strong> -500 for ranged (reduced from -2000 - still avoid but better than nothing)</li>
-                                <li><strong>Minigun:</strong> Extreme DPS (25) but limited range (20) makes it situational</li>
-                                <li><strong>Bows vs Guns:</strong> Bows score lower but are silent and accessible early-game</li>
-                                <li><strong>Situational weapons:</strong> Grenades and launchers fixed at ~80 points (low priority for general use)</li>
-                                <li><strong>LMG:</strong> Good suppression with 6-burst but limited by 19 range - gets hunter penalty</li>
-                                <li><strong>Fists baseline:</strong> Everything beats unarmed combat (4.5 DPS)</li>
-                                <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
-                                <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
-                                <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
-                                <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
-                                <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
-                            </ul>
-                        `;
+                                    <h3>Balance Analysis at ${qualityName}</h3>
+                                    ${filterNote}
+                                    ${skillPref}
+                                    <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
+                                    <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
+                                    <hr>
+                                    <h4>Current Configuration Notes:</h4>
+                                    <ul>
+                                    <ul>
+                                        <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
+                                        <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
+                                        <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
+                                        <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
+                                        <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
+                                        <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
+                                        <li>Quality affects both DPS and armor penetration values</li>
+                                        <li>Armor penetration adds significant value for late-game effectiveness</li>
+                                        <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
+                                        <li>Pawn traits and work assignments will further modify these scores</li>
+                                        <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
+                                        <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
+                                    </ul>
+                                    <h4>Notable Weapon Insights:</h4>
+                                    <ul>
+                                        <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
+                                        <li><strong>Hunter preferences:</strong> Bolt-action and sniper rifles get +300 bonus, but hunters can still use melee if needed</li>
+                                        <li><strong>Brawler penalties:</strong> -500 for ranged (reduced from -2000 - still avoid but better than nothing)</li>
+                                        <li><strong>Minigun:</strong> Extreme DPS (25) but limited range (20) makes it situational</li>
+                                        <li><strong>Bows vs Guns:</strong> Bows score lower but are silent and accessible early-game</li>
+                                        <li><strong>Situational weapons:</strong> Grenades and launchers fixed at ~80 points (low priority for general use)</li>
+                                        <li><strong>LMG:</strong> Good suppression with 6-burst but limited by 19 range - gets hunter penalty</li>
+                                        <li><strong>Fists baseline:</strong> Everything beats unarmed combat (4.5 DPS)</li>
+                                        <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
+                                        <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
+                                        <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
+                                        <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
+                                        <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
+                                    </ul>
+                                `;
         }
     </script>
 </body>
