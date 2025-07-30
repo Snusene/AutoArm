@@ -258,8 +258,17 @@ const moddedMeleeWeapons = [
 // Export the weapon data for use in the main HTML file
 // This makes the data available globally when loaded
 window.weaponData = {
-    vanillaRangedWeapons,
-    vanillaMeleeWeapons,
-    moddedRangedWeapons,
-    moddedMeleeWeapons
+    vanillaRangedWeapons: vanillaRangedWeapons,
+    vanillaMeleeWeapons: vanillaMeleeWeapons,
+    moddedRangedWeapons: moddedRangedWeapons,
+    moddedMeleeWeapons: moddedMeleeWeapons
 };
+
+// Log to console for debugging
+console.log('weapons-data.js loaded successfully!');
+console.log('Weapon counts:', {
+    vanillaRanged: vanillaRangedWeapons.length,
+    vanillaMelee: vanillaMeleeWeapons.length,
+    moddedRanged: moddedRangedWeapons.length,
+    moddedMelee: moddedMeleeWeapons.length
+});

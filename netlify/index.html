@@ -329,10 +329,10 @@
     </div>
 
     <!-- Load the external weapon data file -->
-    <script src="weapons-data.js"></script>
+    <script src="weapons-data.js" onerror="handleWeaponDataError()"></script>
 
     <script>
-        // Initialize weapon arrays from the loaded data
+        // Initialize weapon arrays
         let vanillaRangedWeapons = [];
         let vanillaMeleeWeapons = [];
         let moddedRangedWeapons = [];
@@ -340,15 +340,40 @@
         let rangedWeapons = [];
         let meleeWeapons = [];
 
-        // Check if weapon data loaded successfully
-        window.addEventListener('load', function () {
+        // Handle loading error
+        function handleWeaponDataError() {
+            console.error('Failed to load weapons-data.js');
+            document.getElementById('loadingMessage').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'block';
+            document.getElementById('errorMessage').innerHTML =
+                '<strong>Error:</strong> Failed to load weapons-data.js<br>' +
+                'Please make sure:<br>' +
+                '1. weapons-data.js is in the same folder as index.html<br>' +
+                '2. The file name is exactly "weapons-data.js" (case sensitive)<br>' +
+                '3. If running locally, use a web server (not file://)';
+        }
+
+        // Function to initialize the application
+        function initializeApp() {
+            console.log('Attempting to initialize app...');
+            console.log('window.weaponData exists?', !!window.weaponData);
+
             try {
                 if (window.weaponData) {
+                    console.log('Loading weapon data...');
+
                     // Load weapon data from external file
-                    vanillaRangedWeapons = window.weaponData.vanillaRangedWeapons;
-                    vanillaMeleeWeapons = window.weaponData.vanillaMeleeWeapons;
-                    moddedRangedWeapons = window.weaponData.moddedRangedWeapons;
-                    moddedMeleeWeapons = window.weaponData.moddedMeleeWeapons;
+                    vanillaRangedWeapons = window.weaponData.vanillaRangedWeapons || [];
+                    vanillaMeleeWeapons = window.weaponData.vanillaMeleeWeapons || [];
+                    moddedRangedWeapons = window.weaponData.moddedRangedWeapons || [];
+                    moddedMeleeWeapons = window.weaponData.moddedMeleeWeapons || [];
+
+                    console.log('Loaded weapons:', {
+                        vanillaRanged: vanillaRangedWeapons.length,
+                        vanillaMelee: vanillaMeleeWeapons.length,
+                        moddedRanged: moddedRangedWeapons.length,
+                        moddedMelee: moddedMeleeWeapons.length
+                    });
 
                     // Initialize with vanilla weapons
                     filterWeapons();
@@ -359,16 +384,31 @@
 
                     // Initial update
                     updateScores();
+
+                    console.log('Application initialized successfully!');
                 } else {
-                    throw new Error('Weapon data not loaded');
+                    throw new Error('window.weaponData is undefined');
                 }
             } catch (error) {
+                console.error('Error during initialization:', error);
                 document.getElementById('loadingMessage').style.display = 'none';
                 document.getElementById('errorMessage').style.display = 'block';
                 document.getElementById('errorMessage').innerHTML =
-                    '<strong>Error:</strong> Failed to load weapon data. Make sure weapons-data.js is in the same directory as index.html.';
+                    '<strong>Error:</strong> ' + error.message + '<br>' +
+                    'Check the browser console (F12) for more details.';
             }
-        });
+        }
+
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () {
+                // Give the weapons-data.js script a moment to execute
+                setTimeout(initializeApp, 100);
+            });
+        } else {
+            // DOM is already ready, wait a moment for weapons-data.js
+            setTimeout(initializeApp, 100);
+        }
 
         // Updated skill scoring with gradual exponential growth
         function calculateSkillScore(shootingSkill, meleeSkill, isRanged) {
