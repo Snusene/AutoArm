@@ -221,6 +221,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     height: 800px; /* Reduced height for better fit */
     transition: all 0.3s ease;
     min-width: 0; /* Prevent grid blowout */
+    overflow: hidden; /* Prevent section overflow */
 }
 
 .weapon-section:hover {
@@ -241,12 +242,15 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .table-container {
     flex: 1;
-    overflow: auto; /* Allow both vertical and horizontal scroll */
+    overflow-x: auto; /* Explicit horizontal scroll */
+    overflow-y: auto; /* Vertical scroll */
     margin-top: 10px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255,255,255,0.05);
     border-radius: 3px;
     -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
+    width: 100%; /* Full width of parent */
+    position: relative; /* For scrollbar positioning */
 }
 
 /* Custom scrollbar for webkit browsers */
@@ -276,6 +280,15 @@ table {
     table-layout: auto; /* Let browser calculate column widths */
     word-spacing: normal; /* Ensure normal word spacing */
     letter-spacing: normal; /* Ensure normal letter spacing */
+    min-width: 900px; /* Ensure table has minimum width for all columns */
+}
+
+#rangedTable {
+    min-width: 1000px; /* Ensure enough width for all 9 columns */
+}
+
+#meleeTable {
+    min-width: 700px; /* Ensure enough width for all 6 columns */
 }
 
 th, td {
@@ -287,16 +300,16 @@ th, td {
 
 /* Weapon name column - first column */
 th:first-child {
-    min-width: 300px;
+    min-width: 200px; /* Reduced from 300px */
     text-align: left;
     padding-left: 12px;
-    padding-right: 20px;
+    padding-right: 15px;
 }
 
 td:first-child {
-    min-width: 300px;
+    min-width: 200px; /* Reduced from 300px */
     padding-left: 12px;
-    padding-right: 20px;
+    padding-right: 15px;
     white-space: nowrap; /* Keep weapon names on one line */
     overflow: visible; /* Make sure content isn't hidden */
     text-overflow: initial; /* No ellipsis for now */
@@ -314,8 +327,8 @@ th:not(:first-child),
 td:not(:first-child) {
     white-space: nowrap;
     text-align: center;
-    padding: 8px 10px;
-    min-width: 50px; /* Ensure minimum width for all columns */
+    padding: 8px 6px; /* Reduced horizontal padding */
+    min-width: 45px; /* Reduced minimum width */
     /* Reset any potential inherited styles */
     letter-spacing: 0;
     word-spacing: 0;

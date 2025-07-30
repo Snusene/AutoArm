@@ -636,13 +636,13 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Insert cells in order - insertCell() adds at the end by default
-                    // Weapon name cell (index 0)
-                    const nameCell = row.insertCell(0);
+                    // Insert cells in order - using insertCell() without index to append
+                    // Weapon name cell (column 0)
+                    const nameCell = row.insertCell();
                     nameCell.textContent = weapon.name;
                     
-                    // DPS cell (index 1)
-                    const dpsCell = row.insertCell(1);
+                    // DPS cell (column 1)
+                    const dpsCell = row.insertCell();
                     if (scores.qualityDPS > 25) {
                         const span = document.createElement('span');
                         span.className = 'power-creep-adjusted tooltip';
@@ -653,30 +653,30 @@
                         dpsCell.textContent = scores.qualityDPS.toFixed(1);
                     }
                     
-                    // Accuracy cell (index 2)
-                    const accCell = row.insertCell(2);
+                    // Accuracy cell (column 2)
+                    const accCell = row.insertCell();
                     accCell.className = 'acc-value';
                     accCell.textContent = accuracyDisplay;
                     
-                    // Burst cell (index 3)
-                    const burstCell = row.insertCell(3);
+                    // Burst cell (column 3)
+                    const burstCell = row.insertCell();
                     burstCell.textContent = burstText;
                     
-                    // Range cell (index 4)
-                    const rangeCell = row.insertCell(4);
+                    // Range cell (column 4)
+                    const rangeCell = row.insertCell();
                     rangeCell.textContent = weapon.range;
                     
-                    // AP cell (index 5)
-                    const apCell = row.insertCell(5);
+                    // AP cell (column 5)
+                    const apCell = row.insertCell();
                     apCell.className = 'ap-value';
                     apCell.textContent = scores.ap.toFixed(3);
                     
-                    // Base Score cell (index 6)
-                    const baseScoreCell = row.insertCell(6);
+                    // Base Score cell (column 6)
+                    const baseScoreCell = row.insertCell();
                     baseScoreCell.textContent = scores.baseTotal.toFixed(1);
                     
-                    // Skill Score cell (index 7)
-                    const skillScoreCell = row.insertCell(7);
+                    // Skill Score cell (column 7)
+                    const skillScoreCell = row.insertCell();
                     if (scores.skillScore > 0) {
                         skillScoreCell.style.color = 'green';
                         skillScoreCell.textContent = '+' + scores.skillScore.toFixed(0);
@@ -687,8 +687,8 @@
                         skillScoreCell.textContent = '0';
                     }
                     
-                    // Total Score cell (index 8)
-                    const totalScoreCell = row.insertCell(8);
+                    // Total Score cell (column 8)
+                    const totalScoreCell = row.insertCell();
                     totalScoreCell.className = 'score';
                     totalScoreCell.textContent = scores.total.toFixed(1);
                 });
@@ -745,13 +745,13 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Insert cells in order - insertCell() adds at the end by default
-                    // Weapon name cell (index 0)
-                    const nameCell = row.insertCell(0);
+                    // Insert cells in order - using insertCell() without index to append
+                    // Weapon name cell (column 0)
+                    const nameCell = row.insertCell();
                     nameCell.textContent = weapon.name;
                     
-                    // DPS cell (index 1)
-                    const dpsCell = row.insertCell(1);
+                    // DPS cell (column 1)
+                    const dpsCell = row.insertCell();
                     if (scores.qualityDPS > 25) {
                         const span = document.createElement('span');
                         span.className = 'power-creep-adjusted tooltip';
@@ -762,17 +762,17 @@
                         dpsCell.textContent = scores.qualityDPS.toFixed(1);
                     }
                     
-                    // AP cell (index 2)
-                    const apCell = row.insertCell(2);
+                    // AP cell (column 2)
+                    const apCell = row.insertCell();
                     apCell.className = 'ap-value';
                     apCell.textContent = scores.ap.toFixed(3);
                     
-                    // Base Score cell (index 3)
-                    const baseScoreCell = row.insertCell(3);
+                    // Base Score cell (column 3)
+                    const baseScoreCell = row.insertCell();
                     baseScoreCell.textContent = scores.baseTotal.toFixed(1);
                     
-                    // Skill Score cell (index 4)
-                    const skillScoreCell = row.insertCell(4);
+                    // Skill Score cell (column 4)
+                    const skillScoreCell = row.insertCell();
                     if (scores.skillScore > 0) {
                         skillScoreCell.style.color = 'green';
                         skillScoreCell.textContent = '+' + scores.skillScore.toFixed(0);
@@ -783,8 +783,8 @@
                         skillScoreCell.textContent = '0';
                     }
                     
-                    // Total Score cell (index 5)
-                    const totalScoreCell = row.insertCell(5);
+                    // Total Score cell (column 5)
+                    const totalScoreCell = row.insertCell();
                     totalScoreCell.className = 'score';
                     totalScoreCell.textContent = scores.total.toFixed(1);
                 });
