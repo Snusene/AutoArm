@@ -45,12 +45,7 @@
         #meleeTable th:nth-child(5), #meleeTable td:nth-child(5) { width: 80px !important; } /* Skill Score */
         #meleeTable th:nth-child(6), #meleeTable td:nth-child(6) { width: 80px !important; } /* Total Score */
         
-        /* Ensure first cell text is visible */
-        #rangedTable td:first-child,
-        #meleeTable td:first-child {
-            font-weight: 500;
-            color: #c7d5e0;
-        }
+        /* Remove all the debug styles - not needed */
     </style>
 </head>
 <body>
@@ -658,11 +653,11 @@
 
             // Add sorted rows to table
             if (rangedScores.length === 0) {
-                const row = rangedTbody.insertRow();
-                row.innerHTML = '<td colspan="9" class="no-results">No weapons match your search</td>';
+                rangedTbody.innerHTML = '<tr><td colspan="9" class="no-results">No weapons match your search</td></tr>';
             } else {
+                // Build all rows as a single HTML string
+                let tableHTML = '';
                 rangedScores.forEach(({ weapon, scores }) => {
-                    const row = rangedTbody.insertRow();
                     const burstText = weapon.burst > 1 ? `${weapon.burst}x` : '-';
                     const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const weaponName = weapon.name;
@@ -678,7 +673,7 @@
                     else if (scores.total >= 150) tierClass = 'average-tier';
                     else tierClass = 'poor-tier';
                     
-                    row.className = `${rowClass} ${tierClass}`;
+                    const rowClasses = `${rowClass} ${tierClass}`.trim();
                     
                     // Use innerHTML like the working version
                     const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
@@ -686,7 +681,7 @@
                         `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
                         scores.qualityDPS.toFixed(1);
                     
-                    row.innerHTML = `
+                    tableHTML += `<tr class="${rowClasses}">
                         <td>${weaponName}</td>
                         <td>${dpsContent}</td>
                         <td class="acc-value">${accuracyDisplay}</td>
@@ -696,8 +691,10 @@
                         <td>${scores.baseTotal.toFixed(1)}</td>
                         <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
                         <td class="score">${scores.total.toFixed(1)}</td>
-                    `;
+                    </tr>`;
                 });
+                // Set all rows at once
+                rangedTbody.innerHTML = tableHTML;
             }
 
             // Update melee weapons table
@@ -732,11 +729,11 @@
 
             // Add sorted rows to table
             if (meleeScores.length === 0) {
-                const row = meleeTbody.insertRow();
-                row.innerHTML = '<td colspan="6" class="no-results">No weapons match your search</td>';
+                meleeTbody.innerHTML = '<tr><td colspan="6" class="no-results">No weapons match your search</td></tr>';
             } else {
+                // Build all rows as a single HTML string
+                let tableHTML = '';
                 meleeScores.forEach(({ weapon, scores }) => {
-                    const row = meleeTbody.insertRow();
                     const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const weaponName = weapon.name;
 
@@ -748,7 +745,7 @@
                     else if (scores.total >= 100) tierClass = 'average-tier';
                     else tierClass = 'poor-tier';
                     
-                    row.className = `${rowClass} ${tierClass}`;
+                    const rowClasses = `${rowClass} ${tierClass}`.trim();
                     
                     // Use innerHTML like the working version
                     const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
@@ -756,15 +753,17 @@
                         `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
                         scores.qualityDPS.toFixed(1);
                     
-                    row.innerHTML = `
+                    tableHTML += `<tr class="${rowClasses}">
                         <td>${weaponName}</td>
                         <td>${dpsContent}</td>
                         <td class="ap-value">${scores.ap.toFixed(3)}</td>
                         <td>${scores.baseTotal.toFixed(1)}</td>
                         <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
                         <td class="score">${scores.total.toFixed(1)}</td>
-                    `;
+                    </tr>`;
                 });
+                // Set all rows at once
+                meleeTbody.innerHTML = tableHTML;
             }
 
             // Update weapon counts
