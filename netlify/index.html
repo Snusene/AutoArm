@@ -8,8 +8,6 @@
 </head>
 <body>
     <div class="container">
-        <h1>AutoArm Weapon Balance Analyzer</h1>
-
         <div id="loadingMessage" class="loading">Loading weapon data...</div>
         <div id="errorMessage" class="error" style="display: none;"></div>
 
@@ -636,13 +634,14 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Insert cells in order - using insertCell() without index to append
-                    // Weapon name cell (column 0)
-                    const nameCell = row.insertCell();
+                    // Create and append cells using createElement to ensure correct order
+                    // Weapon name cell
+                    const nameCell = document.createElement('td');
                     nameCell.textContent = weapon.name;
+                    row.appendChild(nameCell);
                     
-                    // DPS cell (column 1)
-                    const dpsCell = row.insertCell();
+                    // DPS cell
+                    const dpsCell = document.createElement('td');
                     if (scores.qualityDPS > 25) {
                         const span = document.createElement('span');
                         span.className = 'power-creep-adjusted tooltip';
@@ -652,31 +651,37 @@
                     } else {
                         dpsCell.textContent = scores.qualityDPS.toFixed(1);
                     }
+                    row.appendChild(dpsCell);
                     
-                    // Accuracy cell (column 2)
-                    const accCell = row.insertCell();
+                    // Accuracy cell
+                    const accCell = document.createElement('td');
                     accCell.className = 'acc-value';
                     accCell.textContent = accuracyDisplay;
+                    row.appendChild(accCell);
                     
-                    // Burst cell (column 3)
-                    const burstCell = row.insertCell();
+                    // Burst cell
+                    const burstCell = document.createElement('td');
                     burstCell.textContent = burstText;
+                    row.appendChild(burstCell);
                     
-                    // Range cell (column 4)
-                    const rangeCell = row.insertCell();
+                    // Range cell
+                    const rangeCell = document.createElement('td');
                     rangeCell.textContent = weapon.range;
+                    row.appendChild(rangeCell);
                     
-                    // AP cell (column 5)
-                    const apCell = row.insertCell();
+                    // AP cell
+                    const apCell = document.createElement('td');
                     apCell.className = 'ap-value';
                     apCell.textContent = scores.ap.toFixed(3);
+                    row.appendChild(apCell);
                     
-                    // Base Score cell (column 6)
-                    const baseScoreCell = row.insertCell();
+                    // Base Score cell
+                    const baseScoreCell = document.createElement('td');
                     baseScoreCell.textContent = scores.baseTotal.toFixed(1);
+                    row.appendChild(baseScoreCell);
                     
-                    // Skill Score cell (column 7)
-                    const skillScoreCell = row.insertCell();
+                    // Skill Score cell
+                    const skillScoreCell = document.createElement('td');
                     if (scores.skillScore > 0) {
                         skillScoreCell.style.color = 'green';
                         skillScoreCell.textContent = '+' + scores.skillScore.toFixed(0);
@@ -686,11 +691,13 @@
                     } else {
                         skillScoreCell.textContent = '0';
                     }
+                    row.appendChild(skillScoreCell);
                     
-                    // Total Score cell (column 8)
-                    const totalScoreCell = row.insertCell();
+                    // Total Score cell
+                    const totalScoreCell = document.createElement('td');
                     totalScoreCell.className = 'score';
                     totalScoreCell.textContent = scores.total.toFixed(1);
+                    row.appendChild(totalScoreCell);
                 });
             }
 
@@ -745,13 +752,14 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Insert cells in order - using insertCell() without index to append
-                    // Weapon name cell (column 0)
-                    const nameCell = row.insertCell();
+                    // Create and append cells using createElement to ensure correct order
+                    // Weapon name cell
+                    const nameCell = document.createElement('td');
                     nameCell.textContent = weapon.name;
+                    row.appendChild(nameCell);
                     
-                    // DPS cell (column 1)
-                    const dpsCell = row.insertCell();
+                    // DPS cell
+                    const dpsCell = document.createElement('td');
                     if (scores.qualityDPS > 25) {
                         const span = document.createElement('span');
                         span.className = 'power-creep-adjusted tooltip';
@@ -761,18 +769,21 @@
                     } else {
                         dpsCell.textContent = scores.qualityDPS.toFixed(1);
                     }
+                    row.appendChild(dpsCell);
                     
-                    // AP cell (column 2)
-                    const apCell = row.insertCell();
+                    // AP cell
+                    const apCell = document.createElement('td');
                     apCell.className = 'ap-value';
                     apCell.textContent = scores.ap.toFixed(3);
+                    row.appendChild(apCell);
                     
-                    // Base Score cell (column 3)
-                    const baseScoreCell = row.insertCell();
+                    // Base Score cell
+                    const baseScoreCell = document.createElement('td');
                     baseScoreCell.textContent = scores.baseTotal.toFixed(1);
+                    row.appendChild(baseScoreCell);
                     
-                    // Skill Score cell (column 4)
-                    const skillScoreCell = row.insertCell();
+                    // Skill Score cell
+                    const skillScoreCell = document.createElement('td');
                     if (scores.skillScore > 0) {
                         skillScoreCell.style.color = 'green';
                         skillScoreCell.textContent = '+' + scores.skillScore.toFixed(0);
@@ -782,11 +793,13 @@
                     } else {
                         skillScoreCell.textContent = '0';
                     }
+                    row.appendChild(skillScoreCell);
                     
-                    // Total Score cell (column 5)
-                    const totalScoreCell = row.insertCell();
+                    // Total Score cell
+                    const totalScoreCell = document.createElement('td');
                     totalScoreCell.className = 'score';
                     totalScoreCell.textContent = scores.total.toFixed(1);
+                    row.appendChild(totalScoreCell);
                 });
             }
 
