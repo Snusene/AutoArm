@@ -649,16 +649,16 @@
                         scores.qualityDPS.toFixed(1);
                     
                     row.innerHTML = `
-                                                                <td>${processedName}</td>
-                                                                <td>${dpsDisplay}</td>
-                                                                <td class="acc-value">${accuracyDisplay}</td>
-                                                                <td>${burstText}</td>
-                                                                <td>${weapon.range}</td>
-                                                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                                                <td>${scores.baseTotal.toFixed(1)}</td>
-                                                                <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                                                                <td class="score">${scores.total.toFixed(1)}</td>
-                                                            `;
+                        <td>${processedName}</td>
+                        <td>${dpsDisplay}</td>
+                        <td class="acc-value">${accuracyDisplay}</td>
+                        <td>${burstText}</td>
+                        <td>${weapon.range}</td>
+                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                        <td>${scores.baseTotal.toFixed(1)}</td>
+                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                        <td class="score">${scores.total.toFixed(1)}</td>
+                    `;
                 });
             }
 
@@ -720,13 +720,13 @@
                         scores.qualityDPS.toFixed(1);
                     
                     row.innerHTML = `
-                                                                <td>${processedName}</td>
-                                                                <td>${dpsDisplay}</td>
-                                                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                                                <td>${scores.baseTotal.toFixed(1)}</td>
-                                                                <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                                                                <td class="score">${scores.total.toFixed(1)}</td>
-                                                            `;
+                        <td>${processedName}</td>
+                        <td>${dpsDisplay}</td>
+                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                        <td>${scores.baseTotal.toFixed(1)}</td>
+                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                        <td class="score">${scores.total.toFixed(1)}</td>
+                    `;
                 });
             }
 
@@ -793,18 +793,19 @@
             <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
             <hr>
             <h4>Current Configuration Notes:</h4>
+            <ul>
                 <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
-            <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
-            <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
-            <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
-            <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
-            <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
-            <li>Quality affects both DPS and armor penetration values</li>
-            <li>Armor penetration adds significant value for late-game effectiveness</li>
-            <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
-            <li>Pawn traits and work assignments will further modify these scores</li>
-            <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
-            <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
+                <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
+                <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
+                <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
+                <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
+                <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
+                <li>Quality affects both DPS and armor penetration values</li>
+                <li>Armor penetration adds significant value for late-game effectiveness</li>
+                <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
+                <li>Pawn traits and work assignments will further modify these scores</li>
+                <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
+                <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
             </ul>
             `;
         }
