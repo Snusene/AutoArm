@@ -731,45 +731,27 @@
             const filterNote = '';
 
             document.getElementById('recommendation').innerHTML = `
-                                                        <h3>Balance Analysis at ${qualityName}</h3>
-                                                        ${filterNote}
-                                                        ${skillPref}
-                                                        <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
-                                                        <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
-                                                        <hr>
-                                                        <h4>Current Configuration Notes:</h4>
-                                                        <ul>
-                                                        <ul>
-                                                            <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
-                                                            <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
-                                                            <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
-                                                            <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
-                                                            <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
-                                                            <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
-                                                            <li>Quality affects both DPS and armor penetration values</li>
-                                                            <li>Armor penetration adds significant value for late-game effectiveness</li>
-                                                            <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
-                                                            <li>Pawn traits and work assignments will further modify these scores</li>
-                                                                                                                    <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
-                                                            <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
-                                                        </ul>
-                                                        <h4>Notable Weapon Insights:</h4>
-                                                        <ul>
-                                                            <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
-                                                            <li><strong>Hunter preferences:</strong> Bolt-action and sniper rifles get +300 bonus, but hunters can still use melee if needed</li>
-                                                            <li><strong>Brawler penalties:</strong> -500 for ranged (reduced from -2000 - still avoid but better than nothing)</li>
-                                                            <li><strong>Minigun:</strong> Extreme DPS (25) but limited range (20) makes it situational</li>
-                                                            <li><strong>Bows vs Guns:</strong> Bows score lower but are silent and accessible early-game</li>
-                                                            <li><strong>Situational weapons:</strong> Grenades and launchers fixed at ~80 points (low priority for general use)</li>
-                                                                                                                    <li><strong>Heavy SMG:</strong> 5-burst with only 39% accuracy - spray and pray weapon that needs to get close</li>
-                                                            <li><strong>Fists baseline:</strong> Everything beats unarmed combat (4.5 DPS)</li>
-                                                            <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
-                                                            <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
-                                                            <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
-                                                            <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
-                                                            <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
-                                                        </ul>
-                                                    `;
+            <h3>Balance Analysis at ${qualityName}</h3>
+            ${filterNote}
+            ${skillPref}
+            <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
+            <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
+            <hr>
+            <h4>Current Configuration Notes:</h4>
+                <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
+            <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
+            <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
+            <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
+            <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
+            <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
+            <li>Quality affects both DPS and armor penetration values</li>
+            <li>Armor penetration adds significant value for late-game effectiveness</li>
+            <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
+            <li>Pawn traits and work assignments will further modify these scores</li>
+            <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
+            <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
+            </ul>
+            `;
         }
     </script>
 </body>
