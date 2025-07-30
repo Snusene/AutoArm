@@ -8,6 +8,22 @@ body {
     background-attachment: fixed;
     min-height: 100vh;
     color: #c7d5e0;
+    position: relative;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url('https://i.redd.it/0406lf9xw68f1.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.3;
+    z-index: -1;
 }
 
 .container {
