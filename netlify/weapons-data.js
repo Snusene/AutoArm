@@ -13,41 +13,42 @@
 
     // Typical weapon data from RimWorld (base values at Normal quality)
     // AP values are calculated as damage * 0.015 for most weapons unless specified
+    // Accuracy values are for touch/short/medium/long ranges
     const vanillaRangedWeapons = [
         // Early-game/Tribal
-        { name: "Short Bow", dps: 4.5, range: 16, damage: 10, burst: 1 },
-        { name: "Recurve Bow", dps: 5.5, range: 20, damage: 13, burst: 1 },
-        { name: "Greatbow", dps: 6.5, range: 22, damage: 17, burst: 1 },
-        { name: "Pila", dps: 7, range: 12, damage: 16, burst: 1 },
+        { name: "Short Bow", dps: 4.5, range: 16, damage: 10, burst: 1, acc: [0.50, 0.62, 0.41, 0.22] },
+        { name: "Recurve Bow", dps: 5.5, range: 20, damage: 13, burst: 1, acc: [0.60, 0.77, 0.64, 0.41] },
+        { name: "Greatbow", dps: 6.5, range: 22, damage: 17, burst: 1, acc: [0.60, 0.79, 0.72, 0.49] },
+        { name: "Pila", dps: 7, range: 12, damage: 16, burst: 1, acc: [0.55, 0.71, 0.41, 0.22] },
 
         // Industrial weapons
-        { name: "Revolver", dps: 6.5, range: 16, damage: 12, burst: 1 },
-        { name: "Autopistol", dps: 9, range: 16, damage: 10, burst: 1 },
-        { name: "Pump Shotgun", dps: 14, range: 9, damage: 18, burst: 1 },
-        { name: "Machine Pistol", dps: 10.5, range: 15, damage: 7, burst: 3 },
-        { name: "Bolt-Action Rifle", dps: 8, range: 30, damage: 18, burst: 1 },
-        { name: "Assault Rifle", dps: 11.5, range: 23, damage: 11, burst: 3 },
-        { name: "Sniper Rifle", dps: 9.5, range: 37, damage: 25, burst: 1 },
-        { name: "Chain Shotgun", dps: 16, range: 9, damage: 13, burst: 1 },
-        { name: "Heavy SMG", dps: 13, range: 16, damage: 12, burst: 5 },
-        { name: "LMG", dps: 12, range: 19, damage: 11, burst: 6 },
+        { name: "Revolver", dps: 6.5, range: 16, damage: 12, burst: 1, acc: [0.80, 0.75, 0.45, 0.35] },
+        { name: "Autopistol", dps: 9, range: 16, damage: 10, burst: 1, acc: [0.80, 0.70, 0.40, 0.30] },
+        { name: "Pump Shotgun", dps: 14, range: 9, damage: 18, burst: 1, acc: [0.80, 0.87, 0.77, 0.64] },
+        { name: "Machine Pistol", dps: 10.5, range: 15, damage: 7, burst: 3, acc: [0.60, 0.50, 0.35, 0.25] },
+        { name: "Bolt-Action Rifle", dps: 8, range: 30, damage: 18, burst: 1, acc: [0.65, 0.80, 0.90, 0.80] },
+        { name: "Assault Rifle", dps: 11.5, range: 23, damage: 11, burst: 3, acc: [0.65, 0.65, 0.65, 0.55] },
+        { name: "Sniper Rifle", dps: 9.5, range: 37, damage: 25, burst: 1, acc: [0.50, 0.70, 0.86, 0.88] },
+        { name: "Chain Shotgun", dps: 16, range: 9, damage: 13, burst: 1, acc: [0.85, 0.80, 0.73, 0.64] },
+        { name: "Heavy SMG", dps: 13, range: 16, damage: 12, burst: 5, acc: [0.50, 0.45, 0.35, 0.25] },
+        { name: "LMG", dps: 12, range: 19, damage: 11, burst: 6, acc: [0.35, 0.45, 0.55, 0.35] },
 
         // Spacer weapons
-        { name: "Charge Rifle", dps: 15.5, range: 25, damage: 15, ap: 0.35, burst: 3 },
-        { name: "Charge Lance", dps: 12, range: 30, damage: 30, ap: 0.45, burst: 1 },
-        { name: "Minigun", dps: 25, range: 20, damage: 5, burst: 25 },
+        { name: "Charge Rifle", dps: 15.5, range: 25, damage: 15, ap: 0.35, burst: 3, acc: [0.65, 0.70, 0.70, 0.65] },
+        { name: "Charge Lance", dps: 12, range: 30, damage: 30, ap: 0.45, burst: 1, acc: [0.65, 0.85, 0.85, 0.85] },
+        { name: "Minigun", dps: 25, range: 20, damage: 5, burst: 25, acc: [0.20, 0.25, 0.30, 0.25], forcedMiss: 2.5 },
 
         // Special weapons (DPS values are estimates - these weapons work differently)
-        { name: "Incendiary Launcher", dps: 4.5, range: 15, damage: 10, burst: 1, ap: 0.05, situational: true },
-        { name: "EMP Launcher", dps: 3.5, range: 14, damage: 50, burst: 1, ap: 0.0, situational: true },
-        { name: "Smoke Launcher", dps: 2, range: 14, damage: 10, burst: 1, ap: 0.0, situational: true },
-        { name: "Frag Grenades", dps: 8, range: 12, damage: 50, burst: 1, ap: 0.1, situational: true },
-        { name: "Molotov Cocktails", dps: 5, range: 10, damage: 10, burst: 1, ap: 0.05, situational: true },
-        { name: "EMP Grenades", dps: 6, range: 10, damage: 50, burst: 1, ap: 0.0, situational: true },
+        { name: "Incendiary Launcher", dps: 4.5, range: 15, damage: 10, burst: 1, ap: 0.05, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 3.0 },
+        { name: "EMP Launcher", dps: 3.5, range: 14, damage: 50, burst: 1, ap: 0.0, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 3.0 },
+        { name: "Smoke Launcher", dps: 2, range: 14, damage: 10, burst: 1, ap: 0.0, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 3.0 },
+        { name: "Frag Grenades", dps: 8, range: 12, damage: 50, burst: 1, ap: 0.1, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 2.0 },
+        { name: "Molotov Cocktails", dps: 5, range: 10, damage: 10, burst: 1, ap: 0.05, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 2.5 },
+        { name: "EMP Grenades", dps: 6, range: 10, damage: 50, burst: 1, ap: 0.0, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 2.0 },
 
         // Ultra weapons (single-use)
-        { name: "Triple Rocket Launcher", dps: 20, range: 24, damage: 50, burst: 3, ap: 0.2, situational: true },
-        { name: "Doomsday Rocket Launcher", dps: 25, range: 20, damage: 80, burst: 1, ap: 0.3, situational: true }
+        { name: "Triple Rocket Launcher", dps: 20, range: 24, damage: 50, burst: 3, ap: 0.2, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 3.5 },
+        { name: "Doomsday Rocket Launcher", dps: 25, range: 20, damage: 80, burst: 1, ap: 0.3, situational: true, acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 4.0 }
     ];
 
     // MeleeWeapon_AverageDPS and MeleeWeapon_AverageArmorPenetration values at Normal quality
@@ -83,37 +84,37 @@
     // Modded weapons from popular mods - GREATLY EXPANDED
     const moddedRangedWeapons = [
         // Vanilla Weapons Expanded Core
-        { name: "[VWE] Service Rifle", dps: 12, range: 26, damage: 12, burst: 3, mod: "VWE" },
-        { name: "[VWE] Battle Rifle", dps: 10.5, range: 32, damage: 16, burst: 2, mod: "VWE" },
-        { name: "[VWE] Compound Bow", dps: 7, range: 22, damage: 18, burst: 1, mod: "VWE" },
-        { name: "[VWE] Flintlock Rifle", dps: 6, range: 26, damage: 18, burst: 1, mod: "VWE" },
-        { name: "[VWE] Hand Cannon", dps: 8, range: 12, damage: 20, burst: 1, mod: "VWE" },
-        { name: "[VWE] Charged LMG", dps: 18, range: 23, damage: 12, burst: 6, ap: 0.30, mod: "VWE" },
-        { name: "[VWE] Ion Rifle", dps: 16, range: 27, damage: 14, burst: 3, ap: 0.40, mod: "VWE" },
-        { name: "[VWE] Crossbow", dps: 5.5, range: 20, damage: 15, burst: 1, mod: "VWE" },
-        { name: "[VWE] Musket", dps: 7, range: 24, damage: 22, burst: 1, mod: "VWE" },
-        { name: "[VWE] Designated Marksman Rifle", dps: 11, range: 35, damage: 20, burst: 1, mod: "VWE" },
-        { name: "[VWE] Anti-Material Rifle", dps: 14, range: 45, damage: 40, burst: 1, ap: 0.60, mod: "VWE" },
-        { name: "[VWE] Grenade Launcher", dps: 10, range: 20, damage: 35, burst: 1, ap: 0.15, mod: "VWE" },
-        { name: "[VWE] Charge Shotgun", dps: 18, range: 11, damage: 20, burst: 1, ap: 0.38, mod: "VWE" },
-        { name: "[VWE] Carbine", dps: 10, range: 20, damage: 10, burst: 3, mod: "VWE" },
-        { name: "[VWE] Throwing Rocks", dps: 3, range: 8, damage: 8, burst: 1, mod: "VWE" },
-        { name: "[VWE] Javelin", dps: 8, range: 14, damage: 18, burst: 1, mod: "VWE" },
+        { name: "[VWE] Service Rifle", dps: 12, range: 26, damage: 12, burst: 3, mod: "VWE", acc: [0.65, 0.70, 0.70, 0.60] },
+        { name: "[VWE] Battle Rifle", dps: 10.5, range: 32, damage: 16, burst: 2, mod: "VWE", acc: [0.65, 0.75, 0.80, 0.70] },
+        { name: "[VWE] Compound Bow", dps: 7, range: 22, damage: 18, burst: 1, mod: "VWE", acc: [0.65, 0.82, 0.75, 0.55] },
+        { name: "[VWE] Flintlock Rifle", dps: 6, range: 26, damage: 18, burst: 1, mod: "VWE", acc: [0.55, 0.70, 0.75, 0.60] },
+        { name: "[VWE] Hand Cannon", dps: 8, range: 12, damage: 20, burst: 1, mod: "VWE", acc: [0.65, 0.60, 0.40, 0.25] },
+        { name: "[VWE] Charged LMG", dps: 18, range: 23, damage: 12, burst: 6, ap: 0.30, mod: "VWE", acc: [0.40, 0.50, 0.60, 0.40] },
+        { name: "[VWE] Ion Rifle", dps: 16, range: 27, damage: 14, burst: 3, ap: 0.40, mod: "VWE", acc: [0.70, 0.75, 0.75, 0.70] },
+        { name: "[VWE] Crossbow", dps: 5.5, range: 20, damage: 15, burst: 1, mod: "VWE", acc: [0.65, 0.80, 0.70, 0.45] },
+        { name: "[VWE] Musket", dps: 7, range: 24, damage: 22, burst: 1, mod: "VWE", acc: [0.60, 0.75, 0.80, 0.65] },
+        { name: "[VWE] Designated Marksman Rifle", dps: 11, range: 35, damage: 20, burst: 1, mod: "VWE", acc: [0.65, 0.80, 0.88, 0.85] },
+        { name: "[VWE] Anti-Material Rifle", dps: 14, range: 45, damage: 40, burst: 1, ap: 0.60, mod: "VWE", acc: [0.55, 0.75, 0.90, 0.92] },
+        { name: "[VWE] Grenade Launcher", dps: 10, range: 20, damage: 35, burst: 1, ap: 0.15, mod: "VWE", acc: [0.50, 0.50, 0.50, 0.50], forcedMiss: 2.5 },
+        { name: "[VWE] Charge Shotgun", dps: 18, range: 11, damage: 20, burst: 1, ap: 0.38, mod: "VWE", acc: [0.85, 0.85, 0.80, 0.70] },
+        { name: "[VWE] Carbine", dps: 10, range: 20, damage: 10, burst: 3, mod: "VWE", acc: [0.70, 0.68, 0.60, 0.45] },
+        { name: "[VWE] Throwing Rocks", dps: 3, range: 8, damage: 8, burst: 1, mod: "VWE", acc: [0.40, 0.30, 0.20, 0.10] },
+        { name: "[VWE] Javelin", dps: 8, range: 14, damage: 18, burst: 1, mod: "VWE", acc: [0.60, 0.75, 0.45, 0.25] },
 
         // Vanilla Weapons Expanded - Quickdraw
-        { name: "[VWEQ] Quickdraw Pistol", dps: 7, range: 16, damage: 12, burst: 1, mod: "VWE Quickdraw" },
-        { name: "[VWEQ] Quickdraw Rifle", dps: 12, range: 23, damage: 11, burst: 3, mod: "VWE Quickdraw" },
-        { name: "[VWEQ] Derringer", dps: 5, range: 8, damage: 14, burst: 1, mod: "VWE Quickdraw" },
-        { name: "[VWEQ] Bullpup Rifle", dps: 11.5, range: 22, damage: 11, burst: 3, mod: "VWE Quickdraw" },
+        { name: "[VWEQ] Quickdraw Pistol", dps: 7, range: 16, damage: 12, burst: 1, mod: "VWE Quickdraw", acc: [0.82, 0.78, 0.48, 0.38] },
+        { name: "[VWEQ] Quickdraw Rifle", dps: 12, range: 23, damage: 11, burst: 3, mod: "VWE Quickdraw", acc: [0.68, 0.68, 0.68, 0.58] },
+        { name: "[VWEQ] Derringer", dps: 5, range: 8, damage: 14, burst: 1, mod: "VWE Quickdraw", acc: [0.85, 0.65, 0.35, 0.20] },
+        { name: "[VWEQ] Bullpup Rifle", dps: 11.5, range: 22, damage: 11, burst: 3, mod: "VWE Quickdraw", acc: [0.70, 0.70, 0.65, 0.55] },
 
         // Vanilla Weapons Expanded - Frontier
-        { name: "[VWEF] Lever-Action Rifle", dps: 9, range: 28, damage: 16, burst: 1, mod: "VWE Frontier" },
-        { name: "[VWEF] Double-Barrel Shotgun", dps: 16, range: 10, damage: 22, burst: 1, mod: "VWE Frontier" },
-        { name: "[VWEF] Peacemaker Revolver", dps: 7, range: 18, damage: 13, burst: 1, mod: "VWE Frontier" },
-        { name: "[VWEF] Sharps Rifle", dps: 10, range: 40, damage: 25, burst: 1, mod: "VWE Frontier" },
-        { name: "[VWEF] Gatling Gun", dps: 20, range: 22, damage: 8, burst: 10, mod: "VWE Frontier" },
-        { name: "[VWEF] Coilgun Revolver", dps: 10, range: 20, damage: 16, burst: 1, ap: 0.40, mod: "VWE Frontier" },
-        { name: "[VWEF] Coilgun Repeater", dps: 14, range: 32, damage: 18, burst: 2, ap: 0.45, mod: "VWE Frontier" },
+        { name: "[VWEF] Lever-Action Rifle", dps: 9, range: 28, damage: 16, burst: 1, mod: "VWE Frontier", acc: [0.60, 0.75, 0.82, 0.72] },
+        { name: "[VWEF] Double-Barrel Shotgun", dps: 16, range: 10, damage: 22, burst: 1, mod: "VWE Frontier", acc: [0.82, 0.85, 0.78, 0.65] },
+        { name: "[VWEF] Peacemaker Revolver", dps: 7, range: 18, damage: 13, burst: 1, mod: "VWE Frontier", acc: [0.78, 0.72, 0.48, 0.35] },
+        { name: "[VWEF] Sharps Rifle", dps: 10, range: 40, damage: 25, burst: 1, mod: "VWE Frontier", acc: [0.60, 0.78, 0.88, 0.90] },
+        { name: "[VWEF] Gatling Gun", dps: 20, range: 22, damage: 8, burst: 10, mod: "VWE Frontier", acc: [0.25, 0.35, 0.45, 0.30] },
+        { name: "[VWEF] Coilgun Revolver", dps: 10, range: 20, damage: 16, burst: 1, ap: 0.40, mod: "VWE Frontier", acc: [0.80, 0.78, 0.55, 0.45] },
+        { name: "[VWEF] Coilgun Repeater", dps: 14, range: 32, damage: 18, burst: 2, ap: 0.45, mod: "VWE Frontier", acc: [0.70, 0.80, 0.82, 0.75] },
 
         // Vanilla Weapons Expanded - Heavy
         { name: "[VWEH] Autocannon", dps: 35, range: 25, damage: 25, burst: 5, ap: 0.50, mod: "VWE Heavy" },

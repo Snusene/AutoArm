@@ -208,6 +208,11 @@
             font-weight: 600;
         }
 
+        .acc-value {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+
         .mod-tag {
             font-size: 0.8em;
             color: #666;
@@ -228,6 +233,12 @@
 
         .skill-score {
             font-weight: 600;
+        }
+
+        .power-creep-adjusted {
+            color: #ff6b00;
+            font-weight: bold;
+            cursor: help;
         }
 
         .recommendation {
@@ -285,10 +296,12 @@
                 <p>This interactive tool lets you visualize how AutoArm evaluates weapons. <strong>The higher the score, the more likely a colonist is to upgrade to that weapon.</strong> Scores are based on:</p>
                 <ul>
                     <li><strong>DPS (Damage Per Second):</strong> Core weapon effectiveness</li>
+                    <li><strong>Accuracy:</strong> Hit chance at different ranges (weighted average)</li>
                     <li><strong>Range:</strong> Kiting potential and tactical flexibility</li>
                     <li><strong>Burst Fire:</strong> Multiple shots with diminishing returns</li>
                     <li><strong>Armor Penetration:</strong> Effectiveness against late-game threats</li>
                     <li><strong>Skill Preferences:</strong> Colonist shooting vs melee skills</li>
+                    <li><strong>Power Creep Protection:</strong> Extreme DPS (>25) has diminishing returns to prevent modded weapons from breaking balance</li>
                 </ul>
                 <p style="font-style: italic; color: #555; margin-top: 10px; font-weight: 500;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance.</p>
                 <div class="note" style="margin-top: 15px; background-color: rgba(255, 255, 255, 0.95);">
@@ -347,6 +360,10 @@
                 </div>
                 <div class="note" style="background-color: rgba(255, 255, 255, 0.95);">
                     <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons.
+                    <br><br>
+                    <strong>Note:</strong> Orange DPS values with an asterisk (*) indicate weapons affected by power creep protection. Hover over them to see the original value.
+                    <br>
+                    Accuracy values for vanilla weapons are exact. Modded weapons without accuracy data use estimates based on weapon type.
                 </div>
             </div>
 
@@ -359,6 +376,7 @@
                                 <tr>
                                     <th>Weapon</th>
                                     <th>DPS (w/Q)</th>
+                                    <th>Acc</th>
                                     <th>Burst</th>
                                     <th>Range</th>
                                     <th>AP</th>
@@ -640,6 +658,7 @@
                     baseDPS: weapon.dps,
                     qualityDPS: weapon.dps * qualityMult,
                     ap: weapon.ap || 0,
+                    accuracy: weapon.forcedMiss ? 1.0 : 0.5, // Area weapons ignore accuracy
                     baseTotal: baseScore,
                     skillScore: cappedSkillScore,
                     total: baseScore + cappedSkillScore
@@ -648,7 +667,37 @@
 
             // Apply quality to DPS (GetDamageAmount includes quality)
             let qualityDPS = weapon.dps * qualityMult;
-            let baseScore = qualityDPS * multiplier;
+
+            // POWER CREEP HANDLING: Apply diminishing returns for extreme DPS
+            let adjustedDPS = qualityDPS;
+            if (qualityDPS > 25) {
+                const excess = qualityDPS - 25;
+                adjustedDPS = 25 + (excess * 0.5); // Half value above threshold
+            }
+
+            let baseScore = adjustedDPS * multiplier;
+
+            // ACCURACY CALCULATION
+            let accuracyScore = 1.0;
+            if (weapon.forcedMiss && weapon.forcedMiss > 2.0) {
+                // Area effect weapons (grenades, launchers) ignore accuracy
+                accuracyScore = 1.0;
+            } else if (weapon.acc && weapon.acc.length === 4) {
+                // Calculate weighted accuracy based on typical combat ranges
+                accuracyScore = weapon.acc[0] * 0.4 +  // Touch (close combat)
+                    weapon.acc[1] * 0.3 +  // Short (most common)
+                    weapon.acc[2] * 0.2 +  // Medium
+                    weapon.acc[3] * 0.1;   // Long (rare)
+            } else {
+                // Default accuracy for weapons without data
+                if (weapon.burst > 5) accuracyScore = 0.45; // High burst = low accuracy
+                else if (weapon.burst > 2) accuracyScore = 0.55; // Burst weapons
+                else if (weapon.range > 30) accuracyScore = 0.75; // Sniper weapons
+                else accuracyScore = 0.65; // Default single shot
+            }
+
+            // Apply accuracy to base score
+            baseScore *= accuracyScore;
 
             // Calculate AP (default formula: damage * 0.015)
             // If damage not specified, estimate from DPS
@@ -743,6 +792,7 @@
                 baseDPS: weapon.dps,
                 qualityDPS: qualityDPS,
                 ap: weaponAP,
+                accuracy: accuracyScore,
                 baseTotal: baseTotal,
                 skillScore: skillScore,
                 total: baseTotal + skillScore
@@ -752,7 +802,15 @@
         function calculateMeleeScore(weapon, multiplier, qualityMult, shootingSkill, meleeSkill) {
             // MeleeWeapon_AverageDPS with quality included
             let qualityDPS = weapon.dps * qualityMult;
-            let baseScore = qualityDPS * multiplier;
+
+            // POWER CREEP HANDLING: Apply diminishing returns for extreme DPS
+            let adjustedDPS = qualityDPS;
+            if (qualityDPS > 25) {
+                const excess = qualityDPS - 25;
+                adjustedDPS = 25 + (excess * 0.5); // Half value above threshold
+            }
+
+            let baseScore = adjustedDPS * multiplier;
 
             // Apply quality to AP
             let weaponAP = weapon.ap * qualityMult;
@@ -813,7 +871,7 @@
             // Add sorted rows to table
             if (rangedScores.length === 0) {
                 const row = rangedTbody.insertRow();
-                row.innerHTML = '<td colspan="8" class="no-results">No weapons match your search</td>';
+                row.innerHTML = '<td colspan="9" class="no-results">No weapons match your search</td>';
             } else {
                 rangedScores.forEach(({ weapon, scores }) => {
                     const row = rangedTbody.insertRow();
@@ -966,7 +1024,7 @@
                                         <li>Armor penetration adds significant value for late-game effectiveness</li>
                                         <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
                                         <li>Pawn traits and work assignments will further modify these scores</li>
-                                        <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
+                                                                                                <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
                                         <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
                                     </ul>
                                     <h4>Notable Weapon Insights:</h4>
@@ -977,7 +1035,7 @@
                                         <li><strong>Minigun:</strong> Extreme DPS (25) but limited range (20) makes it situational</li>
                                         <li><strong>Bows vs Guns:</strong> Bows score lower but are silent and accessible early-game</li>
                                         <li><strong>Situational weapons:</strong> Grenades and launchers fixed at ~80 points (low priority for general use)</li>
-                                        <li><strong>LMG:</strong> Good suppression with 6-burst but limited by 19 range - gets hunter penalty</li>
+                                                                                                <li><strong>Heavy SMG:</strong> 5-burst with only 39% accuracy - spray and pray weapon that needs to get close</li>
                                         <li><strong>Fists baseline:</strong> Everything beats unarmed combat (4.5 DPS)</li>
                                         <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
                                         <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
