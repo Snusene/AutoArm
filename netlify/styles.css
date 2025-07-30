@@ -304,7 +304,7 @@ th {
 .score {
     font-weight: bold;
     color: #66c0f4;
-    text-shadow: 0 0 3px rgba(102, 192, 244, 0.3);
+    /* text-shadow is defined later with neon glow effect */
 }
 
 .ap-value {
@@ -869,17 +869,4 @@ h1 {
     transform: translateZ(0);
 }
 
-/* Additional enhancement: Pulsing glow for top weapons */
-tbody tr:first-child .score {
-    animation: topWeaponPulse 2s ease-in-out infinite;
-}
-
-@keyframes topWeaponPulse {
-    0%, 100% { 
-        text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
-    }
-    50% { 
-        text-shadow: 0 0 20px rgba(255, 215, 0, 0.8),
-                     0 0 30px rgba(255, 215, 0, 0.4);
-    }
-}
+/* Gold pulsing glow for top weapons - removed per user request */
