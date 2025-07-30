@@ -270,6 +270,7 @@ table {
     width: 100%;
     border-collapse: collapse;
     background-color: transparent;
+    table-layout: fixed; /* Force fixed table layout for better column control */
 }
 
 th, td {
@@ -277,7 +278,36 @@ th, td {
     text-align: left;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     color: #c7d5e0;
+    white-space: nowrap; /* Prevent text wrapping by default */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis for overflow text */
 }
+
+/* Special handling for weapon name column */
+th:first-child,
+td:first-child {
+    width: 35%; /* Give weapon name column a fixed percentage */
+    min-width: 200px;
+    white-space: normal; /* Allow wrapping in weapon names */
+    word-break: break-word; /* Break long words if needed */
+}
+
+/* Column widths for ranged weapons table */
+#rangedTable th:nth-child(2), #rangedTable td:nth-child(2) { width: 10%; } /* DPS */
+#rangedTable th:nth-child(3), #rangedTable td:nth-child(3) { width: 8%; }  /* Acc */
+#rangedTable th:nth-child(4), #rangedTable td:nth-child(4) { width: 8%; }  /* Burst */
+#rangedTable th:nth-child(5), #rangedTable td:nth-child(5) { width: 8%; }  /* Range */
+#rangedTable th:nth-child(6), #rangedTable td:nth-child(6) { width: 8%; }  /* AP */
+#rangedTable th:nth-child(7), #rangedTable td:nth-child(7) { width: 10%; } /* Base Score */
+#rangedTable th:nth-child(8), #rangedTable td:nth-child(8) { width: 10%; } /* Skill Score */
+#rangedTable th:nth-child(9), #rangedTable td:nth-child(9) { width: 10%; } /* Total Score */
+
+/* Column widths for melee weapons table */
+#meleeTable th:nth-child(2), #meleeTable td:nth-child(2) { width: 15%; } /* DPS */
+#meleeTable th:nth-child(3), #meleeTable td:nth-child(3) { width: 15%; } /* AP */
+#meleeTable th:nth-child(4), #meleeTable td:nth-child(4) { width: 15%; } /* Base Score */
+#meleeTable th:nth-child(5), #meleeTable td:nth-child(5) { width: 15%; } /* Skill Score */
+#meleeTable th:nth-child(6), #meleeTable td:nth-child(6) { width: 15%; } /* Total Score */
 
 tbody tr:nth-child(even) {
     background-color: rgba(0, 0, 0, 0.1);
@@ -661,6 +691,8 @@ tbody tr.poor-tier { --tier-color: #8B4513; }
     font-size: 0.85em;
     transition: all 0.2s ease;
     margin-right: 4px;
+    vertical-align: middle; /* Ensure proper alignment */
+    white-space: nowrap; /* Prevent tag breaking */
 }
 
 .mod-link:hover {
@@ -718,6 +750,14 @@ thead th {
     
     table {
         min-width: 600px;
+        table-layout: auto; /* Allow auto layout on mobile for better responsiveness */
+    }
+    
+    /* Adjust column widths for mobile */
+    th:first-child,
+    td:first-child {
+        width: auto;
+        min-width: 150px;
     }
     
     /* Adjust font sizes for mobile */
