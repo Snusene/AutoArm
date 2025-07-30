@@ -9,26 +9,33 @@
             font-family: Arial, sans-serif;
             margin: 20px;
             background-color: #f0f0f0;
+            background-image: url('https://i.redd.it/0406lf9xw68f1.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
         }
 
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            background-color: white;
+            background-color: rgba(255, 255, 255, 0.95);
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            backdrop-filter: blur(5px);
         }
 
         h1 {
             color: #333;
             text-align: center;
+            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
         }
 
         .controls {
             margin-bottom: 30px;
             padding: 15px;
-            background-color: #e8f4fd;
+            background-color: rgba(232, 244, 253, 0.95);
             border-radius: 5px;
         }
 
@@ -72,7 +79,7 @@
             color: #666;
             margin-top: 10px;
             padding: 10px;
-            background-color: #f9f9f9;
+            background-color: rgba(249, 249, 249, 0.95);
             border-left: 3px solid #2196F3;
         }
 
@@ -87,6 +94,7 @@
             padding: 15px;
             border: 1px solid #ddd;
             border-radius: 5px;
+            background-color: rgba(255, 255, 255, 0.9);
         }
 
             .weapon-section h2 {
@@ -98,6 +106,7 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
         }
 
         th, td {
@@ -106,8 +115,16 @@
             border-bottom: 1px solid #ddd;
         }
 
+        tbody tr:nth-child(even) {
+            background-color: rgba(250, 250, 250, 0.5);
+        }
+
+        tbody tr:hover {
+            background-color: rgba(240, 240, 240, 0.8);
+        }
+
         th {
-            background-color: #f8f8f8;
+            background-color: rgba(248, 248, 248, 0.95);
             font-weight: bold;
         }
 
@@ -128,7 +145,7 @@
         }
 
         .modded-weapon {
-            background-color: #f5f5ff;
+            background-color: rgba(245, 245, 255, 0.7);
         }
 
         .skill-score {
@@ -138,7 +155,7 @@
         .recommendation {
             margin-top: 30px;
             padding: 20px;
-            background-color: #fff8dc;
+            background-color: rgba(255, 248, 220, 0.95);
             border-radius: 5px;
             border: 1px solid #daa520;
         }
@@ -149,7 +166,7 @@
             }
 
         .quality-info {
-            background-color: #e3f2fd;
+            background-color: rgba(227, 242, 253, 0.95);
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
@@ -175,12 +192,12 @@
                 <li><strong>Armor Penetration:</strong> Effectiveness against late-game threats</li>
                 <li><strong>Skill Preferences:</strong> Colonist shooting vs melee skills</li>
             </ul>
-            <p style="font-style: italic; color: #666; margin-top: 10px;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance.</p>
-            <div class="note" style="margin-top: 15px;">
+            <p style="font-style: italic; color: #555; margin-top: 10px; font-weight: 500;">Developer note: This is the actual tool I use when fine-tuning AutoArm's weapon scoring balance.</p>
+            <div class="note" style="margin-top: 15px; background-color: rgba(255, 255, 255, 0.95);">
                 <p><strong>About this system:</strong> Since vanilla RimWorld lacks automatic weapon equipping and therefore has no weapon evaluation formula to reference, AutoArm creates its own scoring system from scratch. No formula is perfect for every playstyle, but this aims to work well for most situations while also trying to respect modded behaviors (e.g., "Hunters Use Melee" mods).</p>
                 <p><strong>Override options:</strong> Force-equip weapons (right-click) to prevent replacement, or use outfit filters to restrict weapon types per colonist.</p>
             </div>
-            <details style="margin-top: 10px;">
+            <details style="margin-top: 10px; background-color: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 5px;">
                 <summary style="cursor: pointer; font-weight: bold;">Skill Bonus Progression Table</summary>
                 <table style="margin-top: 10px; font-size: 0.9em;">
                     <tr><th>Skill Diff</th><th>Bonus</th><th>Penalty</th></tr>
@@ -195,10 +212,10 @@
                 <p style="margin-top: 10px; font-size: 0.9em;">
                     <strong>Trait Modifiers:</strong><br>
                     • Brawler trait: +200 melee, -500 ranged<br>
-                    • Hunting work: -1000 melee, ranged bonus by range:<br>
-                    &nbsp;&nbsp;- 30+ tiles: +300 total<br>
-                    &nbsp;&nbsp;- 20-29 tiles: +200 total<br>
-                    &nbsp;&nbsp;- Under 20 tiles: +100 total
+                    • Hunting work: Ranged bonuses only<br>
+                    &nbsp;&nbsp;- 30+ range: +300<br>
+                    &nbsp;&nbsp;- 20-29 range: +200<br>
+                    &nbsp;&nbsp;- Under 20 range: +100
                 </p>
             </details>
         </div>
@@ -244,8 +261,8 @@
                     <label><input type="checkbox" id="hunterRole" onchange="updateScores()"> Hunting Work</label>
                 </div>
             </div>
-            <div class="note">
-                <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who must use ranged weapons.
+            <div class="note" style="background-color: rgba(255, 255, 255, 0.95);">
+                <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons.
             </div>
         </div>
 
@@ -453,9 +470,8 @@
                 if (isRanged) {
                     // Base hunter bonus for any ranged weapon
                     baseScore += 100; // This gives the minimum +100 for all ranged
-                } else {
-                    baseScore -= 1000; // Hunters must not use melee
                 }
+                // No penalty for melee - hunters just prefer ranged
             }
 
             return baseScore;
@@ -670,15 +686,15 @@
 
                 row.className = rowClass;
                 row.innerHTML = `
-                                                                            <td>${weaponName}</td>
-                                                                            <td>${scores.qualityDPS.toFixed(1)}</td>
-                                                                            <td>${burstText}</td>
-                                                                            <td>${weapon.range}</td>
-                                                                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                                                            <td>${scores.baseTotal.toFixed(1)}</td>
-                                                                            <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                                                                            <td class="score">${scores.total.toFixed(1)}</td>
-                                                                        `;
+                                                                                        <td>${weaponName}</td>
+                                                                                        <td>${scores.qualityDPS.toFixed(1)}</td>
+                                                                                        <td>${burstText}</td>
+                                                                                        <td>${weapon.range}</td>
+                                                                                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                                                                        <td>${scores.baseTotal.toFixed(1)}</td>
+                                                                                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                                                                                        <td class="score">${scores.total.toFixed(1)}</td>
+                                                                                    `;
             });
 
             // Update melee weapons table
@@ -708,13 +724,13 @@
 
                 row.className = rowClass;
                 row.innerHTML = `
-                                                                            <td>${weaponName}</td>
-                                                                            <td>${scores.qualityDPS.toFixed(1)}</td>
-                                                                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                                                            <td>${scores.baseTotal.toFixed(1)}</td>
-                                                                            <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                                                                            <td class="score">${scores.total.toFixed(1)}</td>
-                                                                        `;
+                                                                                        <td>${weaponName}</td>
+                                                                                        <td>${scores.qualityDPS.toFixed(1)}</td>
+                                                                                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                                                                        <td>${scores.baseTotal.toFixed(1)}</td>
+                                                                                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                                                                                        <td class="score">${scores.total.toFixed(1)}</td>
+                                                                                    `;
             });
 
             // Update recommendation
@@ -738,11 +754,11 @@
             // Build trait/role description
             let traitDesc = "";
             if (isBrawler && isHunter) {
-                traitDesc = " <strong style='color: orange;'>[Conflicting: Brawler -500 ranged vs Hunter +100-300 ranged]</strong>";
+                traitDesc = " <strong>[Brawler: -500 ranged, +200 melee] + [Hunting: +100-300 ranged]</strong>";
             } else if (isBrawler) {
                 traitDesc = " <strong style='color: red;'>[Brawler: -500 ranged, +200 melee]</strong>";
             } else if (isHunter) {
-                traitDesc = " <strong style='color: green;'>[Hunting Work: +100/+200/+300 ranged by range, -1000 melee]</strong>";
+                traitDesc = " <strong style='color: green;'>[Hunting Work: +100/+200/+300 ranged by range]</strong>";
             }
 
             if (shootingSkill > meleeSkill + 3) {
@@ -762,45 +778,45 @@
             const filterNote = '';
 
             document.getElementById('recommendation').innerHTML = `
-                                                                        <h3>Balance Analysis at ${qualityName}</h3>
-                                                                        ${filterNote}
-                                                                        ${skillPref}
-                                                                        <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
-                                                                        <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
-                                                                        <hr>
-                                                                        <h4>Current Configuration Notes:</h4>
-                                                                        <ul>
-                                                                        <ul>
-                                                                            <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
-                                                                            <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
-                                                                            <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
-                                                                            <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
-                                                                            <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
-                                                                            <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
-                                                                            <li>Quality affects both DPS and armor penetration values</li>
-                                                                            <li>Armor penetration adds significant value for late-game effectiveness</li>
-                                                                            <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
-                                                                            <li>Pawn traits and work assignments will further modify these scores</li>
-                                                                            <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
-                                                                            <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20), -1000 for melee</li>
-                                                                        </ul>
-                                                                        <h4>Notable Weapon Insights:</h4>
-                                                                        <ul>
-                                                                            <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
-                                                                            <li><strong>Hunter preferences:</strong> Bolt-action and sniper rifles get massive bonuses (+300) for hunting work</li>
-                                                                            <li><strong>Brawler penalties:</strong> -500 for ranged (reduced from -2000 - still avoid but better than nothing)</li>
-                                                                            <li><strong>Minigun:</strong> Extreme DPS (25) but limited range (20) makes it situational</li>
-                                                                            <li><strong>Bows vs Guns:</strong> Bows score lower but are silent and accessible early-game</li>
-                                                                            <li><strong>Situational weapons:</strong> Grenades and launchers fixed at ~80 points (low priority for general use)</li>
-                                                                            <li><strong>LMG:</strong> Good suppression with 6-burst but limited by 19 range - gets hunter penalty</li>
-                                                                            <li><strong>Fists baseline:</strong> Everything beats unarmed combat (4.5 DPS)</li>
-                                                                            <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
-                                                                            <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
-                                                                            <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
-                                                                            <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
-                                                                            <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
-                                                                        </ul>
-                                                                    `;
+                                                                                    <h3>Balance Analysis at ${qualityName}</h3>
+                                                                                    ${filterNote}
+                                                                                    ${skillPref}
+                                                                                    <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
+                                                                                    <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
+                                                                                    <hr>
+                                                                                    <h4>Current Configuration Notes:</h4>
+                                                                                    <ul>
+                                                                                    <ul>
+                                                                                        <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
+                                                                                        <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
+                                                                                        <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
+                                                                                        <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
+                                                                                        <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
+                                                                                        <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
+                                                                                        <li>Quality affects both DPS and armor penetration values</li>
+                                                                                        <li>Armor penetration adds significant value for late-game effectiveness</li>
+                                                                                        <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
+                                                                                        <li>Pawn traits and work assignments will further modify these scores</li>
+                                                                                        <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
+                                                                                        <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
+                                                                                    </ul>
+                                                                                    <h4>Notable Weapon Insights:</h4>
+                                                                                    <ul>
+                                                                                        <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
+                                                                                        <li><strong>Hunter preferences:</strong> Bolt-action and sniper rifles get +300 bonus, but hunters can still use melee if needed</li>
+                                                                                        <li><strong>Brawler penalties:</strong> -500 for ranged (reduced from -2000 - still avoid but better than nothing)</li>
+                                                                                        <li><strong>Minigun:</strong> Extreme DPS (25) but limited range (20) makes it situational</li>
+                                                                                        <li><strong>Bows vs Guns:</strong> Bows score lower but are silent and accessible early-game</li>
+                                                                                        <li><strong>Situational weapons:</strong> Grenades and launchers fixed at ~80 points (low priority for general use)</li>
+                                                                                        <li><strong>LMG:</strong> Good suppression with 6-burst but limited by 19 range - gets hunter penalty</li>
+                                                                                        <li><strong>Fists baseline:</strong> Everything beats unarmed combat (4.5 DPS)</li>
+                                                                                        <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
+                                                                                        <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
+                                                                                        <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
+                                                                                        <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
+                                                                                        <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
+                                                                                    </ul>
+                                                                                `;
         }
 
         // Initial load
