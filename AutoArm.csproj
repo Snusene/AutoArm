@@ -137,6 +137,7 @@
     <Content Include="bin\Debug\AutoArm.pdb" />
     <Content Include="netlify\index.html" />
     <Content Include="Languages\English\Keyed\AutoArm.xml" />
+    <Content Include="netlify\weapons-data.js" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
     <Content Include="obj\Debug\AutoArm.pdb" />
