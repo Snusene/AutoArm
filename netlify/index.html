@@ -45,10 +45,11 @@
         #meleeTable th:nth-child(5), #meleeTable td:nth-child(5) { width: 80px !important; } /* Skill Score */
         #meleeTable th:nth-child(6), #meleeTable td:nth-child(6) { width: 80px !important; } /* Total Score */
         
-        /* Debug: Add blue border to first column */
+        /* Ensure first cell text is visible */
         #rangedTable td:first-child,
         #meleeTable td:first-child {
-            border-left: 3px solid #66c0f4;
+            font-weight: 500;
+            color: #c7d5e0;
         }
     </style>
 </head>
@@ -662,6 +663,10 @@
             } else {
                 rangedScores.forEach(({ weapon, scores }) => {
                     const row = rangedTbody.insertRow();
+                    
+                    // Ensure the row is completely empty
+                    row.innerHTML = '';
+                    
                     const burstText = weapon.burst > 1 ? `${weapon.burst}x` : '-';
                     const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const weaponName = weapon.name;
@@ -679,63 +684,32 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Create cells in exact order matching headers:
-                    // Headers: Weapon | DPS (w/Q) | Acc | Burst | Range | AP | Base Score | Skill Score | Total Score
+                    // Create cells by directly setting innerHTML to avoid any issues
+                    const rowData = [
+                        weaponName,
+                        scores.qualityDPS > 25 ? 
+                            `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
+                            scores.qualityDPS.toFixed(1),
+                        accuracyDisplay,
+                        burstText,
+                        weapon.range,
+                        scores.ap.toFixed(3),
+                        scores.baseTotal.toFixed(1),
+                        scores.skillScore > 0 ? `<span style="color: green">+${scores.skillScore.toFixed(0)}</span>` :
+                            scores.skillScore < 0 ? `<span style="color: red">${scores.skillScore.toFixed(0)}</span>` : '0',
+                        scores.total.toFixed(1)
+                    ];
                     
-                    // Cell 0: Weapon name
-                    const cell0 = row.insertCell(0);
-                    cell0.textContent = weaponName;
-                    
-                    // Cell 1: DPS (w/Q)
-                    const cell1 = row.insertCell(1);
-                    if (scores.qualityDPS > 25) {
-                        const span = document.createElement('span');
-                        span.className = 'power-creep-adjusted tooltip';
-                        span.setAttribute('data-tooltip', `Original DPS: ${scores.qualityDPS.toFixed(1)}`);
-                        span.textContent = ((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1);
-                        cell1.appendChild(span);
-                    } else {
-                        cell1.textContent = scores.qualityDPS.toFixed(1);
-                    }
-                    
-                    // Cell 2: Acc
-                    const cell2 = row.insertCell(2);
-                    cell2.className = 'acc-value';
-                    cell2.textContent = accuracyDisplay;
-                    
-                    // Cell 3: Burst
-                    const cell3 = row.insertCell(3);
-                    cell3.textContent = burstText;
-                    
-                    // Cell 4: Range
-                    const cell4 = row.insertCell(4);
-                    cell4.textContent = weapon.range;
-                    
-                    // Cell 5: AP
-                    const cell5 = row.insertCell(5);
-                    cell5.className = 'ap-value';
-                    cell5.textContent = scores.ap.toFixed(3);
-                    
-                    // Cell 6: Base Score
-                    const cell6 = row.insertCell(6);
-                    cell6.textContent = scores.baseTotal.toFixed(1);
-                    
-                    // Cell 7: Skill Score
-                    const cell7 = row.insertCell(7);
-                    if (scores.skillScore > 0) {
-                        cell7.style.color = 'green';
-                        cell7.textContent = '+' + scores.skillScore.toFixed(0);
-                    } else if (scores.skillScore < 0) {
-                        cell7.style.color = 'red';
-                        cell7.textContent = scores.skillScore.toFixed(0);
-                    } else {
-                        cell7.textContent = '0';
-                    }
-                    
-                    // Cell 8: Total Score
-                    const cell8 = row.insertCell(8);
-                    cell8.className = 'score';
-                    cell8.textContent = scores.total.toFixed(1);
+                    // Create all cells with proper content
+                    rowData.forEach((content, i) => {
+                        const cell = row.insertCell(i);
+                        cell.innerHTML = content;
+                        
+                        // Add classes where needed
+                        if (i === 2) cell.className = 'acc-value';
+                        if (i === 5) cell.className = 'ap-value';
+                        if (i === 8) cell.className = 'score';
+                    });
                 });
             }
 
@@ -776,6 +750,10 @@
             } else {
                 meleeScores.forEach(({ weapon, scores }) => {
                     const row = meleeTbody.insertRow();
+                    
+                    // Ensure the row is completely empty
+                    row.innerHTML = '';
+                    
                     const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const weaponName = weapon.name;
 
@@ -789,50 +767,28 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Create cells in exact order matching headers:
-                    // Headers: Weapon | DPS (w/Q) | AP | Base Score | Skill Score | Total Score
+                    // Create cells by directly setting innerHTML to avoid any issues
+                    const rowData = [
+                        weaponName,
+                        scores.qualityDPS > 25 ? 
+                            `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
+                            scores.qualityDPS.toFixed(1),
+                        scores.ap.toFixed(3),
+                        scores.baseTotal.toFixed(1),
+                        scores.skillScore > 0 ? `<span style="color: green">+${scores.skillScore.toFixed(0)}</span>` :
+                            scores.skillScore < 0 ? `<span style="color: red">${scores.skillScore.toFixed(0)}</span>` : '0',
+                        scores.total.toFixed(1)
+                    ];
                     
-                    // Cell 0: Weapon name
-                    const cell0 = row.insertCell(0);
-                    cell0.textContent = weaponName;
-                    
-                    // Cell 1: DPS (w/Q)
-                    const cell1 = row.insertCell(1);
-                    if (scores.qualityDPS > 25) {
-                        const span = document.createElement('span');
-                        span.className = 'power-creep-adjusted tooltip';
-                        span.setAttribute('data-tooltip', `Original DPS: ${scores.qualityDPS.toFixed(1)}`);
-                        span.textContent = ((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1);
-                        cell1.appendChild(span);
-                    } else {
-                        cell1.textContent = scores.qualityDPS.toFixed(1);
-                    }
-                    
-                    // Cell 2: AP
-                    const cell2 = row.insertCell(2);
-                    cell2.className = 'ap-value';
-                    cell2.textContent = scores.ap.toFixed(3);
-                    
-                    // Cell 3: Base Score
-                    const cell3 = row.insertCell(3);
-                    cell3.textContent = scores.baseTotal.toFixed(1);
-                    
-                    // Cell 4: Skill Score
-                    const cell4 = row.insertCell(4);
-                    if (scores.skillScore > 0) {
-                        cell4.style.color = 'green';
-                        cell4.textContent = '+' + scores.skillScore.toFixed(0);
-                    } else if (scores.skillScore < 0) {
-                        cell4.style.color = 'red';
-                        cell4.textContent = scores.skillScore.toFixed(0);
-                    } else {
-                        cell4.textContent = '0';
-                    }
-                    
-                    // Cell 5: Total Score
-                    const cell5 = row.insertCell(5);
-                    cell5.className = 'score';
-                    cell5.textContent = scores.total.toFixed(1);
+                    // Create all cells with proper content
+                    rowData.forEach((content, i) => {
+                        const cell = row.insertCell(i);
+                        cell.innerHTML = content;
+                        
+                        // Add classes where needed
+                        if (i === 2) cell.className = 'ap-value';
+                        if (i === 5) cell.className = 'score';
+                    });
                 });
             }
 
