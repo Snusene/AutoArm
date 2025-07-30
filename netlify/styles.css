@@ -284,17 +284,17 @@ table {
     width: 100%;
     border-collapse: collapse;
     background-color: transparent;
-    table-layout: auto; /* Let browser calculate column widths */
+    table-layout: fixed; /* Use fixed layout for predictable column widths */
     word-spacing: normal; /* Ensure normal word spacing */
     letter-spacing: normal; /* Ensure normal letter spacing */
 }
 
 #rangedTable {
-    /* Remove min-width to allow table to fit container */
+    width: 100%;
 }
 
 #meleeTable {
-    /* Remove min-width to allow table to fit container */
+    width: 100%;
 }
 
 th, td {
@@ -306,19 +306,26 @@ th, td {
 
 /* Weapon name column - first column */
 th:first-child {
-    min-width: 150px; /* Reduced from 200px */
+    width: 200px;
+    min-width: 200px;
+    max-width: 200px;
     text-align: left;
-    padding-left: 8px;
-    padding-right: 8px;
+    padding-left: 10px;
+    padding-right: 10px;
+    display: table-cell !important;
+    visibility: visible !important;
 }
 
 td:first-child {
-    min-width: 150px; /* Reduced from 200px */
-    padding-left: 8px;
-    padding-right: 8px;
-    white-space: nowrap; /* Keep weapon names on one line */
-    overflow: hidden; /* Hide overflow */
-    text-overflow: ellipsis; /* Show ellipsis for very long names */
+    width: 200px;
+    min-width: 200px;
+    max-width: 200px;
+    padding-left: 10px;
+    padding-right: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left !important;
     /* Reset any potential inherited styles */
     font-family: inherit;
     font-size: inherit;
@@ -326,6 +333,9 @@ td:first-child {
     letter-spacing: 0;
     word-spacing: 0;
     text-transform: none;
+    display: table-cell !important;
+    visibility: visible !important;
+    position: static !important;
 }
 
 /* All other columns - compact */

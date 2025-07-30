@@ -5,6 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoArm Weapon Balance Analyzer</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Fix for weapon name column display */
+        #rangedTable, #meleeTable {
+            table-layout: fixed !important;
+            width: 100% !important;
+        }
+        
+        /* First column - Weapon names */
+        #rangedTable th:first-child,
+        #rangedTable td:first-child,
+        #meleeTable th:first-child,
+        #meleeTable td:first-child {
+            width: 200px !important;
+            min-width: 200px !important;
+            max-width: 200px !important;
+            text-align: left !important;
+            padding-left: 10px !important;
+            padding-right: 5px !important;
+            display: table-cell !important;
+            visibility: visible !important;
+            position: static !important;
+        }
+        
+        /* Set specific widths for ranged table columns */
+        #rangedTable th:nth-child(2), #rangedTable td:nth-child(2) { width: 80px !important; } /* DPS */
+        #rangedTable th:nth-child(3), #rangedTable td:nth-child(3) { width: 60px !important; } /* Acc */
+        #rangedTable th:nth-child(4), #rangedTable td:nth-child(4) { width: 60px !important; } /* Burst */
+        #rangedTable th:nth-child(5), #rangedTable td:nth-child(5) { width: 60px !important; } /* Range */
+        #rangedTable th:nth-child(6), #rangedTable td:nth-child(6) { width: 60px !important; } /* AP */
+        #rangedTable th:nth-child(7), #rangedTable td:nth-child(7) { width: 80px !important; } /* Base Score */
+        #rangedTable th:nth-child(8), #rangedTable td:nth-child(8) { width: 80px !important; } /* Skill Score */
+        #rangedTable th:nth-child(9), #rangedTable td:nth-child(9) { width: 80px !important; } /* Total Score */
+        
+        /* Set specific widths for melee table columns */
+        #meleeTable th:nth-child(2), #meleeTable td:nth-child(2) { width: 80px !important; } /* DPS */
+        #meleeTable th:nth-child(3), #meleeTable td:nth-child(3) { width: 60px !important; } /* AP */
+        #meleeTable th:nth-child(4), #meleeTable td:nth-child(4) { width: 80px !important; } /* Base Score */
+        #meleeTable th:nth-child(5), #meleeTable td:nth-child(5) { width: 80px !important; } /* Skill Score */
+        #meleeTable th:nth-child(6), #meleeTable td:nth-child(6) { width: 80px !important; } /* Total Score */
+        
+        /* Debug: Add blue border to first column */
+        #rangedTable td:first-child,
+        #meleeTable td:first-child {
+            border-left: 3px solid #66c0f4;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
