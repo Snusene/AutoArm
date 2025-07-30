@@ -3,7 +3,6 @@ using RimWorld;
 using RimWorld.Planet;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Verse;
 using Verse.AI;
 
@@ -47,13 +46,22 @@ namespace AutoArm
 
             if (!AutoArmMod.settings.thinkTreeInjectionFailed)
             {
-                if (__instance.IsHashIntervalTick(500)) 
+                if (__instance.IsHashIntervalTick(500))
                 {
                     CheckOutfitPolicyOnly(__instance);
                 }
-                return; 
-            }
 
+                // Additional periodic cleanup for sidearms as a safety net
+                if (__instance.IsHashIntervalTick(2500)) // Every ~40 seconds
+                {
+                    if (SimpleSidearmsCompat.IsLoaded())
+                    {
+                        Pawn_OutfitTracker_CurrentApparelPolicy_Setter_Patch.CheckAndDropDisallowedSidearms(__instance);
+                    }
+                }
+
+                return;
+            }
 
             if (Find.TickManager.TicksGame != lastTickProcessed)
             {
@@ -78,7 +86,7 @@ namespace AutoArm
 
             if (!hasWeapon)
             {
-                int baseInterval = 15; 
+                int baseInterval = 15;
                 baseInterval += Math.Min(colonistCount, 30);
                 int variance = __instance.thingIDNumber % Math.Max(5, colonistCount);
 
@@ -90,7 +98,7 @@ namespace AutoArm
             }
             else
             {
-                int baseInterval = 60; 
+                int baseInterval = 60;
                 baseInterval += Math.Min(colonistCount * 5, 200);
                 int variance = __instance.thingIDNumber % Math.Max(20, colonistCount * 2);
 
@@ -117,60 +125,68 @@ namespace AutoArm
 
         private static void CheckOutfitPolicyOnly(Pawn pawn)
         {
-            if (pawn.equipment?.Primary == null || pawn.jobs == null)
-                return;
-
-            var currentWeapon = pawn.equipment.Primary;
-
-            if (!WeaponValidation.IsProperWeapon(currentWeapon))
-                return;
-                
-            // Don't interfere with sidearm upgrades in progress
-            if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+            // Check primary weapon
+            if (pawn.equipment?.Primary != null && pawn.jobs != null)
             {
-                AutoArmDebug.LogPawn(pawn, "Not checking outfit policy - sidearm upgrade in progress");
-                return;
-            }
-            
-            // Also skip if the current primary is a remembered sidearm (SS might have equipped it temporarily)
-            if (SimpleSidearmsCompat.PrimaryIsRememberedSidearm(pawn))
-            {
-                return;
-            }
+                var currentWeapon = pawn.equipment.Primary;
 
-            // Don't force temporary colonists (quest pawns) to drop their weapons
-            if (JobGiverHelpers.IsTemporaryColonist(pawn))
-            {
-                AutoArmDebug.LogPawn(pawn, "Not checking outfit policy - temporary colonist");
-                return;
-            }
+                if (!WeaponValidation.IsProperWeapon(currentWeapon))
+                    return;
 
-            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter != null && !filter.Allows(currentWeapon.def))
-            {
-                // Check if this weapon is forced - if so, keep it equipped
-                if (ForcedWeaponHelper.IsForced(pawn, currentWeapon))
+                // Don't interfere with sidearm upgrades in progress
+                if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
                 {
-                    AutoArmDebug.LogWeapon(pawn, currentWeapon, "Keeping forced weapon despite outfit restriction");
-                    return; // Don't drop forced weapons
+                    if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+                    {
+                        AutoArmDebug.LogPawn(pawn, "Not checking outfit policy - sidearm upgrade in progress");
+                        return;
+                    }
+
+                    // Also skip if the current primary is a remembered sidearm (SS might have equipped it temporarily)
+                    if (SimpleSidearmsCompat.PrimaryIsRememberedSidearm(pawn))
+                    {
+                        return;
+                    }
                 }
 
-                ForcedWeaponHelper.ClearForced(pawn);
-
-                var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, currentWeapon);
-                pawn.jobs.StartJob(dropJob, JobCondition.InterruptForced);
-
-                AutoArmDebug.LogWeapon(pawn, currentWeapon, "Dropping - no longer allowed by outfit");
-
-                if (AutoArmMod.settings?.showNotifications == true &&
-                    PawnUtility.ShouldSendNotificationAbout(pawn))
+                // Don't force temporary colonists (quest pawns) to drop their weapons
+                if (JobGiverHelpers.IsTemporaryColonist(pawn))
                 {
-                    Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                        pawn.LabelShort.CapitalizeFirst(),
-                        currentWeapon.Label
-                    ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                    AutoArmDebug.LogPawn(pawn, "Not checking outfit policy - temporary colonist");
+                    return;
+                }
+
+                var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+                if (filter != null)
+                {
+                    bool weaponAllowed = filter.Allows(currentWeapon);
+                    AutoArmDebug.LogWeapon(pawn, currentWeapon,
+                        $"TickRare outfit check - Weapon allowed: {weaponAllowed}, HP: {currentWeapon.HitPoints}/{currentWeapon.MaxHitPoints} ({(float)currentWeapon.HitPoints / currentWeapon.MaxHitPoints * 100f:F0}%)");
+
+                    if (!weaponAllowed)
+                    {
+                        // Check if this weapon is forced - if so, keep it equipped
+                        if (ForcedWeaponHelper.IsForced(pawn, currentWeapon))
+                        {
+                            AutoArmDebug.LogWeapon(pawn, currentWeapon, "Keeping forced weapon despite outfit restriction");
+                            return; // Don't drop forced weapons
+                        }
+
+                        ForcedWeaponHelper.ClearForced(pawn);
+
+                        // Mark weapon as dropped to prevent immediate re-pickup
+                        DroppedItemTracker.MarkAsDropped(currentWeapon, 1200); // 20 second cooldown
+
+                        var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, currentWeapon);
+                        pawn.jobs.StartJob(dropJob, JobCondition.InterruptForced);
+
+                        AutoArmDebug.LogWeapon(pawn, currentWeapon, "Dropping - no longer allowed by outfit");
+                    }
                 }
             }
+
+            // Also check sidearms
+            Pawn_OutfitTracker_CurrentApparelPolicy_Setter_Patch.CheckAndDropDisallowedSidearms(pawn);
         }
 
         private static void CheckMainWeaponUpgrade(Pawn pawn)
@@ -179,228 +195,226 @@ namespace AutoArm
             {
                 if (pawn == null || pawn.equipment == null)
                     return;
-                    
-            // Skip if pawn has a temporary sidearm equipped for upgrading
-            if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
-            {
-                AutoArmDebug.LogPawn(pawn, "TickRare: Has temporary sidearm equipped, skipping check");
-                return;
-            }
-            
-            // Also skip if the current primary is a remembered sidearm (SS might have equipped it temporarily)
-            if (SimpleSidearmsCompat.PrimaryIsRememberedSidearm(pawn))
-            {
-                AutoArmDebug.LogPawn(pawn, "TickRare: Primary weapon is a remembered sidearm, skipping check");
-                return;
-            }
-                    
-            // Skip if pawn has a forced weapon or is manually equipping
-            if (ForcedWeaponHelper.HasForcedWeapon(pawn))
-            {
-                AutoArmDebug.LogPawn(pawn, "TickRare: Has forced weapon, skipping check");
-                return;
-            }
-            
-            if (pawn.CurJob?.def == JobDefOf.Equip && pawn.CurJob.playerForced)
-            {
-                AutoArmDebug.LogPawn(pawn, "TickRare: Player is manually equipping, skipping check");
-                return;
-            }
 
-            var currentEquipment = pawn.equipment.Primary;
-            
-            // Validate equipment is actually equipped and is a proper weapon
-            if (currentEquipment != null && currentEquipment.ParentHolder != pawn.equipment)
-            {
-                AutoArmDebug.LogPawn(pawn, $"WARNING: Has orphaned equipment reference to {currentEquipment.Label}! ParentHolder: {currentEquipment.ParentHolder?.GetType().Name ?? "null"}");
-                return;
-            }
-            
-            bool hasWeapon = currentEquipment != null && IsProperWeapon(currentEquipment);
-
-            if (hasWeapon && pawn.IsColonist && pawn.Faction == Faction.OfPlayer)
-            {
-                // Don't force temporary colonists (quest pawns) to drop their weapons
-                if (JobGiverHelpers.IsTemporaryColonist(pawn))
+                // Skip if pawn has a temporary sidearm equipped for upgrading
+                if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
                 {
-                    AutoArmDebug.LogPawn(pawn, "Not checking weapon restrictions - temporary colonist");
+                    if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+                    {
+                        AutoArmDebug.LogPawn(pawn, "TickRare: Has temporary sidearm equipped, skipping check");
+                        return;
+                    }
+
+                    // Also skip if the current primary is a remembered sidearm (SS might have equipped it temporarily)
+                    if (SimpleSidearmsCompat.PrimaryIsRememberedSidearm(pawn))
+                    {
+                        AutoArmDebug.LogPawn(pawn, "TickRare: Primary weapon is a remembered sidearm, skipping check");
+                        return;
+                    }
+                }
+
+                // Skip if pawn has a forced weapon or is manually equipping
+                if (ForcedWeaponHelper.HasForcedWeapon(pawn))
+                {
+                    AutoArmDebug.LogPawn(pawn, "TickRare: Has forced weapon, skipping check");
                     return;
                 }
 
-                var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-                if (filter != null && !filter.Allows(currentEquipment.def))
+                if (pawn.CurJob?.def == JobDefOf.Equip && pawn.CurJob.playerForced)
                 {
-                    // Check if this weapon is forced - if so, keep it equipped
-                    if (ForcedWeaponHelper.IsForced(pawn, currentEquipment))
+                    AutoArmDebug.LogPawn(pawn, "TickRare: Player is manually equipping, skipping check");
+                    return;
+                }
+
+                var currentEquipment = pawn.equipment.Primary;
+
+                // Validate equipment is actually equipped and is a proper weapon
+                if (currentEquipment != null && currentEquipment.ParentHolder != pawn.equipment)
+                {
+                    AutoArmDebug.LogPawn(pawn, $"WARNING: Has orphaned equipment reference to {currentEquipment.Label}! ParentHolder: {currentEquipment.ParentHolder?.GetType().Name ?? "null"}");
+                    return;
+                }
+
+                bool hasWeapon = currentEquipment != null && IsProperWeapon(currentEquipment);
+
+                if (hasWeapon && pawn.IsColonist && pawn.Faction == Faction.OfPlayer)
+                {
+                    // Don't force temporary colonists (quest pawns) to drop their weapons
+                    if (JobGiverHelpers.IsTemporaryColonist(pawn))
                     {
-                        AutoArmDebug.LogWeapon(pawn, currentEquipment, "Keeping forced weapon despite outfit restriction");
-                        return; // Don't drop forced weapons
+                        AutoArmDebug.LogPawn(pawn, "Not checking weapon restrictions - temporary colonist");
+                        return;
                     }
 
-                    ForcedWeaponHelper.ClearForced(pawn);
-
-                    if (pawn.jobs != null && !pawn.Drafted)
+                    var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+                    if (filter != null && !filter.Allows(currentEquipment))
                     {
-                        var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, currentEquipment);
-                        pawn.jobs.StartJob(dropJob, JobCondition.InterruptForced);
-
-                        AutoArmDebug.LogWeapon(pawn, currentEquipment, "Dropping - no longer allowed by outfit");
-
-                        if (PawnUtility.ShouldSendNotificationAbout(pawn))
+                        // Check if this weapon is forced - if so, keep it equipped
+                        if (ForcedWeaponHelper.IsForced(pawn, currentEquipment))
                         {
-                            Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                                pawn.LabelShort.CapitalizeFirst(),
-                                currentEquipment.Label
-                            ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                            AutoArmDebug.LogWeapon(pawn, currentEquipment, "Keeping forced weapon despite outfit restriction");
+                            return; // Don't drop forced weapons
+                        }
+
+                        ForcedWeaponHelper.ClearForced(pawn);
+
+                        // Mark weapon as dropped to prevent immediate re-pickup
+                        DroppedItemTracker.MarkAsDropped(currentEquipment, 1200); // 20 second cooldown
+
+                        if (pawn.jobs != null && !pawn.Drafted)
+                        {
+                            var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, currentEquipment);
+                            pawn.jobs.StartJob(dropJob, JobCondition.InterruptForced);
+
+                            AutoArmDebug.LogWeapon(pawn, currentEquipment, "Dropping - no longer allowed by outfit");
+                        }
+                        return;
+                    }
+                }
+
+                var jobGiver = new JobGiver_PickUpBetterWeapon();
+                var job = jobGiver.TestTryGiveJob(pawn);
+
+                if (job == null && hasWeapon)
+                {
+                    float currentScore = WeaponScoreCache.GetCachedScore(pawn, currentEquipment as ThingWithComps);
+                    AutoArmDebug.LogWeapon(pawn, currentEquipment, $"Has weapon (score: {currentScore:F1}) but found no upgrade");
+                }
+
+                lastWeaponSearchTick[pawn] = Find.TickManager.TicksGame;
+
+                if (job != null && pawn.jobs != null)
+                {
+                    bool shouldInterrupt = false;
+                    bool isUnarmed = !hasWeapon;
+
+                    if (pawn.CurJob == null)
+                    {
+                        shouldInterrupt = true;
+                    }
+                    else if (isUnarmed)
+                    {
+                        shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
+
+                        if (shouldInterrupt)
+                        {
+                            AutoArmDebug.LogPawn(pawn, $"UNARMED - interrupting {pawn.CurJob.def.defName} to get weapon!");
                         }
                     }
-                    return; 
-                }
-            }
-
-            var jobGiver = new JobGiver_PickUpBetterWeapon();
-            var job = jobGiver.TestTryGiveJob(pawn);
-
-            if (job == null && hasWeapon)
-            {
-                float currentScore = WeaponScoreCache.GetCachedScore(pawn, currentEquipment as ThingWithComps);
-                AutoArmDebug.LogWeapon(pawn, currentEquipment, $"Has weapon (score: {currentScore:F1}) but found no upgrade");
-            }
-
-            lastWeaponSearchTick[pawn] = Find.TickManager.TicksGame;
-
-            if (job != null && pawn.jobs != null)
-            {
-                bool shouldInterrupt = false;
-                bool isUnarmed = !hasWeapon; 
-
-                if (pawn.CurJob == null)
-                {
-                    shouldInterrupt = true;
-                }
-                else if (isUnarmed) 
-                {
-                    shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
-
-                    if (shouldInterrupt)
+                    else
                     {
-                    AutoArmDebug.LogPawn(pawn, $"UNARMED - interrupting {pawn.CurJob.def.defName} to get weapon!");
-                    }
-                }
-                else
-                {
-                    var currentJobDef = pawn.CurJob.def;
-                    var currentJobDefName = currentJobDef.defName;
+                        var currentJobDef = pawn.CurJob.def;
+                        var currentJobDefName = currentJobDef.defName;
 
-                    if (currentJobDef == JobDefOf.Wait ||
-                        currentJobDef == JobDefOf.Wait_Wander ||
-                        currentJobDef == JobDefOf.GotoWander ||
-                        currentJobDef == JobDefOf.Goto ||
-                        currentJobDef == JobDefOf.Clean ||
-                        currentJobDef == JobDefOf.ClearSnow ||
-                        currentJobDef == JobDefOf.HaulToCell ||
-                        currentJobDef == JobDefOf.HaulToContainer ||
-                        currentJobDef == JobDefOf.Research ||
-                        currentJobDef == JobDefOf.SmoothFloor ||
-                        currentJobDef == JobDefOf.SmoothWall ||
-                        currentJobDef == JobDefOf.RemoveFloor ||
-                        currentJobDef == JobDefOf.Sow ||
-                        currentJobDef == JobDefOf.CutPlant ||
-                        currentJobDef == JobDefOf.Harvest ||
-                        currentJobDef == JobDefOf.HarvestDesignated ||
-                        currentJobDef == JobDefOf.PlantSeed ||
-                        currentJobDef == JobDefOf.Deconstruct ||
-                        currentJobDef == JobDefOf.Uninstall ||
-                        currentJobDef == JobDefOf.Repair ||
-                        currentJobDef == JobDefOf.FixBrokenDownBuilding ||
-                        currentJobDef == JobDefOf.Tame ||
-                        currentJobDef == JobDefOf.Train ||
-                        currentJobDef == JobDefOf.Milk ||
-                        currentJobDef == JobDefOf.Shear ||
-                        currentJobDef == JobDefOf.Slaughter ||
-                        currentJobDef == JobDefOf.Mine ||
-                        currentJobDef == JobDefOf.OperateScanner ||
-                        currentJobDef == JobDefOf.OperateDeepDrill ||
-                        currentJobDef == JobDefOf.Refuel ||
-                        currentJobDef == JobDefOf.RearmTurret ||
-                        currentJobDef == JobDefOf.FillFermentingBarrel ||
-                        currentJobDef == JobDefOf.TakeBeerOutOfFermentingBarrel ||
-                        currentJobDef == JobDefOf.UnloadInventory ||
-                        currentJobDef == JobDefOf.UnloadYourInventory ||
-                        currentJobDef == JobDefOf.Open ||
-                        currentJobDef == JobDefOf.Flick ||
-                        currentJobDef == JobDefOf.DoBill ||
-                        currentJobDef == JobDefOf.TakeInventory ||
-                        currentJobDef == JobDefOf.GiveToPackAnimal ||
-                        currentJobDef == JobDefOf.LayDown ||
-                        currentJobDef == JobDefOf.LayDownResting)
-                    {
-                        shouldInterrupt = true;
-                        AutoArmDebug.LogPawn(pawn, $"Interrupting low priority {currentJobDef.defName} for weapon upgrade");
-                    }
-                    else if (currentJobDefName.StartsWith("Joy") ||
-                             currentJobDefName.StartsWith("Play") ||
-                             currentJobDefName.Contains("Social") ||
-                             currentJobDefName.Contains("Relax") ||
-                             currentJobDefName.Contains("Clean") ||
-                             currentJobDefName.Contains("Idle") ||
-                             currentJobDefName.Contains("Wander") ||
-                             currentJobDefName.Contains("Wait") ||
-                             currentJobDefName.Contains("Skygaze") ||
-                             currentJobDefName.Contains("Meditate") ||
-                             currentJobDefName.Contains("Pray") ||
-                             currentJobDefName.Contains("CloudWatch") ||
-                             currentJobDefName.Contains("StandAndBeSociallyActive") ||
-                             currentJobDefName.Contains("ViewArt") ||
-                             currentJobDefName.Contains("VisitGrave") ||
-                             currentJobDefName.Contains("BuildSnowman"))
-                    {
-                        shouldInterrupt = true;
-                        AutoArmDebug.LogPawn(pawn, $"Interrupting {currentJobDefName} (matched pattern) for weapon upgrade");
-                    }
-                    else if (pawn.workSettings != null && pawn.CurJob.workGiverDef?.workType != null)
-                    {
-                        var workType = pawn.CurJob.workGiverDef.workType;
-                        int priority = pawn.workSettings.GetPriority(workType);
-
-                        if (priority >= 3)
+                        if (currentJobDef == JobDefOf.Wait ||
+                            currentJobDef == JobDefOf.Wait_Wander ||
+                            currentJobDef == JobDefOf.GotoWander ||
+                            currentJobDef == JobDefOf.Goto ||
+                            currentJobDef == JobDefOf.Clean ||
+                            currentJobDef == JobDefOf.ClearSnow ||
+                            currentJobDef == JobDefOf.HaulToCell ||
+                            currentJobDef == JobDefOf.HaulToContainer ||
+                            currentJobDef == JobDefOf.Research ||
+                            currentJobDef == JobDefOf.SmoothFloor ||
+                            currentJobDef == JobDefOf.SmoothWall ||
+                            currentJobDef == JobDefOf.RemoveFloor ||
+                            currentJobDef == JobDefOf.Sow ||
+                            currentJobDef == JobDefOf.CutPlant ||
+                            currentJobDef == JobDefOf.Harvest ||
+                            currentJobDef == JobDefOf.HarvestDesignated ||
+                            currentJobDef == JobDefOf.PlantSeed ||
+                            currentJobDef == JobDefOf.Deconstruct ||
+                            currentJobDef == JobDefOf.Uninstall ||
+                            currentJobDef == JobDefOf.Repair ||
+                            currentJobDef == JobDefOf.FixBrokenDownBuilding ||
+                            currentJobDef == JobDefOf.Tame ||
+                            currentJobDef == JobDefOf.Train ||
+                            currentJobDef == JobDefOf.Milk ||
+                            currentJobDef == JobDefOf.Shear ||
+                            currentJobDef == JobDefOf.Slaughter ||
+                            currentJobDef == JobDefOf.Mine ||
+                            currentJobDef == JobDefOf.OperateScanner ||
+                            currentJobDef == JobDefOf.OperateDeepDrill ||
+                            currentJobDef == JobDefOf.Refuel ||
+                            currentJobDef == JobDefOf.RearmTurret ||
+                            currentJobDef == JobDefOf.FillFermentingBarrel ||
+                            currentJobDef == JobDefOf.TakeBeerOutOfFermentingBarrel ||
+                            currentJobDef == JobDefOf.UnloadInventory ||
+                            currentJobDef == JobDefOf.UnloadYourInventory ||
+                            currentJobDef == JobDefOf.Open ||
+                            currentJobDef == JobDefOf.Flick ||
+                            currentJobDef == JobDefOf.DoBill ||
+                            currentJobDef == JobDefOf.TakeInventory ||
+                            currentJobDef == JobDefOf.GiveToPackAnimal ||
+                            currentJobDef == JobDefOf.LayDown ||
+                            currentJobDef == JobDefOf.LayDownResting)
                         {
                             shouldInterrupt = true;
-                            AutoArmDebug.LogPawn(pawn, $"Interrupting priority {priority} work ({currentJobDef.defName}) for weapon upgrade");
+                            AutoArmDebug.LogPawn(pawn, $"Interrupting low priority {currentJobDef.defName} for weapon upgrade");
                         }
-                    }
-
-                    if (!shouldInterrupt && job?.targetA.Thing is ThingWithComps newWeapon && currentEquipment is ThingWithComps currentWeaponComp)
-                    {
-                        float currentScore = WeaponScoreCache.GetCachedScore(pawn, currentWeaponComp);
-                        float newScore = WeaponScoreCache.GetCachedScore(pawn, newWeapon);
-                        float upgradePercentage = newScore / currentScore;
-
-                        if (upgradePercentage >= 1.10f)
+                        else if (currentJobDefName.StartsWith("Joy") ||
+                                 currentJobDefName.StartsWith("Play") ||
+                                 currentJobDefName.Contains("Social") ||
+                                 currentJobDefName.Contains("Relax") ||
+                                 currentJobDefName.Contains("Clean") ||
+                                 currentJobDefName.Contains("Idle") ||
+                                 currentJobDefName.Contains("Wander") ||
+                                 currentJobDefName.Contains("Wait") ||
+                                 currentJobDefName.Contains("Skygaze") ||
+                                 currentJobDefName.Contains("Meditate") ||
+                                 currentJobDefName.Contains("Pray") ||
+                                 currentJobDefName.Contains("CloudWatch") ||
+                                 currentJobDefName.Contains("StandAndBeSociallyActive") ||
+                                 currentJobDefName.Contains("ViewArt") ||
+                                 currentJobDefName.Contains("VisitGrave") ||
+                                 currentJobDefName.Contains("BuildSnowman"))
                         {
-                            shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
+                            shouldInterrupt = true;
+                            AutoArmDebug.LogPawn(pawn, $"Interrupting {currentJobDefName} (matched pattern) for weapon upgrade");
+                        }
+                        else if (pawn.workSettings != null && pawn.CurJob.workGiverDef?.workType != null)
+                        {
+                            var workType = pawn.CurJob.workGiverDef.workType;
+                            int priority = pawn.workSettings.GetPriority(workType);
 
-                            if (shouldInterrupt)
+                            if (priority >= 3)
                             {
-                                AutoArmDebug.LogPawn(pawn, $"{(upgradePercentage - 1f) * 100f:F0}% upgrade available - interrupting {currentJobDef.defName}");
+                                shouldInterrupt = true;
+                                AutoArmDebug.LogPawn(pawn, $"Interrupting priority {priority} work ({currentJobDef.defName}) for weapon upgrade");
+                            }
+                        }
+
+                        if (!shouldInterrupt && job?.targetA.Thing is ThingWithComps newWeapon && currentEquipment is ThingWithComps currentWeaponComp)
+                        {
+                            float currentScore = WeaponScoreCache.GetCachedScore(pawn, currentWeaponComp);
+                            float newScore = WeaponScoreCache.GetCachedScore(pawn, newWeapon);
+                            float upgradePercentage = newScore / currentScore;
+
+                            if (upgradePercentage >= 1.10f)
+                            {
+                                shouldInterrupt = !JobGiverHelpers.IsCriticalJob(pawn, hasNoSidearms: false);
+
+                                if (shouldInterrupt)
+                                {
+                                    AutoArmDebug.LogPawn(pawn, $"{(upgradePercentage - 1f) * 100f:F0}% upgrade available - interrupting {currentJobDef.defName}");
+                                }
                             }
                         }
                     }
-                }
 
-                if (shouldInterrupt)
-                {
-                    pawn.jobs.StartJob(job, JobCondition.InterruptForced);
+                    if (shouldInterrupt)
+                    {
+                        pawn.jobs.StartJob(job, JobCondition.InterruptForced);
 
-                    lastInterruptionTick[pawn] = Find.TickManager.TicksGame;
+                        lastInterruptionTick[pawn] = Find.TickManager.TicksGame;
 
-                    AutoArmDebug.LogPawn(pawn, $"Interrupting to pick up {job.targetA.Thing?.Label}");
+                        AutoArmDebug.LogPawn(pawn, $"Interrupting to pick up {job.targetA.Thing?.Label}");
+                    }
+                    else
+                    {
+                        AutoArmDebug.LogPawn(pawn, $"Found upgrade but not interrupting {pawn.CurJob.def.defName} (critical job)");
+                    }
                 }
-                else
-                {
-                    AutoArmDebug.LogPawn(pawn, $"Found upgrade but not interrupting {pawn.CurJob.def.defName} (critical job)");
-                }
-            }
             }
             catch (Exception ex)
             {
@@ -413,7 +427,7 @@ namespace AutoArm
         {
             if (pawn == null || pawn.CurJob == null)
                 return;
-                
+
             // Check if temporary colonists are allowed to equip sidearms
             if (AutoArmMod.settings?.allowTemporaryColonists != true && JobGiverHelpers.IsTemporaryColonist(pawn))
             {
@@ -448,7 +462,7 @@ namespace AutoArm
                 AutoArmDebug.LogPawn(pawn, "Marked as recently unarmed - will check for weapon immediately");
             }
         }
-        
+
         private static bool IsProperWeapon(ThingWithComps thing)
         {
             return WeaponValidation.IsProperWeapon(thing);

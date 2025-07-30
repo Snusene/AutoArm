@@ -12,6 +12,7 @@ namespace AutoArm
     {
         private static Dictionary<Thing, int> recentlyDroppedItems = new Dictionary<Thing, int>();
         private static HashSet<Thing> pendingUpgradeDrops = new HashSet<Thing>();
+        private static HashSet<Pawn> pawnsWithSimpleSidearmsSwapInProgress = new HashSet<Pawn>();
         private const int DefaultIgnoreTicks = 300; // 5 seconds
 
         /// <summary>
@@ -65,7 +66,7 @@ namespace AutoArm
         public static void CleanupOldEntries()
         {
             int currentTick = Find.TickManager.TicksGame;
-            
+
             var toRemove = recentlyDroppedItems
                 .Where(kvp => currentTick >= kvp.Value || kvp.Key.Destroyed)
                 .Select(kvp => kvp.Key)
@@ -75,15 +76,25 @@ namespace AutoArm
             {
                 recentlyDroppedItems.Remove(item);
             }
-            
+
             // Also clean up destroyed pending upgrades
             var destroyedUpgrades = pendingUpgradeDrops
                 .Where(weapon => weapon.Destroyed)
                 .ToList();
-                
+
             foreach (var weapon in destroyedUpgrades)
             {
                 pendingUpgradeDrops.Remove(weapon);
+            }
+
+            // Clean up dead/destroyed pawns from swap tracking
+            var deadPawns = pawnsWithSimpleSidearmsSwapInProgress
+                .Where(p => p.Destroyed || p.Dead)
+                .ToList();
+
+            foreach (var pawn in deadPawns)
+            {
+                pawnsWithSimpleSidearmsSwapInProgress.Remove(pawn);
             }
         }
 
@@ -94,6 +105,7 @@ namespace AutoArm
         {
             recentlyDroppedItems.Clear();
             pendingUpgradeDrops.Clear();
+            pawnsWithSimpleSidearmsSwapInProgress.Clear();
         }
 
         /// <summary>
@@ -150,6 +162,71 @@ namespace AutoArm
         public static void ClearAllPendingUpgrades()
         {
             pendingUpgradeDrops.Clear();
+        }
+
+        /// <summary>
+        /// Check if a weapon was dropped as part of a primary weapon upgrade
+        /// These should have a longer cooldown before being picked up as sidearms
+        /// </summary>
+        public static bool WasDroppedFromPrimaryUpgrade(Thing weapon)
+        {
+            // If it's marked as recently dropped with the longer cooldown (1200 ticks),
+            // it was likely a primary weapon upgrade
+            if (weapon != null && recentlyDroppedItems.TryGetValue(weapon, out int expireTick))
+            {
+                int remainingTicks = expireTick - Find.TickManager.TicksGame;
+                // If it has more than 600 ticks remaining, it was probably dropped with the longer cooldown
+                return remainingTicks > 600;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Mark a weapon as pending drop (will be dropped soon)
+        /// This prevents other systems from trying to pick it up during the drop/equip sequence
+        /// </summary>
+        public static void MarkPendingDrop(Thing weapon)
+        {
+            if (weapon != null)
+            {
+                // Mark it as dropped with a longer cooldown to ensure it's ignored during the job sequence
+                MarkAsDropped(weapon, 600); // 10 seconds
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmDebug.Log($"Marked {weapon.Label} as pending drop for weapon replacement");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Mark that a SimpleSidearms swap is in progress for a pawn
+        /// </summary>
+        public static void MarkSimpleSidearmsSwapInProgress(Pawn pawn)
+        {
+            if (pawn != null)
+            {
+                pawnsWithSimpleSidearmsSwapInProgress.Add(pawn);
+            }
+        }
+
+        /// <summary>
+        /// Clear SimpleSidearms swap in progress flag for a pawn
+        /// </summary>
+        public static void ClearSimpleSidearmsSwapInProgress(Pawn pawn)
+        {
+            if (pawn != null)
+            {
+                pawnsWithSimpleSidearmsSwapInProgress.Remove(pawn);
+            }
+        }
+
+        /// <summary>
+        /// Check if a pawn has a SimpleSidearms swap in progress
+        /// </summary>
+        public static bool IsSimpleSidearmsSwapInProgress(Pawn pawn)
+        {
+            return pawn != null && pawnsWithSimpleSidearmsSwapInProgress.Contains(pawn);
         }
     }
 }

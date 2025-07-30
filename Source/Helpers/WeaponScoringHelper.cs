@@ -1,5 +1,5 @@
 using RimWorld;
-using System.Linq;
+using System;
 using Verse;
 
 namespace AutoArm
@@ -45,7 +45,7 @@ namespace AutoArm
         private static float GetOutfitPolicyScore(Pawn pawn, ThingWithComps weapon)
         {
             var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter != null && !filter.Allows(weapon.def))
+            if (filter != null && !filter.Allows(weapon))
                 return -1000f;
             return 0f;
         }
@@ -61,7 +61,7 @@ namespace AutoArm
                     // SS doesn't allow blocked weapons - reject all persona weapons
                     return -1000f;
                 }
-                
+
                 // Normal persona weapon logic
                 if (bladelinkComp.CodedPawn != null)
                 {
@@ -90,7 +90,7 @@ namespace AutoArm
         {
             if (weapon?.def == null || pawn?.workSettings == null)
                 return 0f;
-                
+
             // Check if pawn is assigned to hunting
             if (pawn.workSettings.WorkIsActive(WorkTypeDefOf.Hunting))
             {
@@ -120,74 +120,48 @@ namespace AutoArm
 
         private static float GetSkillScore(Pawn pawn, ThingWithComps weapon)
         {
-            const float SkillDifferenceMultiplier = 30f;
-            const float AbsoluteSkillMultiplier = 15f;
-            const float WrongTypeMultiplier = 0.5f;
-            const float RightTypeMultiplier = 1.5f;
-
             float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
             float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
             float score = 0f;
 
+            // Calculate skill difference
+            float skillDifference = Math.Abs(shootingSkill - meleeSkill);
+            
+            if (skillDifference == 0)
+                return 0f; // No preference if skills are equal
+            
+            // Start with base bonus of 30 for 1 level difference
+            // Increase by 15% for each additional level (exponential growth)
+            float baseBonus = 30f;
+            float growthRate = 1.15f;
+            float bonus = baseBonus * (float)Math.Pow(growthRate, skillDifference - 1);
+            
+            // Apply bonus or penalty based on weapon type
             if (weapon.def.IsRangedWeapon)
             {
-                score = CalculateRangedSkillScore(weapon, shootingSkill, meleeSkill, 
-                    SkillDifferenceMultiplier, AbsoluteSkillMultiplier);
+                if (shootingSkill > meleeSkill)
+                {
+                    score = bonus; // Positive bonus for matching skill
+                }
+                else
+                {
+                    score = -bonus * 0.5f; // Half penalty for wrong type
+                }
             }
             else if (weapon.def.IsMeleeWeapon)
             {
-                score = CalculateMeleeSkillScore(weapon, shootingSkill, meleeSkill,
-                    SkillDifferenceMultiplier, AbsoluteSkillMultiplier);
+                if (meleeSkill > shootingSkill)
+                {
+                    score = bonus; // Positive bonus for matching skill
+                }
+                else
+                {
+                    score = -bonus * 0.5f; // Half penalty for wrong type
+                }
             }
-
-            // Apply type preference multiplier
-            if (weapon.def.IsRangedWeapon && shootingSkill >= meleeSkill + 2)
-                score *= RightTypeMultiplier;
-            else if (weapon.def.IsMeleeWeapon && meleeSkill >= shootingSkill + 2)
-                score *= RightTypeMultiplier;
-            else if ((weapon.def.IsRangedWeapon && meleeSkill > shootingSkill + 3) ||
-                     (weapon.def.IsMeleeWeapon && shootingSkill > meleeSkill + 3))
-                score *= WrongTypeMultiplier;
-
+            
             return score;
         }
 
-        private static float CalculateRangedSkillScore(ThingWithComps weapon, float shootingSkill, float meleeSkill,
-            float skillDiffMultiplier, float absoluteMultiplier)
-        {
-            float score = 0f;
-
-            if (shootingSkill > meleeSkill)
-            {
-                float skillDiff = shootingSkill - meleeSkill;
-                score += skillDiff * skillDiffMultiplier;
-                score += shootingSkill * absoluteMultiplier;
-            }
-            else if (meleeSkill > shootingSkill + 3)
-            {
-                score -= (meleeSkill - shootingSkill) * 30f;
-            }
-
-            return score;
-        }
-
-        private static float CalculateMeleeSkillScore(ThingWithComps weapon, float shootingSkill, float meleeSkill,
-            float skillDiffMultiplier, float absoluteMultiplier)
-        {
-            float score = 0f;
-
-            if (meleeSkill > shootingSkill)
-            {
-                float skillDiff = meleeSkill - shootingSkill;
-                score += skillDiff * skillDiffMultiplier;
-                score += meleeSkill * absoluteMultiplier;
-            }
-            else if (shootingSkill > meleeSkill + 3)
-            {
-                score -= (shootingSkill - meleeSkill) * 30f;
-            }
-
-            return score;
-        }
     }
 }

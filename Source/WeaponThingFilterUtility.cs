@@ -1,7 +1,7 @@
-﻿using System;
+﻿using RimWorld;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using RimWorld;
 using Verse;
 
 namespace AutoArm
@@ -159,7 +159,12 @@ namespace AutoArm
             if (weapon?.def == null || pawn == null)
                 return false;
 
-            return IsWeaponAllowedByOutfit(weapon.def, pawn);
+            var policy = pawn.outfits?.CurrentApparelPolicy;
+            if (policy?.filter == null)
+                return true;
+
+            // Check the actual weapon instance (includes quality checks)
+            return policy.filter.Allows(weapon);
         }
 
         public static bool PrefersMeleeWeapon(Pawn pawn)

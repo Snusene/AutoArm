@@ -1,7 +1,6 @@
+using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using RimWorld;
-using System.Collections.Generic;
 
 namespace AutoArm
 {
@@ -13,34 +12,34 @@ namespace AutoArm
         public static void RunDiagnostic(Map map)
         {
             Log.Message("\n[AutoArm] === WEAPON CATEGORIZATION DIAGNOSTIC ===");
-            
+
             // Check weapon defs
             var allWeaponDefs = DefDatabase<ThingDef>.AllDefs
                 .Where(d => d.IsWeapon && !d.IsApparel)
                 .ToList();
-            
+
             Log.Message($"[AutoArm] Total weapon defs in game: {allWeaponDefs.Count}");
-            
+
             // Group by mod
             var weaponsByMod = allWeaponDefs
                 .GroupBy(d => d.modContentPack?.Name ?? "Core")
                 .OrderByDescending(g => g.Count())
                 .ToList();
-            
+
             Log.Message("[AutoArm] Weapons by mod:");
             foreach (var modGroup in weaponsByMod.Take(10))
             {
                 Log.Message($"  - {modGroup.Key}: {modGroup.Count()} weapons");
             }
-            
+
             // Check for suspicious patterns
             var suspiciousWeapons = allWeaponDefs
-                .Where(d => d.thingCategories == null || 
+                .Where(d => d.thingCategories == null ||
                            !d.thingCategories.Any() ||
                            d.equipmentType == EquipmentType.None ||
                            !d.HasComp(typeof(CompEquippable)))
                 .ToList();
-            
+
             if (suspiciousWeapons.Any())
             {
                 Log.Warning($"[AutoArm] Found {suspiciousWeapons.Count} weapons with missing/incorrect configuration:");
@@ -52,22 +51,22 @@ namespace AutoArm
                     Log.Warning($"    HasCompEquippable: {weapon.HasComp(typeof(CompEquippable))}");
                 }
             }
-            
+
             // Check actual weapons on map
             if (map != null)
             {
                 var weaponGroup = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).ToList();
                 var allWeapons = map.listerThings.AllThings.Where(t => t.def.IsWeapon).ToList();
-                
+
                 Log.Message($"\n[AutoArm] Map weapon detection:");
                 Log.Message($"  - ThingRequestGroup.Weapon: {weaponGroup.Count}");
                 Log.Message($"  - All IsWeapon items: {allWeapons.Count}");
-                
+
                 if (weaponGroup.Count < allWeapons.Count / 2)
                 {
                     Log.Error($"[AutoArm] CRITICAL: ThingRequestGroup.Weapon is severely broken!");
                     Log.Error($"[AutoArm] Only {weaponGroup.Count} of {allWeapons.Count} weapons are properly categorized.");
-                    
+
                     // Find which weapons are missing
                     var missingWeapons = allWeapons.Except(weaponGroup).ToList();
                     Log.Error($"[AutoArm] Examples of uncategorized weapons:");
@@ -77,17 +76,17 @@ namespace AutoArm
                     }
                 }
             }
-            
+
             // Check for known problematic mods
             CheckForKnownIssues();
-            
+
             Log.Message("[AutoArm] === END DIAGNOSTIC ===\n");
         }
-        
+
         private static void CheckForKnownIssues()
         {
             var loadedMods = LoadedModManager.RunningMods.Select(m => m.PackageId.ToLower()).ToList();
-            
+
             // Known mods that can cause issues
             var problematicMods = new Dictionary<string, string>
             {
@@ -96,7 +95,7 @@ namespace AutoArm
                 { "uuugggg.replacestuff", "Replace Stuff - Can affect item spawning" },
                 { "lwm.deepstorage", "LWM's Deep Storage - Changes storage mechanics" }
             };
-            
+
             var foundIssues = false;
             foreach (var mod in problematicMods)
             {
@@ -110,7 +109,7 @@ namespace AutoArm
                     Log.Warning($"  - {mod.Value}");
                 }
             }
-            
+
             if (foundIssues)
             {
                 Log.Warning("[AutoArm] These mods may interfere with weapon categorization.");

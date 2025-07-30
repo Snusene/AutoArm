@@ -11,11 +11,10 @@
 	<!-- Notifications -->
 	<AutoArm_ShowNotifications>Show notifications</AutoArm_ShowNotifications>
 	<AutoArm_ShowNotificationsDesc>Shows blue notification messages when colonists equip or drop weapons. Disabling this will make weapon changes silent but they will still happen.</AutoArm_ShowNotificationsDesc>
-	<AutoArm_EquippedWeapon>{0} equipped {1}.</AutoArm_EquippedWeapon>
-	<AutoArm_UpgradedWeapon>{0} upgraded from {1} to {2}.</AutoArm_UpgradedWeapon>
-	<AutoArm_UpgradedSidearm>{0} upgraded sidearm from {1} to {2}.</AutoArm_UpgradedSidearm>
-	<AutoArm_DroppingDisallowed>{0} will drop {1} (outfit policy).</AutoArm_DroppingDisallowed>
-	<AutoArm_DroppingSidearmDisallowed>{0} will drop {1} (outfit policy)</AutoArm_DroppingSidearmDisallowed>
+	<AutoArm_EquippedWeapon>{0} equipped {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} upgraded from {1} to {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_UpgradedSidearm>{0} upgraded sidearm from {1} to {2}</AutoArm_UpgradedSidearm>
+	<AutoArm_ReplacedWeapon>{0} replaced {1} with {2}</AutoArm_ReplacedWeapon>
 	<!-- Mod Compatibility Settings -->
 	<AutoArm_EnableSidearmAutoEquip>Auto-equip sidearms</AutoArm_EnableSidearmAutoEquip>
 	<AutoArm_EnableSidearmAutoEquipDesc>Allows colonists to automatically pick up additional weapons as sidearms. Simple Sidearms must be installed and configured. This may impact performance with many colonists.</AutoArm_EnableSidearmAutoEquipDesc>

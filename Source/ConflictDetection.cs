@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using Verse;
-using RimWorld;
 
 namespace AutoArm
 {
@@ -48,19 +47,11 @@ namespace AutoArm
         {
             // Get mods in their actual load order
             var activeModsInOrder = ModsConfig.ActiveModsInLoadOrder.ToList();
-            
-            // Find AutoArm in the load order
-            var autoArmIndex = activeModsInOrder.FindIndex(m => 
-                m.PackageIdPlayerFacing.ToLower().Contains("autoarm") || 
-                m.PackageId.ToLower().Contains("autoarm"));
 
-            AutoArmDebug.Log("Active mods in load order:");
-            for (int i = 0; i < Math.Min(20, activeModsInOrder.Count); i++)
-            {
-                var mod = activeModsInOrder[i];
-                AutoArmDebug.Log($"  {i}: {mod.PackageIdPlayerFacing} - {mod.Name}");
-            }
-            AutoArmDebug.Log($"Found AutoArm at index: {autoArmIndex}");
+            // Find AutoArm in the load order
+            var autoArmIndex = activeModsInOrder.FindIndex(m =>
+                m.PackageIdPlayerFacing.IndexOf("autoarm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                m.PackageId.IndexOf("autoarm", StringComparison.OrdinalIgnoreCase) >= 0);
 
             var importantMods = new[]
             {
@@ -75,20 +66,34 @@ namespace AutoArm
                 new { PackageId = "petetimessix.simplesidearms", Name = "Simple Sidearms", ShouldBeAfter = true }
             };
 
+            bool hasLoadOrderIssues = false;
+
             foreach (var mod in importantMods)
             {
-                var modIndex = activeModsInOrder.FindIndex(m => 
-                    m.PackageIdPlayerFacing.ToLower() == mod.PackageId.ToLower() ||
-                    m.PackageId.ToLower() == mod.PackageId.ToLower());
+                var modIndex = activeModsInOrder.FindIndex(m =>
+                    string.Equals(m.PackageIdPlayerFacing, mod.PackageId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(m.PackageId, mod.PackageId, StringComparison.OrdinalIgnoreCase));
 
                 if (modIndex >= 0 && autoArmIndex >= 0)
                 {
                     bool isAfter = autoArmIndex > modIndex;
                     if (isAfter != mod.ShouldBeAfter)
                     {
+                        hasLoadOrderIssues = true;
                         Log.Warning($"[AutoArm] Load order issue: AutoArm should be {(mod.ShouldBeAfter ? "after" : "before")} {mod.Name} but is currently {(isAfter ? "after" : "before")} it");
-                        AutoArmDebug.Log($"WARNING: AutoArm index: {autoArmIndex}, {mod.Name} index: {modIndex}");
                     }
+                }
+            }
+
+            // Only log detailed mod order if there are issues AND debug logging is enabled
+            if (hasLoadOrderIssues && AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmDebug.Log($"AutoArm found at index: {autoArmIndex}");
+                AutoArmDebug.Log("First 20 mods in load order:");
+                for (int i = 0; i < Math.Min(20, activeModsInOrder.Count); i++)
+                {
+                    var mod = activeModsInOrder[i];
+                    AutoArmDebug.Log($"  {i}: {mod.PackageIdPlayerFacing} - {mod.Name}");
                 }
             }
         }

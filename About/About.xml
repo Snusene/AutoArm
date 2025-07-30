@@ -1,8 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ModMetaData>
-	<name>AutoArm</name>
+	<name>Auto Arm</name>
 	<author>Snues</author>
-	<url>https://github.com/Snusene/AutoArm</url>
 	<packageId>Snues.AutoArm</packageId>
 	<supportedVersions>
 		<li>1.5</li>
@@ -38,6 +37,7 @@
 		<li>Mehni.PickUpAndHaul</li>
 		<li>Fluffy.WorkTab</li>
 		<li>Uuugggg.SmartSpeed</li>
+		<li>oelsart.ChooseYourOutfit</li>
 	</loadAfter>
 	<loadBefore>
 		<!-- Equipment management mods that might conflict -->
@@ -58,23 +58,20 @@
 		<!-- Add any truly incompatible mods here if discovered -->
 	</incompatibleWith>
 	<description>
-		<![CDATA[<b>AutoArm</b>
-
-<b>Core features</b>
-• Add weapons to outfit filters just like apparel
-• Colonists automatically equip better weapons based on their skills
-• Respects player choice - manually equipped weapons are remembered
+		<![CDATA[<b>Core features</b>
+Unarmed colonists grab weapons immediately
+Colonists automatically equip better weapons based on their traits and skills
+Manually equipped weapons are remembered and stays locked
 
 <b>How to Use</b>
 1. You'll see a new "Weapons" category under Apparel
 2. Allow/disallow specific weapons or entire categories
 3. Colonists will automatically manage their weapons according to the policy
+4. Change the settings page to your liking
 
 <b>Load Order:</b>
-Loads after Core, DLCs, and framework mods (CE, Simple Sidearms, etc).
-Loads before equipment management and AI behavior mods.
 Auto-sort handles most cases.
-
-Report issues at the workshop]]>
+Load after framework mods (CE, Simple Sidearms, etc).
+Load before equipment management and AI behavior mods.]]>
 	</description>
 </ModMetaData>

@@ -1,4 +1,3 @@
-using HarmonyLib;
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -27,7 +26,7 @@ namespace AutoArm
         {
             MarkAutoEquip(job, pawn);
         }
-        
+
         public static void MarkAutoEquip(Job job, Pawn pawn = null)
         {
             if (job != null)
@@ -63,7 +62,7 @@ namespace AutoArm
                 jobAddedTick.Remove(job.loadID);
             }
         }
-        
+
         public static void SetPreviousWeapon(Pawn pawn, ThingDef weaponDef)
         {
             if (pawn != null && weaponDef != null)
@@ -135,7 +134,6 @@ namespace AutoArm
                 {
                     if (pawn.WorkTagIsDisabled(WorkTags.Violent))
                     {
-                        AutoArmDebug.LogPawn(pawn, "Incapable of violence");
                         return false;
                     }
                 }
@@ -159,11 +157,23 @@ namespace AutoArm
 
                 var filter = pawn.outfits.CurrentApparelPolicy.filter;
                 bool anyWeaponAllowed = WeaponThingFilterUtility.AllWeapons.Any(td => filter.Allows(td));
-                
+
                 // Only log when weapons are NOT allowed (more interesting case)
                 if (!anyWeaponAllowed)
-                    AutoArmDebug.LogPawn(pawn, "No weapons allowed in outfit filter");
-                
+                {
+                    // Also check and drop any sidearms when no weapons are allowed
+                    if (SimpleSidearmsCompat.IsLoaded())
+                    {
+                        LongEventHandler.ExecuteWhenFinished(() =>
+                        {
+                            if (pawn != null && pawn.Spawned && !pawn.Dead)
+                            {
+                                Pawn_OutfitTracker_CurrentApparelPolicy_Setter_Patch.CheckAndDropDisallowedSidearms(pawn);
+                            }
+                        });
+                    }
+                }
+
                 return anyWeaponAllowed;
             }
             catch (Exception ex)
@@ -179,14 +189,14 @@ namespace AutoArm
         {
             return Satisfied(pawn);
         }
-        
+
         public override float GetPriority(Pawn pawn)
         {
             try
             {
-                // Medium-high priority - check for upgrades before starting work tasks
+                // Priority 5.4 - check for upgrades before starting work (5.5)
                 // This runs after critical needs but before assigned work
-                return Satisfied(pawn) ? 5.0f : 0f;
+                return Satisfied(pawn) ? 5.4f : 0f;
             }
             catch (Exception ex)
             {

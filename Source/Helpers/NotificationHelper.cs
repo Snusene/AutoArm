@@ -25,7 +25,7 @@ namespace AutoArm
         /// </summary>
         public static bool ShouldSendNotification(Pawn pawn)
         {
-            return AutoArmMod.settings?.showNotifications == true && 
+            return AutoArmMod.settings?.showNotifications == true &&
                    PawnUtility.ShouldSendNotificationAbout(pawn);
         }
 
@@ -90,7 +90,7 @@ namespace AutoArm
                 return;
 
             string weaponLabel = weapon?.Label ?? weapon?.def?.label ?? "weapon";
-            
+
             if (reason == "sidearm")
             {
                 SendNotification("AutoArm_DroppingSidearmDisallowed", pawn,
@@ -113,7 +113,7 @@ namespace AutoArm
             if (!ShouldSendNotification(pawn))
                 return;
 
-            Messages.Message($"[AutoArm] {pawn.LabelShort}: {message}", 
+            Messages.Message($"[AutoArm] {pawn.LabelShort}: {message}",
                 new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
         }
     }

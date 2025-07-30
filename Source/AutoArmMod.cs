@@ -91,7 +91,8 @@ namespace AutoArm
             {
                 Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
                     "Are you sure you want to reset all settings to defaults?",
-                    () => {
+                    () =>
+                    {
                         settings.ResetToDefaults();
                         Messages.Message("Settings reset to defaults", MessageTypeDefOf.NeutralEvent, false);
                     }));
@@ -119,12 +120,9 @@ namespace AutoArm
             if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 2, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "Advanced"))
                 currentTab = SettingsTab.Advanced;
 
-            if (Prefs.DevMode)
-            {
-                GUI.color = currentTab == SettingsTab.Debug ? Color.white : new Color(1f, 0.7f, 0.7f);
-                if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 3, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "Debug"))
-                    currentTab = SettingsTab.Debug;
-            }
+            GUI.color = currentTab == SettingsTab.Debug ? Color.white : new Color(1f, 0.7f, 0.7f);
+            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 3, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "Debug"))
+                currentTab = SettingsTab.Debug;
 
             GUI.color = originalColor;
             listing.Gap(SMALL_GAP);
@@ -144,15 +142,17 @@ namespace AutoArm
                 case SettingsTab.General:
                     DrawGeneralTab(innerListing);
                     break;
+
                 case SettingsTab.Compatibility:
                     DrawCompatibilityTab(innerListing);
                     break;
+
                 case SettingsTab.Advanced:
                     DrawAdvancedTab(innerListing);
                     break;
+
                 case SettingsTab.Debug:
-                    if (Prefs.DevMode)
-                        DrawDebugTab(innerListing);
+                    DrawDebugTab(innerListing);
                     break;
             }
 
@@ -207,7 +207,7 @@ namespace AutoArm
             {
                 displayValue = format == "P0" ? value.ToString("P0") : value.ToString(format);
             }
-            
+
             Widgets.Label(labelRect, $"{label}: {displayValue}");
 
             float oldValue = value;
@@ -228,8 +228,7 @@ namespace AutoArm
 
         private void DrawGeneralTab(Listing_Standard listing)
         {
-            
-            DrawCheckbox(listing, "Enable AutoArm", ref settings.modEnabled,
+            DrawCheckbox(listing, "Enable Auto Arm", ref settings.modEnabled,
                 "When enabled, colonists will automatically equip better weapons based on their outfit policy.");
 
             listing.Gap(SMALL_GAP);
@@ -239,7 +238,12 @@ namespace AutoArm
 
             listing.Gap(SMALL_GAP);
 
-            DrawCheckbox(listing, "Allow quest colonists to auto-equip", ref settings.allowTemporaryColonists,
+            DrawCheckbox(listing, "Allow forced weapon type upgrades", ref settings.allowForcedWeaponUpgrades,
+                "When enabled, colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver → masterwork revolver).");
+
+            listing.Gap(SMALL_GAP);
+
+            DrawCheckbox(listing, "Allow temporary colonists to auto-equip", ref settings.allowTemporaryColonists,
                 "When enabled, temporary colonists (quest lodgers, borrowed pawns, royal guests) can auto-equip weapons. When disabled, they keep their current equipment.");
 
             if (settings.allowTemporaryColonists)
@@ -299,7 +303,7 @@ namespace AutoArm
                 listing.Indent(20f);
 
                 Color oldColor = GUI.color;
-                GUI.color = new Color(1f, 1f, 0.6f); 
+                GUI.color = new Color(1f, 1f, 0.6f);
                 DrawCheckbox(listing, "Allow sidearm upgrades - Experimental",
                     ref settings.allowSidearmUpgrades,
                     "When enabled, colonists will upgrade existing sidearms to better weapons.",
@@ -329,8 +333,56 @@ namespace AutoArm
             Widgets.Label(headerRect, "Combat Extended");
             Text.Font = GameFont.Small;
 
+            // Check CE ammo system status
+            bool ceAmmoSystemEnabled = CECompat.TryDetectAmmoSystemEnabled(out string detectionResult);
+
+            // Detect state changes
+            bool stateChanged = ceAmmoSystemEnabled != settings.lastKnownCEAmmoState;
+            
+            // Force disable if CE ammo system is off
+            if (!ceAmmoSystemEnabled && settings.checkCEAmmo)
+            {
+                settings.checkCEAmmo = false;
+                AutoArmDebug.Log("CE ammo system is disabled - forcing ammo checks off");
+            }
+            // Auto-enable only when CE ammo system is turned on (state change from off to on)
+            else if (ceAmmoSystemEnabled && !settings.lastKnownCEAmmoState && stateChanged)
+            {
+                settings.checkCEAmmo = true;
+                AutoArmDebug.Log("CE ammo system was enabled - auto-enabling ammo checks");
+            }
+            
+            // Update the tracked state
+            settings.lastKnownCEAmmoState = ceAmmoSystemEnabled;
+
+            // Show the checkbox (disabled if CE ammo is off)
+            Color oldColor = GUI.color;
+            if (!ceAmmoSystemEnabled)
+            {
+                GUI.color = Color.gray;
+            }
+
             DrawCheckbox(listing, "Check for ammunition", ref settings.checkCEAmmo,
                 "When enabled, colonists will only pick up weapons if they have access to appropriate ammunition.");
+
+            // Prevent enabling if CE ammo is disabled
+            if (!ceAmmoSystemEnabled && settings.checkCEAmmo)
+            {
+                settings.checkCEAmmo = false;
+            }
+
+            GUI.color = oldColor;
+            
+            // Show status message if CE ammo is disabled
+            if (!ceAmmoSystemEnabled)
+            {
+                listing.Gap(TINY_GAP);
+                oldColor = GUI.color;
+                GUI.color = new Color(1f, 0.8f, 0.4f); // Orange warning
+                var warningRect = listing.GetRect(Text.LineHeight);
+                Widgets.Label(warningRect, "⚠ CE ammo system is disabled");
+                GUI.color = oldColor;
+            }
         }
 
         private void DrawAdvancedTab(Listing_Standard listing)
@@ -381,7 +433,7 @@ namespace AutoArm
                 // Make the slider only 1/3 width
                 var sliderRect = listing.GetRect(LINE_HEIGHT);
                 var shortSliderRect = sliderRect.LeftPart(0.33f);  // Only use left third
-                
+
                 float tempAge = (float)settings.childrenMinAge;
                 tempAge = Widgets.HorizontalSlider(shortSliderRect, tempAge, (float)CHILD_AGE_MIN, (float)CHILD_AGE_MAX);
                 settings.childrenMinAge = Mathf.RoundToInt(tempAge);
@@ -542,7 +594,7 @@ namespace AutoArm
             Text.Font = GameFont.Small;
 
             listing.Gap(10f);
-            
+
             // Show keyboard shortcuts
             Color oldColor = GUI.color;
             GUI.color = Color.gray;
@@ -605,7 +657,7 @@ namespace AutoArm
 
             Color oldColor = GUI.color;
             Color textColor = new Color(0.9f, 0.9f, 0.9f);  // Default to light gray
-            
+
             // Color based on test results
             if (lastTestResults != null)
             {
@@ -648,7 +700,7 @@ namespace AutoArm
             {
                 var results = Testing.TestRunner.RunAllTests(map);
                 lastTestResults = results;
-                
+
                 // Build result text
                 testResultsText = "=== AutoArm Test Results ===\n\n";
                 testResultsText += $"Total Tests: {results.TotalTests}\n";
@@ -660,7 +712,7 @@ namespace AutoArm
                 var allResults = results.GetAllResults();
                 testResultsText += "Test Details:\n";
                 testResultsText += "──────────────\n";
-                
+
                 foreach (var kvp in allResults.OrderBy(x => x.Key))
                 {
                     if (kvp.Value.Success)
@@ -675,7 +727,7 @@ namespace AutoArm
                             testResultsText += $"   └─ {kvp.Value.FailureReason}\n";
                         }
                     }
-                    
+
                     // Show any additional data
                     if (kvp.Value.Data != null && kvp.Value.Data.Count > 0)
                     {

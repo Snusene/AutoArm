@@ -28,13 +28,13 @@ namespace AutoArm
                 // Use the same path as RimWorld's Player.log
                 string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "Low";
                 string rimworldDataPath = Path.Combine(documentsPath, "Ludeon Studios", "RimWorld by Ludeon Studios");
-                
+
                 // Ensure directory exists
                 if (!Directory.Exists(rimworldDataPath))
                 {
                     Directory.CreateDirectory(rimworldDataPath);
                 }
-                
+
                 logFilePath = Path.Combine(rimworldDataPath, "AutoArm_Debug.txt");
 
                 // Create or clear the file

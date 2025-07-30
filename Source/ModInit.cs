@@ -6,7 +6,6 @@ using System.Linq;
 using System.Reflection;
 using Verse;
 using Verse.AI;
-using Verse.Steam;
 
 namespace AutoArm
 {
@@ -15,13 +14,14 @@ namespace AutoArm
     {
         internal static int retryAttempts = 0;
         internal const int MaxRetryAttempts = 3;
+        internal static Harmony harmonyInstance;
 
         static AutoArmInit()
         {
-            var harmony = new Harmony("Snues.AutoArm");
-            harmony.PatchAll(Assembly.GetExecutingAssembly());
+            harmonyInstance = new Harmony("Snues.AutoArm");
+            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
             Log.Message("<color=#4287f5>[AutoArm]</color> Initialized successfully");
-            
+
             // Log version detection
             var version = VersionControl.CurrentVersionString;
             if (version.StartsWith("1.5"))
@@ -32,21 +32,18 @@ namespace AutoArm
             {
                 Log.Message($"<color=#4287f5>[AutoArm]</color> Running on RimWorld {version} - Using standard timings");
             }
-            
+
             // Initialize debug logging if enabled
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmDebugLogger.DebugLog("AutoArm mod initialized with debug logging enabled");
             }
         }
-
     }
 
     [HarmonyPatch(typeof(Game), "FinalizeInit")]
     public static class Game_FinalizeInit_InjectThinkTree_Patch
     {
-
-        
         [HarmonyPostfix]
         public static void Postfix()
         {
@@ -56,7 +53,14 @@ namespace AutoArm
                 Current.Game.components.Add(new AutoArmGameComponent(Current.Game));
                 Log.Message("[AutoArm] Added GameComponent for save/load support");
             }
-            
+
+            // Apply SimpleSidearms patches if loaded
+            if (SimpleSidearmsCompat.IsLoaded())
+            {
+                SimpleSidearms_WeaponSwap_Patches.ApplyPatches(AutoArmInit.harmonyInstance);
+                SimpleSidearms_JobGiver_RetrieveWeapon_Patch.ApplyPatch(AutoArmInit.harmonyInstance);
+            }
+
             // Pre-injection validation
             if (!ValidatePreInjection())
             {
@@ -64,7 +68,7 @@ namespace AutoArm
                 AutoArmMod.settings.thinkTreeInjectionFailed = true;
                 return;
             }
-            
+
             try
             {
                 InjectIntoThinkTree();
@@ -81,7 +85,6 @@ namespace AutoArm
                     {
                         AutoArmMod.settings.thinkTreeInjectionFailed = false;
                         AutoArmInit.retryAttempts = 0;
-
                     }
                 });
             }
@@ -90,17 +93,17 @@ namespace AutoArm
                 Log.Error($"[AutoArm] Critical error during think tree injection: {ex.Message}");
                 if (ex.InnerException != null)
                     Log.Error($"[AutoArm] Inner exception: {ex.InnerException.Message}");
-                    
+
                 AutoArmMod.settings.thinkTreeInjectionFailed = true;
             }
         }
-        
+
         private static bool ValidatePreInjection()
         {
             try
             {
-                Log.Message("[AutoArm] Running pre-injection validation...");
-                
+                AutoArmDebug.Log("Running pre-injection validation...");
+
                 // Test 1: Can we access weapon defs without crashing?
                 var weaponDefs = WeaponThingFilterUtility.AllWeapons;
                 if (weaponDefs == null || weaponDefs.Count == 0)
@@ -108,26 +111,26 @@ namespace AutoArm
                     Log.Warning("[AutoArm] No weapon definitions found during pre-injection validation.");
                     return false;
                 }
-                
+
                 // Test 2: Can we safely check weapon properties?
                 int testedWeapons = 0;
                 int failedWeapons = 0;
-                
+
                 foreach (var weaponDef in weaponDefs.Take(10)) // Test first 10 weapons
                 {
                     try
                     {
                         testedWeapons++;
-                        
+
                         // Try to access properties that might crash with modded weapons
                         var isWeapon = weaponDef.IsWeapon;
                         var equipmentType = weaponDef.equipmentType;
                         var techLevel = weaponDef.techLevel;
-                        
+
                         // Check if this might be a problematic modded weapon
                         if (weaponDef.defName?.Contains("Kiiro") == true)
                         {
-                            Log.Message($"[AutoArm] Found Kiiro Race weapon during validation: {weaponDef.defName}");
+                            AutoArmDebug.Log($"Found Kiiro Race weapon during validation: {weaponDef.defName}");
                         }
                     }
                     catch (Exception ex)
@@ -136,20 +139,20 @@ namespace AutoArm
                         Log.Warning($"[AutoArm] Failed to validate weapon {weaponDef?.defName ?? "unknown"}: {ex.Message}");
                     }
                 }
-                
+
                 // If more than half of tested weapons failed, something is wrong
                 if (failedWeapons > testedWeapons / 2)
                 {
                     Log.Warning($"[AutoArm] Too many weapon validation failures ({failedWeapons}/{testedWeapons}). Pre-injection validation failed.");
                     return false;
                 }
-                
+
                 // Test 3: Can we build a minimal weapon cache?
                 try
                 {
-                    Log.Message("[AutoArm] Testing weapon cache build...");
+                    AutoArmDebug.Log("Testing weapon cache build...");
                     var testCache = new Dictionary<ThingDef, float>();
-                    
+
                     foreach (var weaponDef in weaponDefs.Take(5)) // Test with first 5 weapons
                     {
                         try
@@ -165,7 +168,7 @@ namespace AutoArm
                             Log.Warning($"[AutoArm] Failed to process weapon {weaponDef?.defName} in cache test: {ex.Message}");
                         }
                     }
-                    
+
                     if (testCache.Count == 0)
                     {
                         Log.Warning("[AutoArm] Could not build test weapon cache. Pre-injection validation failed.");
@@ -177,8 +180,8 @@ namespace AutoArm
                     Log.Warning($"[AutoArm] Weapon cache test failed: {ex.Message}");
                     return false;
                 }
-                
-                Log.Message("[AutoArm] Pre-injection validation passed.");
+
+                AutoArmDebug.Log("Pre-injection validation passed.");
                 return true;
             }
             catch (Exception ex)
@@ -194,7 +197,7 @@ namespace AutoArm
                 return;
 
             AutoArmInit.retryAttempts++;
-            Log.Message($"[AutoArm] Attempting think tree injection retry {AutoArmInit.retryAttempts}/{AutoArmInit.MaxRetryAttempts}...");
+            AutoArmDebug.Log($"Attempting think tree injection retry {AutoArmInit.retryAttempts}/{AutoArmInit.MaxRetryAttempts}...");
 
             try
             {
@@ -205,7 +208,7 @@ namespace AutoArm
                     if (ValidateThinkTreeInjection())
                     {
                         AutoArmMod.settings.thinkTreeInjectionFailed = false;
-                        Log.Message("[AutoArm] Think tree injection successful on retry!");
+                        AutoArmDebug.Log("Think tree injection successful on retry!");
                         AutoArmInit.retryAttempts = 0;
                     }
                     else if (AutoArmInit.retryAttempts < AutoArmInit.MaxRetryAttempts)
@@ -278,20 +281,29 @@ namespace AutoArm
             mainSorter.subNodes.Insert(insertIndex, emergencyWeaponNode);
 
             // Normal upgrades - insert at next position
+            // ThinkNode_ConditionalWeaponsInOutfit is inside WeaponAutoEquip.cs
             var weaponUpgradeNode = new ThinkNode_ConditionalWeaponsInOutfit();
             var upgradeJobGiver = new JobGiver_PickUpBetterWeapon();
             weaponUpgradeNode.subNodes = new List<ThinkNode> { upgradeJobGiver };
             mainSorter.subNodes.Insert(insertIndex + 1, weaponUpgradeNode);
 
-            // Sidearm pickup node
-            var sidearmConditionalNode = new ThinkNode_ConditionalShouldCheckSidearms();
-            var sidearmJobGiver = new JobGiver_PickUpSidearm();
-            sidearmConditionalNode.subNodes = new List<ThinkNode> { sidearmJobGiver };
-            mainSorter.subNodes.Insert(insertIndex + 2, sidearmConditionalNode);
+            // Sidearm pickup node - only inject if SimpleSidearms is loaded
+            if (SimpleSidearmsCompat.IsLoaded())
+            {
+                var sidearmConditionalNode = new ThinkNode_ConditionalShouldCheckSidearms();
+                var sidearmJobGiver = new JobGiver_PickUpSidearm();
+                sidearmConditionalNode.subNodes = new List<ThinkNode> { sidearmJobGiver };
+                mainSorter.subNodes.Insert(insertIndex + 2, sidearmConditionalNode);
+
+                AutoArmDebug.Log($"Injected sidearm pickup check at index {insertIndex + 2}");
+            }
+            else
+            {
+                AutoArmDebug.Log("SimpleSidearms not loaded - skipping sidearm node injection");
+            }
 
             AutoArmDebug.Log($"Injected emergency weapon check at index {insertIndex}");
             AutoArmDebug.Log($"Injected weapon upgrade check at index {insertIndex + 1}");
-            AutoArmDebug.Log($"Injected sidearm check at index {insertIndex + 2}");
         }
 
         private static bool IsWorkNode(ThinkNode node)
@@ -390,10 +402,19 @@ namespace AutoArm
 
                 ValidateThinkNode(humanlikeThinkTree.thinkRoot, ref foundEmergencyNode, ref foundUpgradeNode, ref foundSidearmNode);
 
+                // Validate core nodes
                 if (!foundEmergencyNode || !foundUpgradeNode)
                 {
                     Log.Warning($"[AutoArm] Think tree validation failed - Emergency: {foundEmergencyNode}, Upgrade: {foundUpgradeNode}");
                     AutoArmDebug.LogError($"Think tree validation failed - Emergency: {foundEmergencyNode}, Upgrade: {foundUpgradeNode}");
+                    return false;
+                }
+
+                // Validate sidearm nodes only if SimpleSidearms is loaded
+                if (SimpleSidearmsCompat.IsLoaded() && !foundSidearmNode)
+                {
+                    Log.Warning($"[AutoArm] SimpleSidearms loaded but sidearm node not found in think tree");
+                    AutoArmDebug.LogError($"SimpleSidearms loaded but sidearm node not found");
                     return false;
                 }
 
@@ -439,7 +460,7 @@ namespace AutoArm
         {
             AutoArmInit.retryAttempts = 0;
             Game_FinalizeInit_InjectThinkTree_Patch.Postfix();
-            
+
             // Clean up any sidearm upgrade state that shouldn't persist across save/load
             SimpleSidearmsCompat.CleanupAfterLoad();
         }
@@ -447,7 +468,6 @@ namespace AutoArm
 
     public class ThinkNode_PriorityAutoArm : ThinkNode
     {
-
         public override ThinkResult TryIssueJobPackage(Pawn pawn, JobIssueParams jobParams)
         {
             if (subNodes == null || subNodes.Count == 0)
@@ -467,12 +487,12 @@ namespace AutoArm
                     if (satisfiedMethod != null)
                     {
                         bool satisfied = (bool)satisfiedMethod.Invoke(conditional, new object[] { pawn });
-                        return satisfied ? GetBasePriority() : 0f;  
+                        return satisfied ? GetBasePriority() : 0f;
                     }
                 }
                 catch { }
             }
-            return GetBasePriority();  
+            return GetBasePriority();
         }
 
         private float GetBasePriority()
@@ -484,7 +504,7 @@ namespace AutoArm
                 if (value is float f)
                     return f;
             }
-            return 1f; 
+            return 1f;
         }
 
         public void SetPriority(float value)
@@ -501,7 +521,7 @@ namespace AutoArm
     {
         private static Dictionary<Pawn, int> pawnEvaluationFailures = new Dictionary<Pawn, int>();
         private static DateTime lastCleanupTime = DateTime.Now;
-        
+
         protected override bool Satisfied(Pawn pawn)
         {
             try
@@ -512,14 +532,14 @@ namespace AutoArm
                     pawnEvaluationFailures.Clear();
                     lastCleanupTime = DateTime.Now;
                 }
-                
+
                 // Check if this pawn has been failing repeatedly
                 if (pawnEvaluationFailures.TryGetValue(pawn, out int failCount) && failCount > 10)
                 {
                     // Too many failures for this pawn - skip to prevent crash loops
                     return false;
                 }
-                
+
                 if (!JobGiverHelpers.SafeIsColonist(pawn) || pawn.Dead || pawn.Downed)
                     return false;
 
@@ -540,7 +560,20 @@ namespace AutoArm
 
                 var primary = pawn.equipment?.Primary;
                 bool isUnarmed = primary == null || !primary.def.IsWeapon;
-                
+
+                // If unarmed, check if any weapons are allowed by outfit filter
+                if (isUnarmed && pawn.outfits?.CurrentApparelPolicy?.filter != null)
+                {
+                    var filter = pawn.outfits.CurrentApparelPolicy.filter;
+                    bool anyWeaponAllowed = WeaponThingFilterUtility.AllWeapons.Any(td => filter.Allows(td));
+
+                    if (!anyWeaponAllowed)
+                    {
+                        // No weapons allowed in outfit - don't try to pick up weapons
+                        return false;
+                    }
+                }
+
                 return isUnarmed;
             }
             catch (Exception ex)
@@ -549,13 +582,13 @@ namespace AutoArm
                 if (!pawnEvaluationFailures.ContainsKey(pawn))
                     pawnEvaluationFailures[pawn] = 0;
                 pawnEvaluationFailures[pawn]++;
-                
+
                 // If too many failures, record a crash
                 if (pawnEvaluationFailures[pawn] > 5)
                 {
                     Log.Error($"[AutoArm] Multiple evaluation failures for {pawn?.Name?.ToStringShort ?? "unknown"} - possible crash loop detected");
                 }
-                
+
                 Log.Error($"[AutoArm] Error in ThinkNode_ConditionalUnarmed.Satisfied for {pawn?.Name?.ToStringShort ?? "unknown"}: {ex.Message}");
                 return false; // Safe default - don't try to equip weapons if we can't check
             }
@@ -594,7 +627,7 @@ namespace AutoArm
                 else if (pawn.equipment?.Primary == null)
                 {
                     // Only log emergency failures once per 10 seconds per pawn
-                    TimingHelper.LogWithCooldown(pawn, "Emergency: is unarmed but found no weapon!", 
+                    TimingHelper.LogWithCooldown(pawn, "Emergency: is unarmed but found no weapon!",
                         TimingHelper.CooldownType.ForcedWeaponLog);
                 }
 
@@ -625,7 +658,6 @@ namespace AutoArm
 
             var job = SimpleSidearmsCompat.TryGetSidearmUpgradeJob(pawn);
 
-
             return job;
         }
     }
@@ -638,8 +670,13 @@ namespace AutoArm
         {
             try
             {
+                // First check if sidearms are enabled in settings
+                if (AutoArmMod.settings?.autoEquipSidearms != true)
+                {
+                    return false;
+                }
+
                 if (!SimpleSidearmsCompat.IsLoaded() ||
-                    AutoArmMod.settings?.autoEquipSidearms != true ||
                     !JobGiverHelpers.SafeIsColonist(pawn) ||
                     pawn.Drafted ||
                     pawn.Downed ||
@@ -647,7 +684,7 @@ namespace AutoArm
                 {
                     return false;
                 }
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -661,8 +698,8 @@ namespace AutoArm
         {
             try
             {
-                // Same priority as weapon upgrades - check before starting work
-                return Satisfied(pawn) ? 5.0f : 0f;
+                // Priority 5.4 - check before starting work (5.5)
+                return Satisfied(pawn) ? 5.4f : 0f;
             }
             catch (Exception ex)
             {

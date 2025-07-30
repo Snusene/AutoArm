@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
@@ -22,12 +21,15 @@ namespace AutoArm
             DroppedWeapon,
             UpgradeCheck,
             PrimarySidearmCache,
-            FailedUpgradeSearch  // Used for both weapon upgrades and sidearm searches (30s)
+            FailedUpgradeSearch,  // Used for both weapon upgrades and sidearm searches (30s)
+            OnlySidearmsLog,      // Used to prevent spam when pawn has only sidearms
+            UnarmedPrimaryLog,    // Used to prevent spam when unarmed pawn picks up primary
+            ReplacePrimaryLog     // Used to prevent spam when replacing primary weapon
         }
 
         // Unified cooldown tracking (fixes #13)
         private static readonly Dictionary<CooldownType, Dictionary<object, int>> cooldowns = new Dictionary<CooldownType, Dictionary<object, int>>();
-        
+
         // Cooldown durations
         private static readonly Dictionary<CooldownType, int> cooldownDurations = new Dictionary<CooldownType, int>
         {
@@ -36,12 +38,15 @@ namespace AutoArm
             { CooldownType.Interruption, 300 },
             { CooldownType.SidearmCheck, 300 },
             { CooldownType.InBed, 2500 },
-            { CooldownType.IncapableOfViolence, 10000 },
+            { CooldownType.IncapableOfViolence, int.MaxValue / 2 }, // Effectively never log again after first time
             { CooldownType.ForcedWeaponLog, 10000 },
             { CooldownType.DroppedWeapon, 300 },
             { CooldownType.UpgradeCheck, 2500 },
             { CooldownType.PrimarySidearmCache, 120 },
-            { CooldownType.FailedUpgradeSearch, 1800 }  // 30 seconds for non-emergency searches
+            { CooldownType.FailedUpgradeSearch, 1800 },  // 30 seconds for non-emergency searches
+            { CooldownType.OnlySidearmsLog, 3000 },      // 5 minutes to prevent spam
+            { CooldownType.UnarmedPrimaryLog, 1800 },    // 30 seconds for unarmed pickup messages
+            { CooldownType.ReplacePrimaryLog, 1800 }     // 30 seconds for primary replacement messages
         };
 
         static TimingHelper()
@@ -155,7 +160,7 @@ namespace AutoArm
 
                 // Remove entries for destroyed pawns
                 var toRemove = new List<object>();
-                
+
                 foreach (var kvp in dict)
                 {
                     if (kvp.Key is Pawn pawn && (pawn.Destroyed || pawn.Dead || !pawn.Spawned))

@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Verse;
-using RimWorld;
 
 namespace AutoArm
 {
@@ -32,7 +31,7 @@ namespace AutoArm
             // Check debug setting inside the method
             if (AutoArmMod.settings?.debugLogging != true)
                 return;
-                
+
             AutoArmDebugLogger.DebugLog(message);
         }
 
@@ -41,7 +40,7 @@ namespace AutoArm
             // Check debug setting inside the method
             if (AutoArmMod.settings?.debugLogging != true)
                 return;
-                
+
             AutoArmDebugLogger.DebugLog(string.Format(format, args));
         }
 
@@ -50,7 +49,7 @@ namespace AutoArm
             // Check debug setting inside the method
             if (AutoArmMod.settings?.debugLogging != true)
                 return;
-                
+
             AutoArmDebugLogger.DebugLog($"[AutoArm] {pawn?.Name?.ToStringShort ?? "null"}: {message}");
         }
 
@@ -59,7 +58,7 @@ namespace AutoArm
             // Check debug setting inside the method
             if (AutoArmMod.settings?.debugLogging != true)
                 return;
-                
+
             AutoArmDebugLogger.DebugLog($"[AutoArm] {pawn?.Name?.ToStringShort ?? "null"}: {message} - {weapon?.Label ?? "null"}");
         }
 
@@ -69,7 +68,7 @@ namespace AutoArm
             string error = $"[AutoArm ERROR] {message}";
             if (ex != null)
                 error += $"\nException: {ex.Message}\nStackTrace: {ex.StackTrace}";
-            
+
             AutoArmDebugLogger.DebugLog(error, forceFlush: true);
         }
     }

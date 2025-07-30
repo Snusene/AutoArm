@@ -1,15 +1,16 @@
 ﻿using HarmonyLib;
 using RimWorld;
-using RimWorld.Planet;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Verse;
 using Verse.AI;
 
 namespace AutoArm
 {
+    // IMPORTANT: Outfit filter rules only apply to "proper weapons" that appear in the filter UI.
+    // Items like wood logs, beer bottles, etc. that have IsWeapon=true but are excluded from the
+    // weapon filter system are NOT subject to outfit filter dropping. This prevents colonists from
+    // dropping items that can't even be configured in the filter UI.
     [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
     [HarmonyPriority(Priority.High)]
     public static class Pawn_JobTracker_StartJob_Combined_Patch
@@ -35,7 +36,7 @@ namespace AutoArm
                         {
                             // Player is manually forcing a different weapon during upgrade
                             SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
-                            
+
                             AutoArmDebug.LogPawn(___pawn, "Cancelling sidearm upgrade - player forced different weapon");
                         }
                     }
@@ -45,14 +46,34 @@ namespace AutoArm
                     {
                         AutoArmDebug.LogWeapon(___pawn, targetWeapon, $"Starting equip job:\n  - playerForced: {newJob.playerForced}\n  - interaction: {newJob.interaction}");
                     }
-                    
+
                     // Only mark as forced if player explicitly forced it via right-click
                     // But skip if this is part of a sidearm upgrade
-                    if (newJob.playerForced && !SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(___pawn))
+                    // FIXED: More precise check - only skip if this is ACTUALLY part of a sidearm upgrade
+                    bool isPartOfSidearmUpgrade = false;
+                    if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
+                    {
+                        // Check if pawn has a pending upgrade and this job is targeting the upgrade weapon
+                        if (SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
+                        {
+                            var upgradeInfo = SimpleSidearmsCompat.GetPendingUpgrade(___pawn);
+                            if (upgradeInfo != null && upgradeInfo.newWeapon == targetWeapon)
+                            {
+                                isPartOfSidearmUpgrade = true;
+                                AutoArmDebug.LogWeapon(___pawn, targetWeapon, "Detected actual sidearm upgrade job");
+                            }
+                        }
+                    }
+
+                    if (newJob.playerForced && !isPartOfSidearmUpgrade)
                     {
                         ForcedWeaponHelper.SetForced(___pawn, targetWeapon);
-                        
+
                         AutoArmDebug.LogWeapon(___pawn, targetWeapon, "FORCED: Manually equipping");
+                    }
+                    else if (isPartOfSidearmUpgrade)
+                    {
+                        AutoArmDebug.LogWeapon(___pawn, targetWeapon, "Not marking as forced - part of sidearm upgrade");
                     }
                 }
             }
@@ -87,19 +108,6 @@ namespace AutoArm
     [HarmonyPatch(typeof(Pawn_EquipmentTracker), "TryDropEquipment")]
     public static class Pawn_EquipmentTracker_TryDropEquipment_Patch
     {
-        // Track pawns actively swapping weapons
-        private static HashSet<Pawn> pawnsCurrentlySwapping = new HashSet<Pawn>();
-        
-        [HarmonyPrefix]
-        public static void Prefix(Pawn ___pawn)
-        {
-            // Before dropping, check if this is part of an equip job
-            if (___pawn?.CurJob?.def == JobDefOf.Equip)
-            {
-                pawnsCurrentlySwapping.Add(___pawn);
-            }
-        }
-        
         [HarmonyPostfix]
         public static void Postfix(bool __result, Pawn ___pawn, ThingWithComps resultingEq)
         {
@@ -108,72 +116,112 @@ namespace AutoArm
 
             try
             {
-                // Check if this drop was part of an equip job (weapon swap)
-                bool wasSwapping = pawnsCurrentlySwapping.Contains(___pawn);
-                
-                // Check if this is a same-type weapon upgrade
+                // Check if this is a same-type weapon upgrade (should never happen if forced)
                 bool isSameTypeUpgrade = DroppedItemTracker.IsPendingSameTypeUpgrade(resultingEq);
-                
-                // For SimpleSidearms swaps, check if weapon will end up in inventory
-                // We check both job-based swaps AND UI-based instant swaps
-                bool isSimpleSidearmsOperation = SimpleSidearmsCompat.IsLoaded() && 
-                    (___pawn.CurJob?.def?.defName == "EquipSecondary" || // Job-based sidearm pickup
-                     SimpleSidearmsCompat.IsRememberedSidearm(___pawn, resultingEq)); // UI-based instant swap
-                     
-                // Debug logging for SimpleSidearms detection
-                if (SimpleSidearmsCompat.IsLoaded() && SimpleSidearmsCompat.IsRememberedSidearm(___pawn, resultingEq) && 
-                    ___pawn.CurJob?.def?.defName != "EquipSecondary")
+
+                // Always clear forced status when weapon is dropped (downed, manual drop, etc.)
+                // The only exception is SimpleSidearms swaps which aren't real drops
+                bool isSimpleSidearmsSwap = false;
+                if (SimpleSidearmsCompat.IsLoaded())
                 {
-                    AutoArmDebug.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms UI swap (no job, but weapon is remembered sidearm)");
+                    // Check if this is a remembered sidearm being dropped
+                    isSimpleSidearmsSwap = SimpleSidearmsCompat.IsRememberedSidearm(___pawn, resultingEq);
+
+                    // ALSO check if pawn is currently doing a SimpleSidearms job
+                    if (!isSimpleSidearmsSwap && ___pawn.CurJob != null)
+                    {
+                        // Check for EquipSecondary job (SimpleSidearms swap)
+                        isSimpleSidearmsSwap = ___pawn.CurJob.def?.defName == "EquipSecondary";
+
+                        if (isSimpleSidearmsSwap)
+                        {
+                            AutoArmDebug.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms swap via EquipSecondary job");
+                        }
+                    }
+
+                    // ALSO check if this is part of a pending sidearm upgrade
+                    if (!isSimpleSidearmsSwap && SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
+                    {
+                        isSimpleSidearmsSwap = true;
+                        AutoArmDebug.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms swap via pending upgrade");
+                    }
+
+                    // ALSO check if SimpleSidearms swap is in progress (covers UI swaps)
+                    if (!isSimpleSidearmsSwap && DroppedItemTracker.IsSimpleSidearmsSwapInProgress(___pawn))
+                    {
+                        isSimpleSidearmsSwap = true;
+                        AutoArmDebug.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms swap via swap-in-progress flag");
+                    }
                 }
-                
-                if (!wasSwapping && !isSimpleSidearmsOperation)
+
+                if (!isSimpleSidearmsSwap)
                 {
-                    // This is a manual drop - clear all forced status
-                    ForcedWeaponHelper.ClearForced(___pawn);
-                    // Also clear any forced sidearm defs
+                    // Weapon was dropped (leaves pawn's possession) - clear forced status for THIS weapon only
+                    if (ForcedWeaponHelper.GetForcedPrimary(___pawn) == resultingEq)
+                    {
+                        // Only clear the primary forced weapon reference, don't clear all forced defs
+                        ForcedWeaponHelper.ClearForcedPrimary(___pawn);
+                        AutoArmDebug.LogWeapon(___pawn, resultingEq, "Primary weapon dropped - cleared primary forced status");
+                    }
+
+                    // If this weapon type is no longer carried, remove it from forced defs
                     if (ForcedWeaponHelper.IsWeaponDefForced(___pawn, resultingEq.def))
                     {
-                        ForcedWeaponHelper.RemoveForcedDef(___pawn, resultingEq.def);
+                        // Check if pawn still has any weapons of this type
+                        bool stillHasThisType = false;
+
+                        // Check primary (after drop it would be null or different)
+                        if (___pawn.equipment?.Primary?.def == resultingEq.def)
+                            stillHasThisType = true;
+
+                        // Check inventory
+                        if (!stillHasThisType)
+                        {
+                            foreach (var item in ___pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
+                            {
+                                if (item is ThingWithComps invWeapon && invWeapon.def == resultingEq.def)
+                                {
+                                    stillHasThisType = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!stillHasThisType)
+                        {
+                            ForcedWeaponHelper.RemoveForcedDef(___pawn, resultingEq.def);
+                            AutoArmDebug.LogWeapon(___pawn, resultingEq, "Last weapon of this type dropped - removed from forced defs");
+                        }
                     }
-                    
-                    AutoArmDebug.LogWeapon(___pawn, resultingEq, "Manual weapon drop - cleared all forced status");
-                }
-                else if (isSameTypeUpgrade)
-                {
-                    // This is a same-type upgrade - clear pending status and let it drop
-                    DroppedItemTracker.ClearPendingUpgrade(resultingEq);
-                    AutoArmDebug.LogWeapon(___pawn, resultingEq, "Same-type weapon upgrade - weapon will be dropped");
-                    
-                    // Mark as recently dropped so it won't be picked up immediately
-                    DroppedItemTracker.MarkAsDropped(resultingEq);
                 }
                 else
                 {
-                    // This is a swap operation - maintain forced status appropriately
-                    string swapReason = wasSwapping ? "equip job" : "SimpleSidearms UI";
-                    AutoArmDebug.LogWeapon(___pawn, resultingEq, 
-                        $"Weapon swap detected ({swapReason}) - maintaining forced status");
-                    
-                    // If swapping to sidearm and weapon was forced, track it
-                    if (isSimpleSidearmsOperation && ForcedWeaponHelper.IsWeaponDefForced(___pawn, resultingEq.def))
+                    // SimpleSidearms swap - weapon stays in inventory, maintain forced status
+                    AutoArmDebug.LogWeapon(___pawn, resultingEq, "SimpleSidearms swap detected - maintaining forced status");
+
+                    // Extra check: if this was a forced weapon, ensure it stays forced
+                    if (ForcedWeaponHelper.GetForcedPrimary(___pawn) == resultingEq)
                     {
-                        ForcedWeaponHelper.AddForcedDef(___pawn, resultingEq.def);
-                        AutoArmDebug.LogWeapon(___pawn, resultingEq, "Weapon being swapped to sidearm - tracking as forced sidearm");
+                        AutoArmDebug.LogWeapon(___pawn, resultingEq, "Confirmed: Forced weapon being swapped via SimpleSidearms");
+                    }
+                }
+
+                // Handle same-type upgrades (shouldn't happen with forced weapons)
+                if (isSameTypeUpgrade)
+                {
+                    DroppedItemTracker.ClearPendingUpgrade(resultingEq);
+                    AutoArmDebug.LogWeapon(___pawn, resultingEq, "Same-type weapon upgrade drop");
+                    DroppedItemTracker.MarkAsDropped(resultingEq, 1200);
+
+                    if (SimpleSidearmsCompat.IsLoaded())
+                    {
+                        SimpleSidearmsCompat.InformOfDroppedSidearm(___pawn, resultingEq);
                     }
                 }
             }
-            finally
+            catch (Exception e)
             {
-                // Clean up tracking
-                pawnsCurrentlySwapping.Remove(___pawn);
-            }
-            
-            // Mark as recently dropped for SimpleSidearms
-            if (resultingEq != null && SimpleSidearmsCompat.IsLoaded())
-            {
-                SimpleSidearmsCompat.MarkWeaponAsRecentlyDropped(resultingEq);
-                AutoArmDebug.Log($"Marked dropped weapon {resultingEq.Label} as recently dropped");
+                Log.Error($"[AutoArm] Error in TryDropEquipment patch: {e}");
             }
         }
     }
@@ -203,40 +251,36 @@ namespace AutoArm
             var weapon = item as ThingWithComps;
             if (weapon == null || !WeaponValidation.IsProperWeapon(weapon))
                 return;
-            
-            // Check if this weapon is being equipped (SimpleSidearms swap or manual equip)
-            bool isBeingEquipped = ___pawn.CurJob?.def == JobDefOf.Equip && 
-                                  ___pawn.CurJob.targetA.Thing == weapon;
-            
-            // Check if this is a SimpleSidearms operation
-            bool isSimpleSidearmsJob = ___pawn.CurJob?.def?.defName == "EquipSecondary";
-            
-            if (!isBeingEquipped && !isSimpleSidearmsJob)
+
+            // SimpleSidearms compatibility - maintain forced status during swaps
+            bool isSimpleSidearmsSwap = SimpleSidearmsCompat.IsLoaded() &&
+                                        SimpleSidearmsCompat.IsRememberedSidearm(___pawn, weapon);
+
+            if (!isSimpleSidearmsSwap)
             {
-                // This is a manual drop from inventory - clear forced status
+                // Weapon removed from inventory - clear forced status if it's the last one
                 if (ForcedWeaponHelper.IsWeaponDefForced(___pawn, weapon.def))
                 {
-                    ForcedWeaponHelper.RemoveForcedDef(___pawn, weapon.def);
-                    AutoArmDebug.LogWeapon(___pawn, weapon, "Manually dropped forced sidearm - cleared forced status");
-                }
-            }
-            else
-            {
-                // This is a swap or equip operation - maintain forced status
-                AutoArmDebug.LogWeapon(___pawn, weapon, "Weapon being equipped from inventory - maintaining forced status");
-            }
+                    // Count remaining weapons of this type
+                    int sameTypeCount = 0;
 
-            // Show notification if dropping disallowed sidearm
-            var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter != null && !filter.Allows(weapon.def) &&
-                AutoArmMod.settings?.showNotifications == true &&
-                PawnUtility.ShouldSendNotificationAbout(___pawn))
-            {
-                string weaponLabel = weapon.Label ?? weapon.def?.label ?? "Unknown weapon";
-                Messages.Message("AutoArm_DroppingSidearmDisallowed".Translate(
-                    ___pawn.LabelShort.CapitalizeFirst(),
-                    weaponLabel
-                ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                    // Check primary
+                    if (___pawn.equipment?.Primary?.def == weapon.def)
+                        sameTypeCount++;
+
+                    // Check inventory (excluding the one being removed)
+                    foreach (var invItem in ___pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
+                    {
+                        if (invItem != weapon && invItem is ThingWithComps invWeapon && invWeapon.def == weapon.def)
+                            sameTypeCount++;
+                    }
+
+                    if (sameTypeCount == 0)
+                    {
+                        ForcedWeaponHelper.RemoveForcedDef(___pawn, weapon.def);
+                        AutoArmDebug.LogWeapon(___pawn, weapon, "Last forced weapon removed from inventory - cleared forced status");
+                    }
+                }
             }
         }
     }
@@ -251,7 +295,7 @@ namespace AutoArm
                 return true;
 
             // Prevent equipping items from inventory if already equipped
-            if (___pawn.equipment?.Primary != null && 
+            if (___pawn.equipment?.Primary != null &&
                 ___pawn.inventory?.innerContainer?.Contains(newEq) == true)
             {
                 AutoArmDebug.LogPawn(___pawn, $"WARNING: Prevented equipping {newEq.Label ?? "item"} from inventory while already equipped");
@@ -260,13 +304,13 @@ namespace AutoArm
 
             return true;
         }
-        
+
         [HarmonyPostfix]
         public static void Postfix(ThingWithComps newEq, Pawn ___pawn)
         {
             if (newEq == null || ___pawn == null || !___pawn.IsColonist)
                 return;
-                
+
             // Check if this weapon type was already forced as a sidearm
             if (ForcedWeaponHelper.IsWeaponDefForced(___pawn, newEq.def))
             {
@@ -279,7 +323,7 @@ namespace AutoArm
             {
                 // This was a manual equip - mark as forced
                 ForcedWeaponHelper.SetForced(___pawn, newEq);
-                
+
                 AutoArmDebug.LogWeapon(___pawn, newEq, "Manually equipped - marking as forced");
             }
 
@@ -310,7 +354,7 @@ namespace AutoArm
 
                 AutoEquipTracker.Clear(___pawn.CurJob);
                 AutoEquipTracker.ClearPreviousWeapon(___pawn);
-                
+
                 // Only log success if debug logging is enabled
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
@@ -332,52 +376,173 @@ namespace AutoArm
             if (!___pawn.IsColonist || !___pawn.Spawned || ___pawn.Dead || ___pawn.Drafted)
                 return;
 
-            if (___pawn.equipment?.Primary == null || ___pawn.jobs == null)
-                return;
-
-            // Don't interfere with sidearm upgrades in progress
-            if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(___pawn))
+            // Don't interfere if pawn is hauling something
+            if (___pawn.CurJob?.def == JobDefOf.HaulToCell ||
+                ___pawn.CurJob?.def == JobDefOf.HaulToContainer ||
+                ___pawn.CurJob?.def?.defName?.Contains("Haul") == true ||
+                // Pick Up And Haul specific jobs
+                ___pawn.CurJob?.def?.defName == "HaulToInventory" ||
+                ___pawn.CurJob?.def?.defName == "UnloadYourHauledInventory" ||
+                // Other inventory-related jobs
+                ___pawn.CurJob?.def?.defName?.Contains("Inventory") == true ||
+                ___pawn.CurJob?.def?.defName == "UnloadYourInventory" ||
+                ___pawn.CurJob?.def?.defName == "TakeToInventory")
             {
-                AutoArmDebug.LogPawn(___pawn, "Not dropping weapon due to outfit change - sidearm upgrade in progress");
+                AutoArmDebug.LogPawn(___pawn, "Not checking weapons - pawn is hauling");
                 return;
             }
 
-            // Don't force temporary colonists (quest pawns) to drop their weapons
-            if (JobGiverHelpers.IsTemporaryColonist(___pawn))
+            // Check primary weapon
+            if (___pawn.equipment?.Primary != null && ___pawn.jobs != null)
             {
-                AutoArmDebug.LogPawn(___pawn, "Not dropping weapon due to outfit change - temporary colonist");
-                return;
-            }
-
-            var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter != null && !filter.Allows(___pawn.equipment.Primary.def))
-            {
-                // Check if this weapon is forced - if so, keep it equipped
-                if (ForcedWeaponHelper.IsForced(___pawn, ___pawn.equipment.Primary))
+                // Don't interfere with sidearm upgrades in progress
+                if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
+                    SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(___pawn))
                 {
-                    AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed but keeping forced weapon");
-                    return; // Don't drop forced weapons
+                    AutoArmDebug.LogPawn(___pawn, "Not dropping weapon due to outfit change - sidearm upgrade in progress");
+                    return;
                 }
 
-                ForcedWeaponHelper.ClearForced(___pawn);
-
-                var dropJob = new Job(JobDefOf.DropEquipment, ___pawn.equipment.Primary);
-                ___pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
-
-                AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed, dropping weapon");
-
-                if (PawnUtility.ShouldSendNotificationAbout(___pawn))
+                // Don't force temporary colonists (quest pawns) to drop their weapons
+                if (JobGiverHelpers.IsTemporaryColonist(___pawn))
                 {
-                    Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                        ___pawn.LabelShort.CapitalizeFirst(),
-                        ___pawn.equipment.Primary.Label ?? ___pawn.equipment.Primary.def?.label ?? "weapon"
-                    ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                    AutoArmDebug.LogPawn(___pawn, "Not dropping weapon due to outfit change - temporary colonist");
+                    return;
+                }
+
+                var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
+                if (filter != null)
+                {
+                    // Only check filter for proper weapons that appear in the UI
+                    if (!WeaponValidation.IsProperWeapon(___pawn.equipment.Primary))
+                    {
+                        // Not a proper weapon (wood log, beer, etc.) - don't apply filter rules
+                        AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary,
+                            "Not a proper weapon - ignoring outfit filter");
+                        return;
+                    }
+
+                    bool weaponAllowed = filter.Allows(___pawn.equipment.Primary);
+                    AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary,
+                        $"Outfit filter check - Weapon allowed: {weaponAllowed}, HP: {___pawn.equipment.Primary.HitPoints}/{___pawn.equipment.Primary.MaxHitPoints} ({(float)___pawn.equipment.Primary.HitPoints / ___pawn.equipment.Primary.MaxHitPoints * 100f:F0}%)");
+
+                    if (!weaponAllowed)
+                    {
+                        // Check if this weapon is forced - if so, keep it equipped
+                        if (ForcedWeaponHelper.IsForced(___pawn, ___pawn.equipment.Primary))
+                        {
+                            // ALWAYS keep forced weapons regardless of outfit filter
+                            AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed but keeping forced weapon (forced weapons bypass outfit filters)");
+                            return; // Don't drop forced weapons
+                        }
+
+                        // Check if pawn is in a ritual - don't drop ritual items during ceremonies
+                        if (ValidationHelper.IsInRitual(___pawn))
+                        {
+                            AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed but keeping item - pawn is in ritual");
+                            return; // Don't drop items during rituals
+                        }
+
+                        ForcedWeaponHelper.ClearForced(___pawn);
+
+                        // Mark weapon as dropped to prevent immediate re-pickup
+                        DroppedItemTracker.MarkAsDropped(___pawn.equipment.Primary, 600); // 10 second cooldown
+
+                        var dropJob = new Job(JobDefOf.DropEquipment, ___pawn.equipment.Primary);
+                        ___pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
+
+                        AutoArmDebug.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed, dropping weapon");
+
+                        if (PawnUtility.ShouldSendNotificationAbout(___pawn) && AutoArmMod.settings?.showNotifications == true)
+                        {
+                            Messages.Message("AutoArm_DroppingDisallowed".Translate(
+                                ___pawn.LabelShort.CapitalizeFirst(),
+                                ___pawn.equipment.Primary.Label ?? ___pawn.equipment.Primary.def?.label ?? "weapon"
+                            ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
+                        }
+                    }
                 }
             }
+
+            // Also check sidearms when outfit changes
+            CheckAndDropDisallowedSidearms(___pawn);
+
+            // Schedule an additional check next tick to ensure all weapons are dropped
+            LongEventHandler.ExecuteWhenFinished(() =>
+            {
+                if (___pawn != null && ___pawn.Spawned && !___pawn.Dead)
+                {
+                    CheckAndDropDisallowedSidearms(___pawn);
+                }
+            });
 
             if (Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.ContainsKey(___pawn))
             {
                 Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.Remove(___pawn);
+            }
+        }
+
+        public static void CheckAndDropDisallowedSidearms(Pawn pawn)
+        {
+            if (!SimpleSidearmsCompat.IsLoaded() || pawn?.inventory?.innerContainer == null)
+                return;
+
+            // Don't interfere if pawn is hauling something
+            if (pawn.CurJob?.def == JobDefOf.HaulToCell ||
+                pawn.CurJob?.def == JobDefOf.HaulToContainer ||
+                pawn.CurJob?.def?.defName?.Contains("Haul") == true ||
+                // Pick Up And Haul specific jobs
+                pawn.CurJob?.def?.defName == "HaulToInventory" ||
+                pawn.CurJob?.def?.defName == "UnloadYourHauledInventory" ||
+                // Other inventory-related jobs
+                pawn.CurJob?.def?.defName?.Contains("Inventory") == true ||
+                pawn.CurJob?.def?.defName == "UnloadYourInventory" ||
+                pawn.CurJob?.def?.defName == "TakeToInventory")
+            {
+                return;
+            }
+
+            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+            if (filter == null)
+                return;
+
+            var weaponsToCheck = pawn.inventory.innerContainer
+                .OfType<ThingWithComps>()
+                .Where(t => t.def.IsWeapon)
+                .ToList();
+
+            foreach (var weapon in weaponsToCheck)
+            {
+                // Only check filter for proper weapons that appear in the UI
+                if (!WeaponValidation.IsProperWeapon(weapon))
+                {
+                    continue; // Skip non-proper weapons like wood logs, beer bottles, etc.
+                }
+
+                if (!filter.Allows(weapon))
+                {
+                    // Check if this is a forced weapon - don't drop forced weapons
+                    if (ForcedWeaponHelper.IsWeaponDefForced(pawn, weapon.def))
+                    {
+                        continue;
+                    }
+
+                    // Drop the weapon
+                    Thing droppedWeapon;
+                    if (pawn.inventory.innerContainer.TryDrop(weapon, pawn.Position, pawn.Map,
+                        ThingPlaceMode.Near, out droppedWeapon))
+                    {
+                        if (droppedWeapon != null)
+                        {
+                            // Mark it as dropped so it won't be immediately picked up again
+                            SimpleSidearmsCompat.MarkWeaponAsRecentlyDropped(droppedWeapon);
+                            // Additional marking with longer cooldown to prevent pickup loops
+                            DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200); // 20 seconds
+
+                            AutoArmDebug.LogPawn(pawn, $"Dropped disallowed sidearm: {weapon.Label}");
+                        }
+                    }
+                }
             }
         }
     }
@@ -406,8 +571,24 @@ namespace AutoArm
                     if (pawn == null || pawn.Drafted || pawn.jobs == null)
                         continue;
 
+                    // Don't interfere if pawn is hauling something
+                    if (pawn.CurJob?.def == JobDefOf.HaulToCell ||
+                        pawn.CurJob?.def == JobDefOf.HaulToContainer ||
+                        pawn.CurJob?.def?.defName?.Contains("Haul") == true ||
+                        // Pick Up And Haul specific jobs
+                        pawn.CurJob?.def?.defName == "HaulToInventory" ||
+                        pawn.CurJob?.def?.defName == "UnloadYourHauledInventory" ||
+                        // Other inventory-related jobs
+                        pawn.CurJob?.def?.defName?.Contains("Inventory") == true ||
+                        pawn.CurJob?.def?.defName == "UnloadYourInventory" ||
+                        pawn.CurJob?.def?.defName == "TakeToInventory")
+                    {
+                        continue;
+                    }
+
                     if (pawn.outfits?.CurrentApparelPolicy?.filter == __instance &&
-                        pawn.equipment?.Primary != null)
+                        pawn.equipment?.Primary != null &&
+                        WeaponValidation.IsProperWeapon(pawn.equipment.Primary)) // Only drop proper weapons that appear in filter UI
                     {
                         pawnsToDropWeapons.Add((pawn, pawn.equipment.Primary));
                     }
@@ -423,7 +604,8 @@ namespace AutoArm
                         if (pawn?.equipment?.Primary == weapon && !pawn.Drafted && pawn.jobs != null)
                         {
                             // Don't interfere with sidearm upgrades in progress
-                            if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+                            if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
+                                SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
                             {
                                 AutoArmDebug.LogPawn(pawn, "Not dropping weapon - sidearm upgrade in progress");
                                 continue;
@@ -443,20 +625,19 @@ namespace AutoArm
                                 continue; // Skip this pawn, don't drop forced weapons
                             }
 
+                            // Check if pawn is in a ritual - don't drop ritual items during ceremonies
+                            if (ValidationHelper.IsInRitual(pawn))
+                            {
+                                AutoArmDebug.LogWeapon(pawn, weapon, "All items disallowed, but keeping item - pawn is in ritual");
+                                continue; // Don't drop items during rituals
+                            }
+
                             ForcedWeaponHelper.ClearForced(pawn);
 
                             var dropJob = new Job(JobDefOf.DropEquipment, weapon);
                             pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
 
                             AutoArmDebug.LogPawn(pawn, "All items disallowed, dropping weapon");
-
-                            if (PawnUtility.ShouldSendNotificationAbout(pawn))
-                            {
-                                Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                                    pawn.LabelShort.CapitalizeFirst(),
-                                    weapon.Label ?? weapon.def?.label ?? "weapon"
-                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
-                            }
                         }
                     }
                 });
@@ -473,15 +654,49 @@ namespace AutoArm
             if (___pawn == null || ___curJob == null)
                 return;
 
+            // Check for failed equip jobs due to mod restrictions
+            if (___curJob.def == JobDefOf.Equip && ___curJob.targetA.Thing is ThingWithComps weapon)
+            {
+                // Check if job failed with an error condition
+                if (condition == JobCondition.Errored || condition == JobCondition.Incompletable)
+                {
+                    // Check if this was an auto-equip job that failed
+                    if (AutoEquipTracker.IsAutoEquip(___curJob))
+                    {
+                        // When auto-equip jobs fail, it's usually due to mod restrictions
+                        string errorReason = "mod restriction";
+
+                        // Check the weapon name for hints about the restriction
+                        if (weapon.def.defName.Contains("Mech") ||
+                            weapon.def.defName.Contains("Marine") ||
+                            weapon.def.defName.Contains("Power") ||
+                            weapon.def.defName.Contains("Heavy") ||
+                            weapon.def.defName.Contains("Exo") ||
+                            weapon.GetStatValue(StatDefOf.Mass) > 5.0f)
+                        {
+                            // Don't blacklist body size restrictions - pawn might get power armor later
+                            errorReason = "probable body size restriction";
+                            AutoArmDebug.LogPawn(___pawn, $"Not blacklisting {weapon.Label} - {errorReason} (pawn size: {___pawn.BodySize:F1})");
+                        }
+                        else
+                        {
+                            // Blacklist this weapon for this pawn
+                            WeaponBlacklist.AddToBlacklist(weapon.def, ___pawn, errorReason);
+                            AutoArmDebug.LogPawn(___pawn, $"Blacklisted {weapon.Label} due to failed equip job - {errorReason}");
+                        }
+                    }
+                }
+            }
+
             // Clean up auto-equip jobs when they end
             if (___curJob.def == JobDefOf.Equip && AutoEquipTracker.IsAutoEquip(___curJob))
             {
                 // Only clear if job actually completed or failed
-                if (condition != JobCondition.Ongoing && 
+                if (condition != JobCondition.Ongoing &&
                     condition != JobCondition.QueuedNoLongerValid)
                 {
                     AutoEquipTracker.Clear(___curJob);
-                    
+
                     AutoArmDebug.LogPawn(___pawn, $"Cleared completed equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
                 }
                 else
@@ -489,7 +704,7 @@ namespace AutoArm
                     AutoArmDebug.LogPawn(___pawn, $"Ending equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
                 }
             }
-            
+
             // Check if this was part of a sidearm upgrade
             if (___curJob.def == JobDefOf.Equip && SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
             {
@@ -502,7 +717,7 @@ namespace AutoArm
                 {
                     // Upgrade failed, clean up
                     SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
-                    
+
                     AutoArmDebug.LogPawn(___pawn, $"WARNING: Sidearm upgrade cancelled due to job failure: {condition}");
                 }
             }
@@ -582,7 +797,7 @@ namespace AutoArm
             }
         }
     }
-    
+
     // IMPORTANT: Sidearm upgrade functionality has been moved to SimpleSidearmsUpgradePatch.cs
     // The new approach uses a simpler swap method instead of complex toil injection
 
@@ -603,7 +818,7 @@ namespace AutoArm
             }
             return true; // Continue to original method
         }
-        
+
         [HarmonyPostfix]
         public static void Postfix(Thing item, Pawn ___pawn)
         {
@@ -615,15 +830,15 @@ namespace AutoArm
                 return;
 
             // Note: Sidearm drop handling is now in SidearmDropFix.cs
-            
+
             if (!___pawn.inventory.innerContainer.Contains(item))
                 return;
-                
+
             // Clear any pending upgrade flag
             SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
-            
+
             // Check if this was a player-forced action (for sidearms added directly to inventory)
-            if (___pawn.jobs?.curDriver?.job?.playerForced == true && 
+            if (___pawn.jobs?.curDriver?.job?.playerForced == true &&
                 ___pawn.jobs.curDriver.job.def?.defName == "EquipSecondary")
             {
                 ForcedWeaponHelper.AddForcedDef(___pawn, weapon.def);
@@ -657,6 +872,100 @@ namespace AutoArm
                     ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
                 }
             }
+        }
+    }
+
+    // ============================================================================
+    // FORCED WEAPON LABEL PATCHES
+    // ============================================================================
+
+    /// <summary>
+    /// Patches to add ", forced" to weapon labels in the gear tab, similar to forced apparel
+    /// </summary>
+    [HarmonyPatch(typeof(Thing), "Label", MethodType.Getter)]
+    public static class Thing_Label_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Thing __instance, ref string __result)
+        {
+            ForcedWeaponLabelHelper.AddForcedText(__instance, ref __result);
+        }
+    }
+
+    [HarmonyPatch(typeof(Thing), "LabelNoCount", MethodType.Getter)]
+    public static class Thing_LabelNoCount_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Thing __instance, ref string __result)
+        {
+            ForcedWeaponLabelHelper.AddForcedText(__instance, ref __result);
+        }
+    }
+
+    [HarmonyPatch(typeof(Thing), "LabelCap", MethodType.Getter)]
+    public static class Thing_LabelCap_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Thing __instance, ref string __result)
+        {
+            ForcedWeaponLabelHelper.AddForcedText(__instance, ref __result);
+        }
+    }
+
+    internal static class ForcedWeaponLabelHelper
+    {
+        /// <summary>
+        /// Adds ", forced" text to weapon labels when appropriate (optimized for gear tab only)
+        /// </summary>
+        internal static void AddForcedText(Thing thing, ref string label)
+        {
+            if (thing == null || !thing.def.IsWeapon || !(thing is ThingWithComps weapon) || label.EndsWith(", forced"))
+                return;
+
+            // Performance optimization: Only run when viewing a colonist
+            var selectedPawn = Find.Selector.SingleSelectedThing as Pawn;
+            if (selectedPawn == null || !selectedPawn.IsColonist)
+                return;
+
+            // Check if the inspect pane is open and showing gear tab
+            var inspectPane = (MainTabWindow_Inspect)MainButtonDefOf.Inspect.TabWindow;
+            if (inspectPane == null || Find.MainTabsRoot.OpenTab != MainButtonDefOf.Inspect)
+                return;
+
+            // Check if the gear tab is the active tab
+            var curTab = inspectPane.CurTabs?.FirstOrDefault(t => t is ITab_Pawn_Gear);
+            if (curTab == null || inspectPane.OpenTabType != typeof(ITab_Pawn_Gear))
+                return;
+
+            // Only check if this specific pawn has this weapon forced
+            if (CheckPawnHasForcedWeapon(selectedPawn, weapon))
+            {
+                label += ", forced";
+            }
+        }
+
+        /// <summary>
+        /// Checks if a pawn has a specific weapon marked as forced
+        /// </summary>
+        private static bool CheckPawnHasForcedWeapon(Pawn pawn, ThingWithComps weapon)
+        {
+            // Check if equipped as primary
+            if (pawn.equipment?.Primary == weapon && ForcedWeaponHelper.IsForced(pawn, weapon))
+                return true;
+
+            // Check if in inventory
+            if (pawn.inventory?.innerContainer?.Contains(weapon) == true)
+            {
+                if (ForcedWeaponHelper.IsForced(pawn, weapon) ||
+                    ForcedWeaponHelper.IsWeaponDefForced(pawn, weapon.def))
+                    return true;
+            }
+
+            // Check if weapon def is forced (for equipped weapons)
+            if (pawn.equipment?.Primary == weapon && ForcedWeaponHelper.IsWeaponDefForced(pawn, weapon.def))
+                return true;
+
+            return false;
         }
     }
 }

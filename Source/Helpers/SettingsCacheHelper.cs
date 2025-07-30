@@ -25,7 +25,7 @@ namespace AutoArm
         public static T GetCached<T>(string key, Func<T> computeValue, int cacheDuration = DefaultCacheDuration)
         {
             int currentTick = Find.TickManager.TicksGame;
-            
+
             if (cache.TryGetValue(key, out object cachedObj) && cachedObj is CachedValue<T> cached)
             {
                 if (currentTick < cached.ExpirationTick)
@@ -36,7 +36,7 @@ namespace AutoArm
 
             // Compute new value
             T value = computeValue();
-            
+
             // Cache it
             cache[key] = new CachedValue<T>
             {
@@ -91,7 +91,7 @@ namespace AutoArm
         public static T GetCachedSetting<T>(string key, int cacheDuration = DefaultCacheDuration)
         {
             int currentTick = Find.TickManager.TicksGame;
-            
+
             if (cache.TryGetValue(key, out object cachedObj) && cachedObj is CachedValue<T> cached)
             {
                 if (currentTick < cached.ExpirationTick)
@@ -109,7 +109,7 @@ namespace AutoArm
         public static void SetCachedSetting<T>(string key, T value, int cacheDuration = DefaultCacheDuration)
         {
             int currentTick = Find.TickManager.TicksGame;
-            
+
             cache[key] = new CachedValue<T>
             {
                 Value = value,
@@ -124,7 +124,7 @@ namespace AutoArm
             {
                 if (!SimpleSidearmsCompat.IsLoaded())
                     return false;
-                    
+
                 // This would call the reflection-based method to get the actual value
                 // For now, return the default
                 return true;
@@ -137,7 +137,7 @@ namespace AutoArm
             {
                 if (!SimpleSidearmsCompat.IsLoaded())
                     return false;
-                    
+
                 // This would call the reflection-based method to get the actual value
                 // For now, return the default
                 return false;
@@ -150,7 +150,7 @@ namespace AutoArm
             {
                 if (!SimpleSidearmsCompat.IsLoaded())
                     return true;
-                    
+
                 // This would call the reflection-based method to get the actual value
                 // For now, return the default
                 return false;

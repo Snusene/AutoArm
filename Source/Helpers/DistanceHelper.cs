@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEngine;
 using Verse;
 
 namespace AutoArm
@@ -69,7 +68,7 @@ namespace AutoArm
         /// </summary>
         public static void SortByDistance<T>(List<T> things, IntVec3 from) where T : Thing
         {
-            things.Sort((a, b) => 
+            things.Sort((a, b) =>
                 GetSquaredDistance(a.Position, from).CompareTo(GetSquaredDistance(b.Position, from)));
         }
     }

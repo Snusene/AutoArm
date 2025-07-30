@@ -1,5 +1,4 @@
-﻿using HarmonyLib;
-using RimWorld;
+﻿using RimWorld;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -21,13 +20,13 @@ namespace AutoArm
         private static Type settingsType;
 
         private static FieldInfo ammoSetField;
-        private static FieldInfo ammoField; 
+        private static FieldInfo ammoField;
         private static PropertyInfo enableAmmoSystemProperty;
 
         private static Dictionary<ThingDef, List<ThingDef>> weaponAmmoCache = new Dictionary<ThingDef, List<ThingDef>>();
-        
+
         private static int lastCacheClearTick = 0;
-        private const int CacheClearInterval = 60000; 
+        private const int CacheClearInterval = 60000;
 
         private static void CheckCacheClear()
         {
@@ -37,18 +36,32 @@ namespace AutoArm
                 lastCacheClearTick = Find.TickManager.TicksGame;
             }
         }
+
         public static bool IsLoaded()
         {
             if (_isLoaded == null)
             {
                 _isLoaded = ModLister.AllInstalledMods.Any(m =>
                     m.Active && (
-                        m.PackageIdPlayerFacing.ToLower().Contains("ceteam.combatextended") ||
-                        m.Name.ToLower().Contains("combat extended")));
+                        m.PackageIdPlayerFacing.Equals("CETeam.CombatExtended", StringComparison.OrdinalIgnoreCase) ||
+                        m.PackageIdPlayerFacing.Equals("CETeam.CombatExtended.Unofficial", StringComparison.OrdinalIgnoreCase)
+                    ));
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     Log.Message($"[AutoArm] Combat Extended detection result: {_isLoaded}");
+                    if (_isLoaded.Value)
+                    {
+                        var ceMod = ModLister.AllInstalledMods.FirstOrDefault(m =>
+                            m.Active && (
+                                m.PackageIdPlayerFacing.Equals("CETeam.CombatExtended", StringComparison.OrdinalIgnoreCase) ||
+                                m.PackageIdPlayerFacing.Equals("CETeam.CombatExtended.Unofficial", StringComparison.OrdinalIgnoreCase)
+                            ));
+                        if (ceMod != null)
+                        {
+                            Log.Message($"[AutoArm] Detected CE mod: {ceMod.Name} ({ceMod.PackageIdPlayerFacing})");
+                        }
+                    }
                 }
             }
             return _isLoaded.Value;
@@ -130,7 +143,7 @@ namespace AutoArm
             }
         }
 
-        private static bool IsAmmoSystemEnabled()
+        public static bool IsAmmoSystemEnabled()
         {
             if (!IsLoaded())
                 return false;
@@ -138,7 +151,7 @@ namespace AutoArm
             EnsureInitialized();
 
             if (controllerType == null || enableAmmoSystemProperty == null)
-                return true; 
+                return true;
 
             try
             {
@@ -169,10 +182,22 @@ namespace AutoArm
                 return false;
 
             if (AutoArmMod.settings?.checkCEAmmo != true)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmDebug.Log($"CE ammo check skipped - AutoArm setting disabled");
+                }
                 return false;
+            }
 
             if (!IsAmmoSystemEnabled())
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmDebug.Log($"CE ammo check skipped - CE ammo system disabled");
+                }
                 return false;
+            }
 
             EnsureInitialized();
 
@@ -185,19 +210,25 @@ namespace AutoArm
 
                 if (ammoTypes == null || ammoTypes.Count == 0)
                 {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmDebug.Log($"Weapon {weapon.def.defName} has no ammo types defined");
+                    }
                     return false;
                 }
 
                 bool hasAmmo = false;
+                int inventoryAmmoCount = 0;
 
                 if (pawn.inventory?.innerContainer != null)
                 {
                     foreach (var ammoType in ammoTypes)
                     {
-                        if (pawn.inventory.innerContainer.Any(t => t.def == ammoType))
+                        var ammoStack = pawn.inventory.innerContainer.FirstOrDefault(t => t.def == ammoType);
+                        if (ammoStack != null)
                         {
                             hasAmmo = true;
-                            break;
+                            inventoryAmmoCount += ammoStack.stackCount;
                         }
                     }
                 }
@@ -207,12 +238,17 @@ namespace AutoArm
                     hasAmmo = IsAmmoAvailableOnMap(ammoTypes, pawn);
                 }
 
-                if (!hasAmmo && AutoArmMod.settings?.debugLogging == true)
+                if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm] Skipping {weapon.def.defName} for {pawn.Name} - no ammo available");
+                    string ammoTypeNames = string.Join(", ", ammoTypes.Select(a => a.defName));
+                    AutoArmDebug.LogWeapon(pawn, weapon,
+                        $"CE ammo check - Needs: [{ammoTypeNames}], " +
+                        $"Inventory: {inventoryAmmoCount}, " +
+                        $"Map available: {(hasAmmo && inventoryAmmoCount == 0 ? "Yes" : "No")}, " +
+                        $"Result: {(hasAmmo ? "Has ammo" : "No ammo - SKIP")}");
                 }
 
-                return !hasAmmo; 
+                return !hasAmmo;
             }
             catch (Exception e)
             {
@@ -220,7 +256,7 @@ namespace AutoArm
                 {
                     Log.Warning($"[AutoArm] Error checking CE ammo for {weapon.def.defName}: {e.Message}");
                 }
-                return false; 
+                return false;
             }
         }
 
@@ -312,7 +348,7 @@ namespace AutoArm
         public static float GetAmmoScoreModifier(ThingWithComps weapon, Pawn pawn)
         {
             if (!IsLoaded() || weapon == null || !weapon.def.IsRangedWeapon)
-                return 1f; 
+                return 1f;
 
             EnsureInitialized();
 
@@ -326,7 +362,7 @@ namespace AutoArm
             {
                 var ammoTypes = GetAmmoTypesForWeapon(weapon.def);
                 if (ammoTypes == null || ammoTypes.Count == 0)
-                    return 1f; 
+                    return 1f;
 
                 int totalAmmo = 0;
 
@@ -339,18 +375,18 @@ namespace AutoArm
                 }
 
                 if (totalAmmo > 50)
-                    return 1.2f; 
+                    return 1.2f;
                 else if (totalAmmo > 0)
-                    return 1.1f; 
+                    return 1.1f;
 
                 if (IsAmmoAvailableOnMap(ammoTypes, pawn))
-                    return 0.9f; 
+                    return 0.9f;
                 else
-                    return 0.5f; 
+                    return 0.5f;
             }
             catch
             {
-                return 1f; 
+                return 1f;
             }
         }
 
@@ -361,7 +397,77 @@ namespace AutoArm
 
         public static bool ShouldCheckAmmo()
         {
-            return IsLoaded() && IsAmmoSystemEnabled() && AutoArmMod.settings?.checkCEAmmo == true;
+            bool isLoaded = IsLoaded();
+            bool ammoSystemEnabled = IsAmmoSystemEnabled();
+            bool settingEnabled = AutoArmMod.settings?.checkCEAmmo == true;
+            bool result = isLoaded && ammoSystemEnabled && settingEnabled;
+
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmDebug.Log($"CE ammo check - Loaded: {isLoaded}, CE Ammo System: {ammoSystemEnabled}, AutoArm Setting: {settingEnabled}, Result: {result}");
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Try to detect if CE's ammo system is enabled, with detailed result information
+        /// </summary>
+        public static bool TryDetectAmmoSystemEnabled(out string detectionResult)
+        {
+            if (!IsLoaded())
+            {
+                detectionResult = "Combat Extended not loaded";
+                return false;
+            }
+
+            EnsureInitialized();
+
+            if (controllerType == null)
+            {
+                detectionResult = "Could not find CE Controller class";
+                return false;
+            }
+
+            if (enableAmmoSystemProperty == null)
+            {
+                detectionResult = "Could not find EnableAmmoSystem property";
+                return false;
+            }
+
+            try
+            {
+                var settingsField = controllerType.GetField("settings", BindingFlags.Public | BindingFlags.Static);
+                if (settingsField == null)
+                {
+                    detectionResult = "Could not find settings field on Controller";
+                    return false;
+                }
+
+                var settings = settingsField.GetValue(null);
+                if (settings == null)
+                {
+                    detectionResult = "CE settings instance is null";
+                    return false;
+                }
+
+                var enabled = enableAmmoSystemProperty.GetValue(settings);
+                if (enabled is bool boolValue)
+                {
+                    detectionResult = $"Successfully detected: Ammo system is {(boolValue ? "enabled" : "disabled")}";
+                    return boolValue;
+                }
+                else
+                {
+                    detectionResult = $"Unexpected property type: {enabled?.GetType()?.Name ?? "null"}";
+                    return true; // Default to enabled if we can't determine
+                }
+            }
+            catch (Exception ex)
+            {
+                detectionResult = $"Error reading CE settings: {ex.Message}";
+                return true; // Default to enabled on error
+            }
         }
     }
 }

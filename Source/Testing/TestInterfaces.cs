@@ -1,14 +1,17 @@
 ﻿using System.Collections.Generic;
-using Verse;
 using System.Linq;
+using Verse;
 
 namespace AutoArm.Testing
 {
     public interface ITestScenario
     {
         string Name { get; }
+
         void Setup(Map map);
+
         TestResult Run();
+
         void Cleanup();
     }
 
@@ -19,6 +22,7 @@ namespace AutoArm.Testing
         public Dictionary<string, object> Data { get; set; } = new Dictionary<string, object>();
 
         public static TestResult Pass() => new TestResult { Success = true };
+
         public static TestResult Failure(string reason) => new TestResult { Success = false, FailureReason = reason };
     }
 

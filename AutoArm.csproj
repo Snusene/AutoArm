@@ -22,6 +22,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <UseWinFormsOutOfProcDesigner>True</UseWinFormsOutOfProcDesigner>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -30,6 +31,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <UseWinFormsOutOfProcDesigner>True</UseWinFormsOutOfProcDesigner>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="0Harmony">
@@ -78,7 +80,6 @@
     <Compile Include="Source\compatibility\CECompat.cs" />
     <Compile Include="Source\compatibility\InfusionCompat.cs" />
     <Compile Include="Source\compatibility\SimpleSidearmsCompat.cs" />
-    <Compile Include="Source\compatibility\SimpleSidearmsUpgradePatch.cs" />
     <Compile Include="Source\ConflictDetection.cs" />
     <Compile Include="Source\Helpers\CleanupHelper.cs" />
     <Compile Include="Source\Helpers\DistanceHelper.cs" />
@@ -92,6 +93,7 @@
     <Compile Include="Source\Helpers\SettingsCacheHelper.cs" />
     <Compile Include="Source\Helpers\TimingHelper.cs" />
     <Compile Include="Source\Helpers\ValidationHelper.cs" />
+    <Compile Include="Source\Helpers\WeaponBlacklist.cs" />
     <Compile Include="Source\Helpers\WeaponScoringHelper.cs" />
     <Compile Include="Source\JobGiverHelpers.cs" />
     <Compile Include="Source\Logging\AutoArmDebugLogger.cs" />
@@ -102,11 +104,22 @@
     <Compile Include="Source\MemoryCleanupManager.cs" />
     <Compile Include="Source\ModInit.cs" />
     <Compile Include="Source\Testing\PerformanceTestRunner.cs" />
+    <Compile Include="Source\Testing\Scenarios\BasicTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\CompatibilityTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\CoreTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\MiscTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\PawnBehaviorTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\PerformanceTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\SystemTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\WeaponTests.cs" />
     <Compile Include="Source\Testing\TestHelpers.cs" />
     <Compile Include="Source\Testing\TestInterfaces.cs" />
     <Compile Include="Source\Testing\TestRunner.cs" />
-    <Compile Include="Source\Testing\TestScenarios.cs" />
+    <Compile Include="Source\Testing\TestRunnerFix.cs" />
+    <Compile Include="Source\Testing\TestSimpleSidearmsValidation.cs" />
+    <Compile Include="Source\Testing\TestSuites.cs" />
     <Compile Include="Source\Testing\TestValidator.cs" />
+    <Compile Include="Source\Testing\WeaponCategorizationDiagnostic.cs" />
     <Compile Include="Source\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\VanillaWeaponDefOf.cs" />
     <Compile Include="Source\WeaponAutoEquip.cs" />
@@ -120,9 +133,9 @@
   <ItemGroup>
     <Content Include=".gitignore" />
     <Content Include="About\About.xml" />
-    <Content Include="About\icon-huge.png" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
+    <Content Include="netlify\index.html" />
     <Content Include="Languages\English\Keyed\AutoArm.xml" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
@@ -134,22 +147,24 @@
     <None Include="obj\Debug\AutoArm.csproj.CoreCompileInputs.cache" />
     <None Include="obj\Debug\DesignTimeResolveAssemblyReferencesInput.cache" />
     <None Include="obj\Release\AutoArm.csproj.AssemblyReference.cache" />
+    <None Include="README.md" />
     <None Include="Source\Logging\README.md" />
     <None Include="Source\Logging\SUMMARY.md" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="bin\Release\" />
-    <Folder Include="Defs\" />
     <Folder Include="obj\Debug\TempPE\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Analyzer Include="..\packages\StyleCop.Analyzers.1.1.118\analyzers\dotnet\cs\StyleCop.Analyzers.CodeFixes.dll" />
+    <Analyzer Include="..\packages\StyleCop.Analyzers.1.1.118\analyzers\dotnet\cs\StyleCop.Analyzers.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>@echo off
 setlocal enabledelayedexpansion
-
 set "SRC=C:\Users\mohfl\source\repos\AutoArm\AutoArm"
 set "DST=C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\AutoArm"
-
 echo ========================================
 echo AutoArm Mod Deployment Script
 echo ========================================
@@ -157,13 +172,11 @@ echo.
 echo Source: %25SRC%25
 echo Destination: %25DST%25
 echo.
-
 REM Create destination folder if it doesn't exist
 if not exist "%25DST%25" (
     echo Creating mod folder...
     mkdir "%25DST%25"
 )
-
 REM Copy About (required)
 if exist "%25SRC%25\About" (
     echo Copying About folder...
@@ -171,54 +184,45 @@ if exist "%25SRC%25\About" (
 ) else (
     echo WARNING: About folder not found!
 )
-
 REM Copy Defs if exists
 if exist "%25SRC%25\Defs" (
     echo Copying Defs folder...
     xcopy "%25SRC%25\Defs\*" "%25DST%25\Defs\" /E /I /Y /Q
 )
-
 REM Copy Patches if exists
 if exist "%25SRC%25\Patches" (
     echo Copying Patches folder...
     xcopy "%25SRC%25\Patches\*" "%25DST%25\Patches\" /E /I /Y /Q
 )
-
 REM Copy Languages if exists
 if exist "%25SRC%25\Languages" (
     echo Copying Languages folder...
     xcopy "%25SRC%25\Languages\*" "%25DST%25\Languages\" /E /I /Y /Q
 )
-
 REM Copy Textures if exists
 if exist "%25SRC%25\Textures" (
     echo Copying Textures folder...
     xcopy "%25SRC%25\Textures\*" "%25DST%25\Textures\" /E /I /Y /Q
 )
-
 REM Copy Sounds if exists
 if exist "%25SRC%25\Sounds" (
     echo Copying Sounds folder...
     xcopy "%25SRC%25\Sounds\*" "%25DST%25\Sounds\" /E /I /Y /Q
 )
-
 REM Make Assemblies folder if not exists
 if not exist "%25DST%25\Assemblies" (
     echo Creating Assemblies folder...
     mkdir "%25DST%25\Assemblies"
 )
-
 REM Delete old DLL and PDB if they exist
 if exist "%25DST%25\Assemblies\AutoArm.dll" (
     echo Removing old AutoArm.dll...
     del /F /Q "%25DST%25\Assemblies\AutoArm.dll"
 )
-
 if exist "%25DST%25\Assemblies\AutoArm.pdb" (
     echo Removing old AutoArm.pdb...
     del /F /Q "%25DST%25\Assemblies\AutoArm.pdb"
 )
-
 REM Copy DLL (REQUIRED)
 if exist "%25SRC%25\bin\Debug\AutoArm.dll" (
     echo Copying AutoArm.dll...
@@ -232,41 +236,29 @@ if exist "%25SRC%25\bin\Debug\AutoArm.dll" (
     echo ERROR: DLL not found at %25SRC%25\bin\Debug\AutoArm.dll
     echo Build may have failed!
 )
-
-REM Copy PDB for debugging (optional but helpful)
-if exist "%25SRC%25\bin\Debug\AutoArm.pdb" (
-    echo Copying AutoArm.pdb for debugging...
-    copy /Y "%25SRC%25\bin\Debug\AutoArm.pdb" "%25DST%25\Assemblies\AutoArm.pdb"
-)
-
 REM Copy mod images
 if exist "%25SRC%25\preview.png" (
     echo Copying preview.png...
     copy /Y "%25SRC%25\preview.png" "%25DST%25\preview.png"
 )
-
 if exist "%25SRC%25\thumbnail.png" (
     echo Copying thumbnail.png...
     copy /Y "%25SRC%25\thumbnail.png" "%25DST%25\thumbnail.png"
 )
-
 REM Copy README if exists
 if exist "%25SRC%25\README.md" (
     echo Copying README.md...
     copy /Y "%25SRC%25\README.md" "%25DST%25\README.md"
 )
-
 REM Copy LICENSE if exists
 if exist "%25SRC%25\LICENSE" (
     echo Copying LICENSE...
     copy /Y "%25SRC%25\LICENSE" "%25DST%25\LICENSE"
 )
-
 echo.
 echo ========================================
 echo Deployment Complete!
 echo ========================================
-
 REM Check if the DLL was actually copied
 if exist "%25DST%25\Assemblies\AutoArm.dll" (
     echo SUCCESS: AutoArm.dll is in place
@@ -279,7 +271,6 @@ if exist "%25DST%25\Assemblies\AutoArm.dll" (
 ) else (
     echo WARNING: AutoArm.dll was NOT copied successfully!
 )
-
 echo.
 pause
 exit /b 0</PostBuildEvent>

@@ -1,4 +1,7 @@
-﻿// AssemblyInfo.cs
+// <copyright file="AssemblyInfo.cs" company="Snues">
+// Copyright (c) Snues. All rights reserved.
+// </copyright>
+
 using System.Reflection;
 using System.Runtime.InteropServices;
 

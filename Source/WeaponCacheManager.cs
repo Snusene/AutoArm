@@ -2,12 +2,11 @@ using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Verse;
 
 namespace AutoArm
 {
-    public class ImprovedWeaponCacheManager
+    public static class ImprovedWeaponCacheManager
     {
         public enum WeaponCategory
         {
@@ -34,7 +33,7 @@ namespace AutoArm
                 WeaponToGrid = new Dictionary<ThingWithComps, IntVec3>();
                 CategorizedWeapons = new Dictionary<WeaponCategory, List<ThingWithComps>>();
                 LastChangeDetectedTick = 0;
-                
+
                 // Initialize categories
                 foreach (WeaponCategory cat in Enum.GetValues(typeof(WeaponCategory)))
                 {
@@ -47,9 +46,9 @@ namespace AutoArm
         private const int CacheLifetime = 10000;
         private const int GridCellSize = 20; // Matching backup version
 
-        private const int MaxWeaponsPerCache = 1500; 
-        private const int MaxWeaponsPerRebuild = 100; 
-        private const int RebuildDelayTicks = 15; 
+        private const int MaxWeaponsPerCache = 1500;
+        private const int MaxWeaponsPerRebuild = 100;
+        private const int RebuildDelayTicks = 15;
 
         private static Dictionary<Map, RebuildState> rebuildStates = new Dictionary<Map, RebuildState>();
 
@@ -78,7 +77,7 @@ namespace AutoArm
                 return;
 
             cache.Weapons.Add(weapon);
-            
+
             // Removed spammy autopistol logging
 
             var gridPos = new IntVec3(weapon.Position.x / GridCellSize, 0, weapon.Position.z / GridCellSize);
@@ -167,7 +166,7 @@ namespace AutoArm
             cache.SpatialIndex[newGridPos].Add(weapon);
 
             cache.WeaponToGrid[weapon] = newGridPos;
-            
+
             // Note: We don't need to update category as weapon type doesn't change
 
             if (weapon.def.defName == "Gun_AssaultRifle")
@@ -186,23 +185,23 @@ namespace AutoArm
                     // Don't log - too spammy
                     return new List<ThingWithComps>();
                 }
-                
+
                 var result = new List<ThingWithComps>();
                 var foundWeapons = new HashSet<ThingWithComps>(); // Track found weapons to avoid duplicates
-                
+
                 // Removed spammy GetWeaponsNear logging - this happens too frequently
-                
+
                 // Progressive search - start close and expand outward
                 float[] searchRadii = { 15f, 30f, maxDistance };
                 int weaponsNeeded = 15; // We'll take more if they're closer
-                
+
                 foreach (float radius in searchRadii)
                 {
                     if (radius > maxDistance)
                         break;
-                        
+
                     var maxDistSquared = radius * radius;
-                    
+
                     int minX = (position.x - (int)radius) / GridCellSize;
                     int maxX = (position.x + (int)radius) / GridCellSize;
                     int minZ = (position.z - (int)radius) / GridCellSize;
@@ -211,7 +210,7 @@ namespace AutoArm
                     // Search in a spiral pattern from center outward
                     int centerX = position.x / GridCellSize;
                     int centerZ = position.z / GridCellSize;
-                    
+
                     for (int ring = 0; ring <= Math.Max(maxX - centerX, maxZ - centerZ); ring++)
                     {
                         for (int x = centerX - ring; x <= centerX + ring; x++)
@@ -219,13 +218,13 @@ namespace AutoArm
                             for (int z = centerZ - ring; z <= centerZ + ring; z++)
                             {
                                 // Skip cells we've already checked
-                                if (ring > 0 && x > centerX - ring && x < centerX + ring && 
+                                if (ring > 0 && x > centerX - ring && x < centerX + ring &&
                                     z > centerZ - ring && z < centerZ + ring)
                                     continue;
-                                    
+
                                 if (x < minX || x > maxX || z < minZ || z > maxZ)
                                     continue;
-                                    
+
                                 var gridKey = new IntVec3(x, 0, z);
                                 if (cache.SpatialIndex.TryGetValue(gridKey, out var weapons))
                                 {
@@ -243,14 +242,14 @@ namespace AutoArm
                                 }
                             }
                         }
-                        
+
                         // Early exit if we found enough close weapons
                         if (result.Count >= weaponsNeeded && radius <= 15f)
                         {
                             return result;
                         }
                     }
-                    
+
                     // If we have a good selection at medium range, stop
                     if (result.Count >= weaponsNeeded * 2 && radius <= 30f)
                     {
@@ -266,7 +265,6 @@ namespace AutoArm
                 return new List<ThingWithComps>(); // Return empty list on error
             }
         }
-
 
         public static void InvalidateCache(Map map)
         {
@@ -294,7 +292,7 @@ namespace AutoArm
                 foreach (var map in mapsToRemove)
                 {
                     weaponCache.Remove(map);
-                    rebuildStates.Remove(map); 
+                    rebuildStates.Remove(map);
                 }
 
                 AutoArmDebug.Log($"Cleaned up {mapsToRemove.Count} destroyed map caches");
@@ -325,7 +323,7 @@ namespace AutoArm
         private static void StartRebuild(Map map)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            
+
             List<Thing> allWeapons;
             try
             {
@@ -346,12 +344,12 @@ namespace AutoArm
                 try
                 {
                     actualWeapons = map.listerThings.AllThings
-                        .Where(t => t != null && 
-                                   t.def != null && 
-                                   SafeIsWeapon(t) && 
-                                   !SafeIsApparel(t) && 
+                        .Where(t => t != null &&
+                                   t.def != null &&
+                                   SafeIsWeapon(t) &&
+                                   !SafeIsApparel(t) &&
                                    t is ThingWithComps &&
-                                   t.Spawned && 
+                                   t.Spawned &&
                                    (t.ParentHolder == null || t.ParentHolder == t.Map))
                         .ToList();
                 }
@@ -360,7 +358,7 @@ namespace AutoArm
                     Log.Error($"[AutoArm] Alternative weapon detection also failed: {ex.Message}");
                     actualWeapons = new List<Thing>();
                 }
-                    
+
                 if (actualWeapons.Count > allWeapons.Count)
                 {
                     Log.Warning($"[AutoArm] ThingRequestGroup.Weapon is broken - found only {allWeapons.Count} weapons, but {actualWeapons.Count} ground weapons exist.");
@@ -369,9 +367,9 @@ namespace AutoArm
                     allWeapons = actualWeapons;
                 }
             }
-            
+
             AutoArmDebug.Log($"Starting incremental rebuild for {map} - {allWeapons.Count} total weapons");
-            
+
             var state = new RebuildState
             {
                 ProcessedCount = 0,
@@ -435,7 +433,7 @@ namespace AutoArm
                         }
                         continue;
                     }
-                    
+
                     if (!IsValidWeapon(weapon))
                     {
                         AutoArmDebug.LogWeapon(null, weapon, $"Skipping invalid weapon ({weapon.def.defName}) - " +
@@ -443,7 +441,7 @@ namespace AutoArm
                                    $"Destroyed={weapon.Destroyed}, Spawned={weapon.Spawned}");
                         continue;
                     }
-                    
+
                     // Removed spammy autopistol logging during rebuild
 
                     entry.Weapons.Add(weapon);
@@ -455,7 +453,7 @@ namespace AutoArm
                     }
                     entry.SpatialIndex[gridPos].Add(weapon);
                     entry.WeaponToGrid[weapon] = gridPos;
-                    
+
                     // Categorize the weapon
                     var category = GetWeaponCategory(weapon);
                     entry.CategorizedWeapons[category].Add(weapon);
@@ -476,20 +474,20 @@ namespace AutoArm
         {
             if (weapon == null || weapon.def == null)
                 return false;
-                
+
             if (weapon.Destroyed || !weapon.Spawned)
                 return false;
-                
+
             // Use comprehensive weapon validation with improved exception handling
             // This now handles Kiiro Race and other modded items gracefully
             return WeaponValidation.IsProperWeapon(weapon);
         }
-        
+
         private static WeaponCategory GetWeaponCategory(ThingWithComps weapon)
         {
             if (weapon?.def == null)
                 return WeaponCategory.MeleeBasic;
-                
+
             if (weapon.def.IsMeleeWeapon)
             {
                 // Check quality
@@ -510,10 +508,10 @@ namespace AutoArm
                         return WeaponCategory.RangedLong;
                 }
             }
-            
+
             return WeaponCategory.MeleeBasic; // Default
         }
-        
+
         private static bool SafeIsWeapon(Thing thing)
         {
             try
@@ -525,7 +523,7 @@ namespace AutoArm
                 return false;
             }
         }
-        
+
         private static bool SafeIsApparel(Thing thing)
         {
             try
@@ -537,24 +535,24 @@ namespace AutoArm
                 return false;
             }
         }
-        
+
         public static List<ThingWithComps> GetWeaponsByCategory(Map map, WeaponCategory category)
         {
             if (!weaponCache.TryGetValue(map, out var cache))
                 return new List<ThingWithComps>();
-                
+
             return new List<ThingWithComps>(cache.CategorizedWeapons[category]);
         }
-        
-        public static List<ThingWithComps> GetWeaponsByCategoriesNear(Map map, IntVec3 position, 
+
+        public static List<ThingWithComps> GetWeaponsByCategoriesNear(Map map, IntVec3 position,
             float maxDistance, params WeaponCategory[] categories)
         {
             if (!weaponCache.TryGetValue(map, out var cache))
                 return new List<ThingWithComps>();
-                
+
             var result = new List<ThingWithComps>();
             var maxDistSquared = maxDistance * maxDistance;
-            
+
             foreach (var category in categories)
             {
                 foreach (var weapon in cache.CategorizedWeapons[category])
@@ -565,7 +563,7 @@ namespace AutoArm
                     }
                 }
             }
-            
+
             return result;
         }
     }

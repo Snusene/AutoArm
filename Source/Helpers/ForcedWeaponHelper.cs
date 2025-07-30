@@ -11,6 +11,7 @@ namespace AutoArm
     {
         // Single source of truth for forced weapons
         private static Dictionary<Pawn, HashSet<ThingDef>> forcedWeaponDefs = new Dictionary<Pawn, HashSet<ThingDef>>();
+
         private static Dictionary<Pawn, ThingWithComps> forcedPrimaryWeapon = new Dictionary<Pawn, ThingWithComps>();
 
         /// <summary>
@@ -21,15 +22,74 @@ namespace AutoArm
             if (pawn == null || weapon == null)
                 return;
 
+            // Only update the primary weapon reference, don't clear all forced defs
+            forcedPrimaryWeapon[pawn] = weapon;
+
             // Add to forced defs
             if (!forcedWeaponDefs.ContainsKey(pawn))
                 forcedWeaponDefs[pawn] = new HashSet<ThingDef>();
             forcedWeaponDefs[pawn].Add(weapon.def);
 
-            // Track specific primary weapon
-            forcedPrimaryWeapon[pawn] = weapon;
-
             AutoArmDebug.LogWeapon(pawn, weapon, "Marked as forced weapon");
+        }
+
+        /// <summary>
+        /// Clear only the forced primary weapon reference (not all forced defs)
+        /// </summary>
+        public static void ClearForcedPrimary(Pawn pawn)
+        {
+            if (pawn == null)
+                return;
+
+            // Get the weapon def before removing
+            ThingDef weaponDefToCheck = null;
+            if (forcedPrimaryWeapon.TryGetValue(pawn, out var forcedWeapon) && forcedWeapon != null)
+            {
+                weaponDefToCheck = forcedWeapon.def;
+            }
+
+            forcedPrimaryWeapon.Remove(pawn);
+
+            // Check if we should also remove the def from forcedWeaponDefs
+            if (weaponDefToCheck != null && forcedWeaponDefs.ContainsKey(pawn))
+            {
+                // Check if the pawn still has any weapons of this type
+                bool stillHasWeaponOfType = false;
+
+                // Check current primary
+                if (pawn.equipment?.Primary?.def == weaponDefToCheck)
+                {
+                    stillHasWeaponOfType = true;
+                }
+
+                // Check inventory
+                if (!stillHasWeaponOfType && pawn.inventory?.innerContainer != null)
+                {
+                    foreach (var item in pawn.inventory.innerContainer)
+                    {
+                        if (item is ThingWithComps weaponInInventory && weaponInInventory.def == weaponDefToCheck)
+                        {
+                            stillHasWeaponOfType = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If pawn no longer has any weapons of this type, remove it from forced defs
+                if (!stillHasWeaponOfType)
+                {
+                    forcedWeaponDefs[pawn].Remove(weaponDefToCheck);
+                    if (forcedWeaponDefs[pawn].Count == 0)
+                    {
+                        forcedWeaponDefs.Remove(pawn);
+                    }
+                    AutoArmDebug.LogPawn(pawn, $"Removed forced weapon def {weaponDefToCheck.defName} - pawn no longer has any weapons of this type");
+                }
+                else
+                {
+                    AutoArmDebug.LogPawn(pawn, $"Kept forced weapon def {weaponDefToCheck.defName} - pawn still has weapons of this type");
+                }
+            }
         }
 
         /// <summary>
@@ -88,7 +148,7 @@ namespace AutoArm
             if (pawn == null)
                 return false;
 
-            return forcedPrimaryWeapon.ContainsKey(pawn) || 
+            return forcedPrimaryWeapon.ContainsKey(pawn) ||
                    (forcedWeaponDefs.ContainsKey(pawn) && forcedWeaponDefs[pawn].Count > 0);
         }
 
@@ -112,8 +172,8 @@ namespace AutoArm
             if (pawn == null)
                 return new HashSet<ThingDef>();
 
-            return forcedWeaponDefs.ContainsKey(pawn) ? 
-                new HashSet<ThingDef>(forcedWeaponDefs[pawn]) : 
+            return forcedWeaponDefs.ContainsKey(pawn) ?
+                new HashSet<ThingDef>(forcedWeaponDefs[pawn]) :
                 new HashSet<ThingDef>();
         }
 
@@ -127,9 +187,9 @@ namespace AutoArm
 
             if (!forcedWeaponDefs.ContainsKey(pawn))
                 forcedWeaponDefs[pawn] = new HashSet<ThingDef>();
-            
+
             forcedWeaponDefs[pawn].Add(weaponDef);
-            
+
             AutoArmDebug.LogPawn(pawn, $"Added forced weapon def: {weaponDef.defName}");
         }
 
@@ -176,6 +236,24 @@ namespace AutoArm
             {
                 forcedPrimaryWeapon.Remove(pawn);
             }
+
+            // NEW: Also check for phantom forced weapons (unarmed pawns with forced weapons)
+            var phantomForcedPawns = forcedPrimaryWeapon
+                .Where(kvp => kvp.Key != null && !kvp.Key.Dead && kvp.Key.Spawned &&
+                              kvp.Key.equipment?.Primary != kvp.Value)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var pawn in phantomForcedPawns)
+            {
+                // Only clear if they've been unarmed for a while (300 ticks = 5 seconds)
+                if (pawn.equipment?.Primary == null &&
+                    !TimingHelper.IsOnCooldown(pawn, TimingHelper.CooldownType.DroppedWeapon))
+                {
+                    forcedPrimaryWeapon.Remove(pawn);
+                    AutoArmDebug.LogPawn(pawn, "Cleared phantom forced weapon (pawn is unarmed)");
+                }
+            }
         }
 
         /// <summary>
@@ -197,7 +275,7 @@ namespace AutoArm
         public static Dictionary<Pawn, ThingDef> GetSaveData()
         {
             var result = new Dictionary<Pawn, ThingDef>();
-            
+
             // Save the primary forced weapon def for each pawn
             // NOTE: This saves weapon TYPE, not specific instances. If a pawn has multiple
             // weapons of the same type (e.g., two assault rifles of different quality),
@@ -210,14 +288,14 @@ namespace AutoArm
                     result[kvp.Key] = kvp.Value.def;
                 }
             }
-            
+
             return result;
         }
-        
+
         public static Dictionary<Pawn, List<ThingDef>> GetSidearmSaveData()
         {
             var result = new Dictionary<Pawn, List<ThingDef>>();
-            
+
             // Save all forced weapon defs for each pawn
             foreach (var kvp in forcedWeaponDefs)
             {
@@ -226,17 +304,17 @@ namespace AutoArm
                     result[kvp.Key] = kvp.Value.ToList();
                 }
             }
-            
+
             return result;
         }
-        
+
         public static void LoadSaveData(Dictionary<Pawn, ThingDef> data)
         {
             if (data == null)
                 return;
-                
+
             forcedPrimaryWeapon.Clear();
-            
+
             // Note: We can't restore the actual weapon references, only the defs
             // The primary weapon tracking will be re-established when pawns equip weapons
             // LIMITATION: If a pawn had a specific forced weapon (e.g., excellent assault rifle)
@@ -253,14 +331,14 @@ namespace AutoArm
                 }
             }
         }
-        
+
         public static void LoadSidearmSaveData(Dictionary<Pawn, HashSet<ThingDef>> data)
         {
             if (data == null)
                 return;
-                
+
             forcedWeaponDefs.Clear();
-            
+
             foreach (var kvp in data)
             {
                 if (kvp.Key != null && kvp.Value != null && kvp.Value.Count > 0)

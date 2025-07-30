@@ -23,34 +23,37 @@ namespace AutoArm
             {
                 // Clean up timing data
                 TimingHelper.CleanupOldCooldowns();
-                
+
                 // Clean up SimpleSidearms data
                 if (SimpleSidearmsCompat.IsLoaded())
                 {
                     SimpleSidearmsCompat.CleanupOldTrackingData();
                 }
-                
+
                 // Clean up forced weapon tracker
                 ForcedWeaponHelper.Cleanup();
-                
+
                 // Clean up auto-equip tracker
                 AutoEquipTracker.CleanupOldJobs();
-                
+
                 // Clean up dropped item tracker
                 DroppedItemTracker.ClearAllPendingUpgrades();
-                
+
                 // Clean up weapon caches
                 ImprovedWeaponCacheManager.CleanupDestroyedMaps();
                 WeaponScoreCache.CleanupCache();
-                
+
                 // Clean up job giver data
                 CleanupJobGiverData();
-                
+
                 // Clean up debug logging
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     WeaponDecisionLog.Cleanup();
                 }
+
+                // Clean up weapon blacklist
+                WeaponBlacklist.CleanupOldEntries();
             }
             catch (Exception e)
             {
@@ -131,7 +134,7 @@ namespace AutoArm
             if (set == null) return 0;
 
             var toRemove = set.Where(IsPawnInvalid).ToList();
-            
+
             foreach (var pawn in toRemove)
             {
                 set.Remove(pawn);
@@ -191,7 +194,7 @@ namespace AutoArm
         {
             // This replaces JobGiver_PickUpBetterWeapon.CleanupCaches()
             // Since we don't have that class anymore, we'll clean up what we can access
-            
+
             // Clean up any static data in JobGiverHelpers
             JobGiverHelpers.CleanupLogCooldowns();
         }

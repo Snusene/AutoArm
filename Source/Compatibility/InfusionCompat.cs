@@ -1,7 +1,5 @@
-﻿using RimWorld;
-using System;
+﻿using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
@@ -24,11 +22,9 @@ namespace AutoArm
             {
                 _isLoaded = ModLister.AllInstalledMods.Any(m =>
                     m.Active && (
-                        m.PackageIdPlayerFacing.ToLower().Contains("infusion") &&
-                        !m.PackageIdPlayerFacing.ToLower().Contains("autoarm")
+                        m.PackageIdPlayerFacing.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        m.PackageIdPlayerFacing.IndexOf("autoarm", StringComparison.OrdinalIgnoreCase) < 0
                     ));
-
-
             }
             return _isLoaded.Value;
         }
@@ -58,7 +54,7 @@ namespace AutoArm
 
                 foreach (var member in members)
                 {
-                    if (member.Name.ToLower().Contains("infusion"))
+                    if (member.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         if (member is PropertyInfo prop && IsCollectionType(prop.PropertyType))
                         {
@@ -206,7 +202,7 @@ namespace AutoArm
             Log.Message("\n[AutoArm] === Searching for Infusion Types ===");
 
             var infusionTypes = GenTypes.AllTypes
-                .Where(t => t.Name.ToLower().Contains("infusion") &&
+                .Where(t => t.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0 &&
                            !t.FullName.Contains("AutoArm"))
                 .OrderBy(t => t.FullName)
                 .Take(20)
@@ -229,7 +225,7 @@ namespace AutoArm
 
                 foreach (var member in compType.GetMembers(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    if (member.Name.ToLower().Contains("infusion"))
+                    if (member.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         Log.Message($"  - {member.MemberType}: {member.Name}");
                     }

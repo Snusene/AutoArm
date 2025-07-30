@@ -37,14 +37,14 @@ namespace AutoArm.Logging
             {
                 string pawnVar = match.Groups[2].Value.Trim();
                 string message = match.Groups[3].Value.Trim();
-                
+
                 // Handle {pawn.Name} or {pawn?.Name}
                 if (pawnVar.Contains("{") && pawnVar.Contains("}"))
                 {
                     pawnVar = Regex.Match(pawnVar, @"\{([^}]+)\}").Groups[1].Value;
                     pawnVar = pawnVar.Replace("?.Name", "").Replace(".Name", "");
                 }
-                
+
                 return $"AutoArmDebug.LogPawn({pawnVar}, \"{message}\");";
             });
 
