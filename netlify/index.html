@@ -6,46 +6,78 @@
     <title>AutoArm Weapon Balance Analyzer</title>
     <link rel="stylesheet" href="styles.css">
     <style>
-        /* Fix for weapon name column display */
-        #rangedTable, #meleeTable {
+        /* Fix table structure and remove invisible spacing */
+        table {
             table-layout: fixed !important;
             width: 100% !important;
+            border-collapse: collapse !important;
         }
         
-        /* First column - Weapon names */
-        #rangedTable th:first-child,
-        #rangedTable td:first-child,
-        #meleeTable th:first-child,
-        #meleeTable td:first-child {
-            width: 200px !important;
-            min-width: 200px !important;
-            max-width: 200px !important;
-            text-align: left !important;
-            padding-left: 10px !important;
-            padding-right: 5px !important;
-            display: table-cell !important;
-            visibility: visible !important;
-            position: static !important;
+        /* Reset all table cells to ensure no hidden content */
+        td, th {
+            box-sizing: border-box !important;
+            vertical-align: middle !important;
         }
         
-        /* Set specific widths for ranged table columns */
-        #rangedTable th:nth-child(2), #rangedTable td:nth-child(2) { width: 80px !important; } /* DPS */
-        #rangedTable th:nth-child(3), #rangedTable td:nth-child(3) { width: 60px !important; } /* Acc */
-        #rangedTable th:nth-child(4), #rangedTable td:nth-child(4) { width: 60px !important; } /* Burst */
+        /* Different column widths for ranged vs melee tables */
+        
+        /* Ranged table - narrower columns to fit 8 in 60% width */
+        #rangedTable td:first-child, #rangedTable th:first-child {
+            width: 180px !important;
+            max-width: 180px !important;
+        }
+        
+        #rangedTable th:nth-child(2), #rangedTable td:nth-child(2) { width: 70px !important; } /* DPS */
+        #rangedTable th:nth-child(3), #rangedTable td:nth-child(3) { width: 50px !important; } /* Acc */
+        #rangedTable th:nth-child(4), #rangedTable td:nth-child(4) { width: 50px !important; } /* Burst */
         #rangedTable th:nth-child(5), #rangedTable td:nth-child(5) { width: 60px !important; } /* Range */
         #rangedTable th:nth-child(6), #rangedTable td:nth-child(6) { width: 60px !important; } /* AP */
-        #rangedTable th:nth-child(7), #rangedTable td:nth-child(7) { width: 80px !important; } /* Base Score */
-        #rangedTable th:nth-child(8), #rangedTable td:nth-child(8) { width: 80px !important; } /* Skill Score */
-        #rangedTable th:nth-child(9), #rangedTable td:nth-child(9) { width: 80px !important; } /* Total Score */
+        #rangedTable th:nth-child(7), #rangedTable td:nth-child(7) { width: 120px !important; } /* Total Score */
         
-        /* Set specific widths for melee table columns */
+        /* Melee table - wider columns to use 5 in 40% width */
+        #meleeTable td:first-child, #meleeTable th:first-child {
+            width: 200px !important;
+            max-width: 200px !important;
+        }
+        
         #meleeTable th:nth-child(2), #meleeTable td:nth-child(2) { width: 80px !important; } /* DPS */
-        #meleeTable th:nth-child(3), #meleeTable td:nth-child(3) { width: 60px !important; } /* AP */
-        #meleeTable th:nth-child(4), #meleeTable td:nth-child(4) { width: 80px !important; } /* Base Score */
-        #meleeTable th:nth-child(5), #meleeTable td:nth-child(5) { width: 80px !important; } /* Skill Score */
-        #meleeTable th:nth-child(6), #meleeTable td:nth-child(6) { width: 80px !important; } /* Total Score */
+        #meleeTable th:nth-child(3), #meleeTable td:nth-child(3) { width: 80px !important; } /* AP */
+        #meleeTable th:nth-child(4), #meleeTable td:nth-child(4) { width: 120px !important; } /* Total Score */
         
-        /* Remove all the debug styles - not needed */
+        /* Common styles for all first columns */
+        td:first-child, th:first-child {
+            text-align: left !important;
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            position: relative !important;
+        }
+        
+        /* Ensure no content before weapon names */
+        td:first-child::before,
+        th:first-child::before {
+            content: none !important;
+            display: none !important;
+        }
+        
+        /* All other columns centered */
+        td:not(:first-child), th:not(:first-child) {
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        
+        /* Narrower padding for ranged table */
+        #rangedTable td:not(:first-child), #rangedTable th:not(:first-child) {
+            padding: 4px 2px !important;
+            font-size: 0.85em !important;
+        }
+        
+        /* Normal padding for melee table */
+        #meleeTable td:not(:first-child), #meleeTable th:not(:first-child) {
+            padding: 6px 4px !important;
+        }
     </style>
 </head>
 <body>
@@ -69,6 +101,7 @@
                 <p style="font-style: italic; color: #8f98a0; margin-top: 10px; font-weight: 500; text-align: center;">Developer note: I use this when fine-tuning AutoArm's weapon scoring balance. I had way too much fun styling this page.</p>
                 <div class="note" style="margin-top: 15px;">
                     <p><strong>About this system:</strong> Since vanilla RimWorld lacks automatic weapon equipping and therefore has no weapon evaluation formula to reference, AutoArm creates its own scoring system from scratch. No formula is perfect for every playstyle, but this aims to work well for most situations while also trying to respect modded behaviors (e.g., "Hunters Use Melee" mods).</p>
+                    <p><strong>Performance note:</strong> To keep AutoArm fast even with hundreds of modded weapons, the scoring system focuses only on these core factors. Additional mechanics like weapon warmup times, weather effects, or other colonist traits would add minimal accuracy improvement while significantly impacting performance.</p>
                     <p><strong>Override options:</strong> Force-equip weapons (right-click) to prevent replacement, or use outfit filters to restrict weapon types per colonist.</p>
                 </div>
             </div>
@@ -77,7 +110,7 @@
                 <h3>Scoring Configuration</h3>
                 <div class="control-row">
                     <div class="control-group">
-                        <label>Quality Level:</label>
+                        <label>Weapon Quality:</label>
                         <select id="qualityLevel" onchange="updateScores()">
                             <option value="0.5">Awful (50%)</option>
                             <option value="0.8">Poor (80%)</option>
@@ -118,18 +151,10 @@
                         <label><input type="checkbox" id="brawlerTrait" onchange="updateScores()"> Brawler</label>
                     </div>
                     <div class="control-group">
-                        <label><input type="checkbox" id="hunterRole" onchange="updateScores()"> Hunting Work</label>
+                        <label><input type="checkbox" id="hunterRole" onchange="updateScores()"> Hunting</label>
                     </div>
                 </div>
-                <div class="note">
-                    <strong>How to use:</strong> Adjust quality level and skill sliders to see how they affect weapon scoring. Higher skill differences create stronger preferences. Check Brawler for colonists with that trait (massive ranged penalty), or Hunting Work for colonists who get bonuses for ranged weapons.
-                    <br><br>
-                    <strong>Note:</strong> Orange DPS values indicate weapons affected by power creep protection. Hover over them to see the original value.
-                    <br>
-                    Accuracy values for vanilla weapons are exact. Modded weapons without accuracy data use estimates based on weapon type. Situational weapons (grenades, launchers) show "-" for accuracy since they use area effects.
-                    <br><br>
-                    <strong>Score Tiers:</strong> <span style="color: #FFD700;">■ Legendary (600+)</span> | <span style="color: #8A2BE2;">■ Excellent (400+)</span> | <span style="color: #1E90FF;">■ Good (250+)</span> | <span style="color: #808080;">■ Average (150+)</span> | <span style="color: #8B4513;">■ Poor (&lt;150)</span>
-                </div>
+
             </div>
 
             <div class="comparison">
@@ -145,8 +170,6 @@
                                     <th>Burst</th>
                                     <th>Range</th>
                                     <th>AP</th>
-                                    <th>Base Score</th>
-                                    <th>Skill Score</th>
                                     <th>Total Score</th>
                                 </tr>
                             </thead>
@@ -164,8 +187,6 @@
                                     <th>Weapon</th>
                                     <th>DPS (w/Q)</th>
                                     <th>AP</th>
-                                    <th>Base Score</th>
-                                    <th>Skill Score</th>
                                     <th>Total Score</th>
                                 </tr>
                             </thead>
@@ -261,25 +282,30 @@
             setTimeout(initializeApp, 100);
         }
         
-        // Add scroll detection for table containers
-        document.addEventListener('DOMContentLoaded', function() {
-            const tableContainers = document.querySelectorAll('.table-container');
-            tableContainers.forEach(container => {
-                container.addEventListener('scroll', function() {
-                    if (this.scrollTop > 10) {
-                        this.classList.add('scrolled');
-                    } else {
-                        this.classList.remove('scrolled');
-                    }
-                });
-            });
-            
-            // Initialize range sliders with visual feedback
-            const rangeInputs = document.querySelectorAll('input[type="range"]');
-            rangeInputs.forEach(input => {
-                const percent = ((input.value - input.min) / (input.max - input.min)) * 100;
-                input.style.setProperty('--range-percent', percent + '%');
-            });
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl/Cmd + F to focus search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                document.getElementById('weaponSearch').focus();
+            }
+            // Escape to clear search
+            else if (e.key === 'Escape') {
+                const searchBox = document.getElementById('weaponSearch');
+                if (searchBox.value) {
+                    clearSearch();
+                }
+            }
+            // V to toggle vanilla/all weapons
+            else if (e.key === 'v' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const activeElement = document.activeElement;
+                if (activeElement.tagName !== 'INPUT') {
+                    const filter = document.getElementById('weaponFilter');
+                    filter.value = filter.value === 'vanilla' ? 'all' : 'vanilla';
+                    filterWeapons();
+                    updateScores();
+                }
+            }
         });
 
         // Workshop mod URLs mapping
@@ -304,15 +330,20 @@
             '[SK]': 'https://steamcommunity.com/workshop/browse/?appid=294100&searchtext=skyrim+weapons'  // Skyrim (search)
         };
 
+        // Cache for processed weapon names to improve performance
+        const weaponNameCache = new Map();
+        
         function processWeaponNameWithLinks(weaponName, searchText) {
-            // For debugging: just return the plain weapon name
-            return weaponName;
+            // Check cache first
+            const cacheKey = weaponName;
+            if (weaponNameCache.has(cacheKey)) {
+                return weaponNameCache.get(cacheKey);
+            }
             
-            // TODO: Re-enable mod links and search highlighting after fixing display issue
-            /*
+            // Process mod tags to make them clickable
             let processedName = weaponName;
-
-            // First, add mod links
+            
+            // Replace mod tags with clickable links
             const modTagRegex = /(\[[^\]]+\])/g;
             processedName = processedName.replace(modTagRegex, (match) => {
                 const url = modWorkshopUrls[match];
@@ -321,9 +352,11 @@
                 }
                 return match;
             });
-
+            
+            // Cache the result
+            weaponNameCache.set(cacheKey, processedName);
+            
             return processedName;
-            */
         }
 
         function updateSkillDisplay(slider, displayId) {
@@ -333,6 +366,8 @@
             slider.style.setProperty('--range-percent', percent + '%');
         }
 
+        // Debounced search handler for better performance
+        let searchTimeout;
         function handleSearchInput() {
             const searchBox = document.getElementById('weaponSearch');
             const clearButton = document.querySelector('.clear-search');
@@ -343,7 +378,11 @@
                 clearButton.style.display = 'none';
             }
 
-            updateScores();
+            // Debounce the search to avoid excessive updates
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                updateScores();
+            }, 300); // Wait 300ms after user stops typing
         }
 
         function clearSearch() {
@@ -355,15 +394,15 @@
         function calculateArmorPenetrationScore(ap) {
             // Based on the C# implementation thresholds
             if (ap >= 0.75) // Can penetrate marine armor
-                return 150;
+                return 120; // Reduced from 150
             else if (ap >= 0.52) // Can penetrate flak vest
-                return 100;
+                return 80;  // Reduced from 100
             else if (ap >= 0.40) // Can penetrate recon armor
-                return 75;
+                return 60;  // Reduced from 75
             else if (ap >= 0.20) // Can penetrate basic armor
-                return 50;
+                return 40;  // Reduced from 50
             else
-                return ap * 100; // Linear scale for low AP
+                return ap * 80; // Reduced from 100 - Linear scale for low AP
         }
 
         // Updated skill scoring with gradual exponential growth
@@ -467,16 +506,21 @@
                 accuracyScore = 1.0;
             } else if (weapon.acc && weapon.acc.length === 4) {
                 // Calculate weighted accuracy based on typical combat ranges
-                accuracyScore = weapon.acc[0] * 0.4 +  // Touch (close combat)
-                    weapon.acc[1] * 0.3 +  // Short (most common)
-                    weapon.acc[2] * 0.2 +  // Medium
-                    weapon.acc[3] * 0.1;   // Long (rare)
+                accuracyScore = weapon.acc[0] * 0.20 +  // Touch (occasional)
+                    weapon.acc[1] * 0.40 +  // Short (very common)
+                    weapon.acc[2] * 0.30 +  // Medium (common)
+                    weapon.acc[3] * 0.10;   // Long (rare)
             } else {
                 // Default accuracy for weapons without data
                 if (weapon.burst > 5) accuracyScore = 0.45; // High burst = low accuracy
                 else if (weapon.burst > 2) accuracyScore = 0.55; // Burst weapons
                 else if (weapon.range > 30) accuracyScore = 0.75; // Sniper weapons
                 else accuracyScore = 0.65; // Default single shot
+            }
+            
+            // Extra penalty for very short range weapons - they can't engage at preferred distances
+            if (weapon.range < 10) {
+                accuracyScore *= 0.90; // Mild penalty - range modifier already harsh
             }
 
             // Apply accuracy to base score
@@ -490,56 +534,56 @@
             weaponAP = weaponAP * qualityMult;
 
             // Apply range modifiers (from the code)
-            if (weapon.range < 15) {
-                baseScore *= 0.85;
-
-                // Strong penalty for short-range high-burst weapons (can't kite effectively)
-                if (weapon.burst > 3 && weapon.range < 18) {
-                    baseScore *= 0.75; // Heavy SMG gets significant penalty
+            if (weapon.range < 10) {
+                baseScore *= 0.50; // Extreme penalty - basically melee range
+            } else if (weapon.range >= 10 && weapon.range < 14) {
+                baseScore *= 0.65; // Moderate penalty - specialized use
+                
+                // Additional penalty for burst weapons that can't kite
+                if (weapon.burst > 1) {
+                    baseScore *= 0.90; // Slight penalty for burst
                 }
-            } else if (weapon.range >= 15 && weapon.range < 25) {
-                baseScore *= 0.95;
+            } else if (weapon.range >= 14 && weapon.range < 16) {
+                baseScore *= 0.70; // Moderate penalty - limited use
+                
+                // Penalty for burst weapons
+                if (weapon.burst > 2) {
+                    baseScore *= 0.90;
+                }
+            } else if (weapon.range >= 16 && weapon.range < 20) {
+                baseScore *= 0.90; // Mild penalty for short-medium range
+                
+                // Very slight penalty for high burst at this range
+                if (weapon.burst > 4) {
+                    baseScore *= 0.95; // Only 5% penalty for high burst
+                }
+            } else if (weapon.range >= 20 && weapon.range < 25) {
+                baseScore *= 0.97; // Slight penalty
 
                 // Slight bonus for medium range burst weapons (good kiting ability)
                 if (weapon.burst > 1 && weapon.range >= 20) {
-                    baseScore *= 1.05; // Assault rifle gets small bonus
+                    baseScore *= 1.02; // Reduced from 1.05
                 }
             } else if (weapon.range >= 25 && weapon.range <= 35) {
                 baseScore *= 1.0;
             } else if (weapon.range > 35) {
-                baseScore *= 1.05;
+                baseScore *= 1.02; // Reduced from 1.05
             }
 
-            // Range bonus (from the updated code)
+            // Range bonus (from the updated code) - further reduced
             let rangeBonus = 0;
-            if (weapon.range >= 30 && weapon.range <= 35) {
-                rangeBonus = 70;  // Reduced from 100
+            if (weapon.range >= 35) {
+                rangeBonus = 20;  // Reduced from 25
+            } else if (weapon.range >= 30 && weapon.range < 35) {
+                rangeBonus = 15;  // Reduced from 20
             } else if (weapon.range >= 25 && weapon.range < 30) {
-                rangeBonus = 55;  // Reduced from 80
+                rangeBonus = 10;  // Reduced from 15
             } else if (weapon.range >= 20 && weapon.range < 25) {
-                rangeBonus = 40;  // Reduced from 60
-            } else if (weapon.range >= 15 && weapon.range < 20) {
-                rangeBonus = 25;  // Reduced from 40
-            } else if (weapon.range >= 10 && weapon.range < 15) {
-                rangeBonus = 15;  // Reduced from 25
-            } else if (weapon.range < 10) {
                 rangeBonus = 5;   // Reduced from 10
-            } else if (weapon.range > 35 && weapon.range <= 45) {
-                rangeBonus = 50;  // Reduced from 70
+            } else if (weapon.range >= 17 && weapon.range < 20) {
+                rangeBonus = 3;   // Small bonus for decent range
             }
-
-            // Hunter bonus for long-range weapons
-            const isHunter = document.getElementById('hunterRole').checked;
-            let hunterBonus = 0;
-            if (isHunter) {
-                if (weapon.range >= 30) {
-                    hunterBonus = 200; // +300 total (100 from skill score + 200 here)
-                } else if (weapon.range >= 20) {
-                    hunterBonus = 100; // +200 total (100 from skill score + 100 here)
-                } else {
-                    hunterBonus = 0; // +100 total (100 from skill score only)
-                }
-            }
+            // No bonus for range < 17
 
             // Burst bonus with diminishing returns
             let burstBonus = 0;
@@ -547,29 +591,49 @@
                 // Diminishing returns: first extra shot worth 25, second worth 15, third+ worth 5 each
                 if (weapon.burst >= 2) burstBonus += 25; // 2-shot gets +25
                 if (weapon.burst >= 3) burstBonus += 15; // 3-shot gets +40 total
-                if (weapon.burst >= 4) burstBonus += (weapon.burst - 3) * 5; // 4+ shots get +5 each
+                if (weapon.burst >= 4) {
+                    // Cap additional shots at 10 to prevent extreme burst weapons from over-scoring
+                    const additionalShots = Math.min(weapon.burst - 3, 10);
+                    burstBonus += additionalShots * 5; // 4+ shots get +5 each, max +50
+                }
 
                 baseScore += burstBonus;
 
                 // Range-based burst penalty - short range burst weapons can't kite effectively
-                if (weapon.range < 20) {
+                if (weapon.range < 16) {
                     // The shorter the range, the worse burst weapons perform (can't kite)
-                    const rangePenalty = (20 - weapon.range) / 20; // 0-1 scale
-                    const burstPenalty = (weapon.burst - 1) * 10 * rangePenalty;
+                    const rangePenalty = (16 - weapon.range) / 16; // 0-1 scale
+                    const burstPenalty = Math.min(weapon.burst - 1, 5) * 3 * rangePenalty; // Further reduced penalty
                     baseScore -= burstPenalty;
 
                     // Extra penalty for very high burst at very short range
-                    if (weapon.burst >= 5 && weapon.range < 17) {
-                        baseScore -= 20; // Heavy SMG specific penalty
+                    if (weapon.burst >= 8 && weapon.range < 15) {
+                        baseScore -= 15; // Only apply to extreme cases
                     }
+                    
+                    // Special harsh penalty for burst weapons with terrible range
+                    if (weapon.burst >= 3 && weapon.range < 14) {
+                        baseScore -= 20; // Chain shotgun specific penalty - reduced from 35
+                    }
+                } else if (weapon.range >= 16 && weapon.range < 20) {
+                    // Much lighter penalty for 16-19 range burst weapons
+                    const rangePenalty = (20 - weapon.range) / 20; // 0.2 or less
+                    const burstPenalty = Math.min(weapon.burst - 1, 3) * 2 * rangePenalty; // Reduced multiplier and cap
+                    baseScore -= burstPenalty;
+                }
+                
+                // Special handling for extreme burst weapons like minigun
+                if (weapon.burst >= 20) {
+                    // Minigun-type weapons have terrible accuracy built in
+                    baseScore *= 0.9; // Additional 10% penalty for spray-and-pray weapons
                 }
             }
 
             let apScore = calculateArmorPenetrationScore(weaponAP);
             let skillScore = calculateSkillScore(shootingSkill, meleeSkill, true); // true for ranged
 
-            // Base total includes damage, range, AP, and hunter bonus
-            let baseTotal = baseScore + rangeBonus + apScore + hunterBonus;
+            // Base total includes damage, range, and AP
+            let baseTotal = baseScore + rangeBonus + apScore;
 
             return {
                 baseDPS: weapon.dps,
@@ -623,6 +687,8 @@
 
             // Update ranged weapons table
             const rangedTbody = document.querySelector('#rangedTable tbody');
+            
+            // Clear ALL content using innerHTML first to ensure clean slate
             rangedTbody.innerHTML = '';
 
             let totalRangedScore = 0;
@@ -651,54 +717,70 @@
             // Sort by total score (highest first)
             rangedScores.sort((a, b) => b.scores.total - a.scores.total);
 
+            // Calculate dynamic tier thresholds based on percentiles
+            let rangedTierThresholds = { legendary: 0, excellent: 0, good: 0, average: 0 };
+            if (rangedScores.length > 0) {
+                const scores = rangedScores.map(item => item.scores.total);
+                rangedTierThresholds.legendary = scores[Math.floor(scores.length * 0.1)] || scores[0]; // Top 10%
+                rangedTierThresholds.excellent = scores[Math.floor(scores.length * 0.25)] || scores[0]; // Top 25%
+                rangedTierThresholds.good = scores[Math.floor(scores.length * 0.5)] || scores[0]; // Top 50%
+                rangedTierThresholds.average = scores[Math.floor(scores.length * 0.75)] || scores[0]; // Top 75%
+            }
+
             // Add sorted rows to table
             if (rangedScores.length === 0) {
-                rangedTbody.innerHTML = '<tr><td colspan="9" class="no-results">No weapons match your search</td></tr>';
+                rangedTbody.innerHTML = '<tr><td colspan="7" class="no-results">No weapons match your search</td></tr>';
             } else {
-                // Build all rows as a single HTML string
+                // Build complete HTML string first
                 let tableHTML = '';
-                rangedScores.forEach(({ weapon, scores }) => {
+                rangedScores.forEach(({ weapon, scores }, index) => {
                     const burstText = weapon.burst > 1 ? `${weapon.burst}x` : '-';
-                    const rowClass = weapon.mod ? 'modded-weapon' : '';
-                    const weaponName = weapon.name;
-
+                    // Process weapon name with mod links
+                    const weaponName = processWeaponNameWithLinks(weapon.name.trim(), searchText);
+                    
                     // Display accuracy as "-" for situational weapons
                     const accuracyDisplay = weapon.situational ? '-' : `${(scores.accuracy * 100).toFixed(0)}%`;
 
-                    // Add tier classification based on score
+                    // Add tier classification based on dynamic thresholds
                     let tierClass = '';
-                    if (scores.total >= 600) tierClass = 'legendary-tier';
-                    else if (scores.total >= 400) tierClass = 'excellent-tier';
-                    else if (scores.total >= 250) tierClass = 'good-tier';
-                    else if (scores.total >= 150) tierClass = 'average-tier';
+                    if (scores.total >= rangedTierThresholds.legendary) tierClass = 'legendary-tier';
+                    else if (scores.total >= rangedTierThresholds.excellent) tierClass = 'excellent-tier';
+                    else if (scores.total >= rangedTierThresholds.good) tierClass = 'good-tier';
+                    else if (scores.total >= rangedTierThresholds.average) tierClass = 'average-tier';
                     else tierClass = 'poor-tier';
                     
+                    const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const rowClasses = `${rowClass} ${tierClass}`.trim();
                     
-                    // Use innerHTML like the working version
-                    const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
-                    const dpsContent = scores.qualityDPS > 25 ? 
+                    const skillScoreSign = scores.skillScore > 0 ? '+' : '';
+                    const dpsDisplay = scores.qualityDPS > 25 ? 
                         `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
                         scores.qualityDPS.toFixed(1);
                     
+                    // Create total score with skill modifier shown
+                    const totalScoreDisplay = scores.skillScore !== 0 ? 
+                        `<span class="score">${scores.total.toFixed(1)}</span> <span style="font-size: 0.8em; color: ${scores.skillScore > 0 ? 'green' : 'red'};">(${skillScoreSign}${scores.skillScore.toFixed(0)})</span>` :
+                        `<span class="score">${scores.total.toFixed(1)}</span>`;
+                    
                     tableHTML += `<tr class="${rowClasses}">
                         <td>${weaponName}</td>
-                        <td>${dpsContent}</td>
+                        <td>${dpsDisplay}</td>
                         <td class="acc-value">${accuracyDisplay}</td>
                         <td>${burstText}</td>
                         <td>${weapon.range}</td>
                         <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                        <td>${scores.baseTotal.toFixed(1)}</td>
-                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                        <td class="score">${scores.total.toFixed(1)}</td>
+                        <td>${totalScoreDisplay}</td>
                     </tr>`;
                 });
-                // Set all rows at once
+                
+                // Set all HTML at once
                 rangedTbody.innerHTML = tableHTML;
             }
 
             // Update melee weapons table
             const meleeTbody = document.querySelector('#meleeTable tbody');
+            
+            // Clear ALL content
             meleeTbody.innerHTML = '';
 
             let totalMeleeScore = 0;
@@ -727,42 +809,56 @@
             // Sort by total score (highest first)
             meleeScores.sort((a, b) => b.scores.total - a.scores.total);
 
+            // Calculate dynamic tier thresholds based on percentiles
+            let meleeTierThresholds = { legendary: 0, excellent: 0, good: 0, average: 0 };
+            if (meleeScores.length > 0) {
+                const scores = meleeScores.map(item => item.scores.total);
+                meleeTierThresholds.legendary = scores[Math.floor(scores.length * 0.1)] || scores[0]; // Top 10%
+                meleeTierThresholds.excellent = scores[Math.floor(scores.length * 0.25)] || scores[0]; // Top 25%
+                meleeTierThresholds.good = scores[Math.floor(scores.length * 0.5)] || scores[0]; // Top 50%
+                meleeTierThresholds.average = scores[Math.floor(scores.length * 0.75)] || scores[0]; // Top 75%
+            }
+
             // Add sorted rows to table
             if (meleeScores.length === 0) {
-                meleeTbody.innerHTML = '<tr><td colspan="6" class="no-results">No weapons match your search</td></tr>';
+                meleeTbody.innerHTML = '<tr><td colspan="4" class="no-results">No weapons match your search</td></tr>';
             } else {
-                // Build all rows as a single HTML string
+                // Build complete HTML string first
                 let tableHTML = '';
-                meleeScores.forEach(({ weapon, scores }) => {
-                    const rowClass = weapon.mod ? 'modded-weapon' : '';
-                    const weaponName = weapon.name;
+                meleeScores.forEach(({ weapon, scores }, index) => {
+                    // Process weapon name with mod links
+                    const weaponName = processWeaponNameWithLinks(weapon.name.trim(), searchText);
 
-                    // Add tier classification based on score
+                    // Add tier classification based on dynamic thresholds
                     let tierClass = '';
-                    if (scores.total >= 400) tierClass = 'legendary-tier';
-                    else if (scores.total >= 300) tierClass = 'excellent-tier';
-                    else if (scores.total >= 200) tierClass = 'good-tier';
-                    else if (scores.total >= 100) tierClass = 'average-tier';
+                    if (scores.total >= meleeTierThresholds.legendary) tierClass = 'legendary-tier';
+                    else if (scores.total >= meleeTierThresholds.excellent) tierClass = 'excellent-tier';
+                    else if (scores.total >= meleeTierThresholds.good) tierClass = 'good-tier';
+                    else if (scores.total >= meleeTierThresholds.average) tierClass = 'average-tier';
                     else tierClass = 'poor-tier';
                     
+                    const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const rowClasses = `${rowClass} ${tierClass}`.trim();
                     
-                    // Use innerHTML like the working version
-                    const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
-                    const dpsContent = scores.qualityDPS > 25 ? 
+                    const skillScoreSign = scores.skillScore > 0 ? '+' : '';
+                    const dpsDisplay = scores.qualityDPS > 25 ? 
                         `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
                         scores.qualityDPS.toFixed(1);
                     
+                    // Create total score with skill modifier shown
+                    const totalScoreDisplay = scores.skillScore !== 0 ? 
+                        `<span class="score">${scores.total.toFixed(1)}</span> <span style="font-size: 0.8em; color: ${scores.skillScore > 0 ? 'green' : 'red'};">(${skillScoreSign}${scores.skillScore.toFixed(0)})</span>` :
+                        `<span class="score">${scores.total.toFixed(1)}</span>`;
+                    
                     tableHTML += `<tr class="${rowClasses}">
                         <td>${weaponName}</td>
-                        <td>${dpsContent}</td>
+                        <td>${dpsDisplay}</td>
                         <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                        <td>${scores.baseTotal.toFixed(1)}</td>
-                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                        <td class="score">${scores.total.toFixed(1)}</td>
+                        <td>${totalScoreDisplay}</td>
                     </tr>`;
                 });
-                // Set all rows at once
+                
+                // Set all HTML at once
                 meleeTbody.innerHTML = tableHTML;
             }
 
@@ -781,6 +877,13 @@
             updateRecommendation(rangedMult, meleeMult, qualityMult, shootingSkill, meleeSkill,
                 rangedCount > 0 ? totalRangedScore / rangedCount : 0,
                 meleeCount > 0 ? totalMeleeScore / meleeCount : 0);
+                
+            // Debug: Log the first row structure
+            const firstRow = rangedTbody.querySelector('tr');
+            if (firstRow) {
+                console.log('First row cell count:', firstRow.cells.length);
+                console.log('Expected columns: 7 for ranged, 4 for melee');
+            }
         }
 
         function updateRecommendation(rangedMult, meleeMult, qualityMult, shootingSkill, meleeSkill,
@@ -798,11 +901,11 @@
             // Build trait/role description
             let traitDesc = "";
             if (isBrawler && isHunter) {
-                traitDesc = " <strong>[Brawler: -500 ranged, +200 melee] + [Hunting: +100-300 ranged]</strong>";
+                traitDesc = " <strong>[Brawler: -500 ranged, +200 melee] + [Hunting: +100 ranged]</strong>";
             } else if (isBrawler) {
                 traitDesc = " <strong style='color: red;'>[Brawler: -500 ranged, +200 melee]</strong>";
             } else if (isHunter) {
-                traitDesc = " <strong style='color: green;'>[Hunting Work: +100/+200/+300 ranged by range]</strong>";
+                traitDesc = " <strong style='color: green;'>[Hunting: +100 for all ranged weapons]</strong>";
             }
 
             if (shootingSkill > meleeSkill + 3) {
@@ -833,15 +936,24 @@
                 <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
                 <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
                 <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged to compensate for close combat risks</li>
-                <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
-                <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
-                <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
+                <li>DPS and burst matter, but range enables kiting - short-range burst weapons get moderate penalties</li>
+                <li>Range modifiers: 0.50x (<10), 0.65x (10-13), 0.65x (14-16), 0.85x (17-19), 0.97x (20-24), 1.0x (25-35), 1.02x (35+)</li>
+                <li>Additional 0.90x penalty for burst weapons at 10-13 range (can't kite after burst)</li>
+                <li>Additional 0.90x penalty for 3+ burst weapons at 14-16 range</li>
+                <li>Range bonuses: +20 (35+), +15 (30-34), +10 (25-29), +5 (20-24), +3 (17-19), +0 (<17)</li>
+                <li>Accuracy weighted for typical combat: 40% short, 30% medium, 20% touch, 10% long range</li>
+                <li>Very short range (<10) weapons get 0.90x accuracy penalty - can't always engage at ideal range</li>
+                <li>Burst bonus: +25/+15/+5 for extra shots (capped at +90 total), with range-based penalties</li>
+                <li>Burst weapons (3+) at very short range (<14) get -35 penalty (can't kite)</li>
+                <li>Very high burst (8+) at very short range (<15) gets additional -15 penalty</li>
+                <li>Extreme burst weapons (20+ shots like minigun) get additional 10% penalty for spray-and-pray</li>
+                <li>Power creep protection: DPS > 25 has diminishing returns (50% value for excess)</li>
                 <li>Quality affects both DPS and armor penetration values</li>
                 <li>Armor penetration adds significant value for late-game effectiveness</li>
                 <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
                 <li>Pawn traits and work assignments will further modify these scores</li>
                 <li>Brawler trait: -500 penalty for ranged, +200 bonus for melee weapons</li>
-                <li>Hunting work: Range-based bonus (+300 for 30+ tiles, +200 for 20-29, +100 for &lt;20)</li>
+                <li>Hunting work: +100 bonus for all ranged weapons</li>
             </ul>
             `;
         }

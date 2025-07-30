@@ -211,7 +211,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .comparison {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 60fr 40fr;
     gap: 20px;
     margin-bottom: 30px;
     width: 100%; /* Ensure full width usage */
@@ -225,7 +225,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 0 10px rgba(0,0,0,0.3);
     display: flex;
     flex-direction: column;
-    height: 800px; /* Reduced height for better fit */
+    height: 1000px; /* Height for good visibility */
     transition: all 0.3s ease;
     min-width: 0; /* Prevent grid blowout */
     overflow: hidden; /* Prevent section overflow */
@@ -305,37 +305,35 @@ th, td {
 }
 
 /* Weapon name column - first column */
-th:first-child {
-    width: 200px;
-    min-width: 200px;
-    max-width: 200px;
-    text-align: left;
-    padding-left: 10px;
-    padding-right: 10px;
-    display: table-cell !important;
-    visibility: visible !important;
-}
-
+th:first-child,
 td:first-child {
-    width: 200px;
-    min-width: 200px;
-    max-width: 200px;
+    text-align: left;
     padding-left: 10px;
     padding-right: 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    text-align: left !important;
     /* Reset any potential inherited styles */
     font-family: inherit;
     font-size: inherit;
     font-weight: normal;
-    letter-spacing: 0;
-    word-spacing: 0;
+    letter-spacing: normal;
+    word-spacing: normal;
     text-transform: none;
-    display: table-cell !important;
-    visibility: visible !important;
-    position: static !important;
+    display: table-cell;
+    visibility: visible;
+    position: static;
+    /* Ensure no pseudo-elements */
+    box-sizing: border-box;
+}
+
+/* Remove any pseudo-elements from first column cells */
+th:first-child::before,
+td:first-child::before,
+th:first-child::after,
+td:first-child::after {
+    content: none !important;
+    display: none !important;
 }
 
 /* All other columns - compact */
@@ -657,40 +655,33 @@ input[type="range"] {
 
 /* Color-code rows by score ranges */
 tbody tr {
-    position: relative;
+    /* Removed position: relative to prevent layout issues */
 }
 
 tbody tr.legendary-tier { 
-    background: linear-gradient(to right, rgba(255, 215, 0, 0.05), transparent);
+    background: linear-gradient(to right, rgba(255, 215, 0, 0.1) 0%, rgba(255, 215, 0, 0.05) 50%, transparent 100%);
 }
 tbody tr.excellent-tier { 
-    background: linear-gradient(to right, rgba(138, 43, 226, 0.05), transparent);
+    background: linear-gradient(to right, rgba(138, 43, 226, 0.1) 0%, rgba(138, 43, 226, 0.05) 50%, transparent 100%);
 }
 tbody tr.good-tier { 
-    background: linear-gradient(to right, rgba(30, 144, 255, 0.05), transparent);
+    background: linear-gradient(to right, rgba(30, 144, 255, 0.1) 0%, rgba(30, 144, 255, 0.05) 50%, transparent 100%);
 }
 tbody tr.average-tier { 
-    background: linear-gradient(to right, rgba(0, 0, 0, 0.05), transparent);
+    background: linear-gradient(to right, rgba(128, 128, 128, 0.1) 0%, rgba(128, 128, 128, 0.05) 50%, transparent 100%);
 }
 tbody tr.poor-tier { 
-    background: linear-gradient(to right, rgba(139, 69, 19, 0.05), transparent);
+    background: linear-gradient(to right, rgba(139, 69, 19, 0.1) 0%, rgba(139, 69, 19, 0.05) 50%, transparent 100%);
 }
 
-/* Add tier indicator bar */
-tbody tr::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--tier-color, transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+/* Add tier indicator bar - use border instead of pseudo-element */
+tbody tr {
+    border-left: 3px solid transparent;
+    transition: border-color 0.3s ease;
 }
 
-tbody tr:hover::before {
-    opacity: 1;
+tbody tr:hover {
+    border-left-color: var(--tier-color, transparent);
 }
 
 tbody tr.legendary-tier { --tier-color: #FFD700; }
@@ -725,7 +716,7 @@ tbody tr.poor-tier { --tier-color: #8B4513; }
 
 /* Better styled mod tags as badges */
 .mod-link {
-    display: inline-block;
+    display: inline;
     padding: 2px 6px;
     background: rgba(102, 192, 244, 0.15);
     border: 1px solid rgba(102, 192, 244, 0.3);
@@ -734,8 +725,10 @@ tbody tr.poor-tier { --tier-color: #8B4513; }
     transition: all 0.2s ease;
     margin-right: 4px;
     margin-left: 2px;
-    vertical-align: middle; /* Ensure proper alignment */
-    white-space: nowrap; /* Prevent tag breaking */
+    white-space: nowrap;
+    color: #66c0f4;
+    text-decoration: none;
+    font-weight: bold;
 }
 
 .mod-link:hover {
@@ -767,7 +760,7 @@ thead th {
     }
     
     .weapon-section {
-        height: 600px;
+        height: 700px;
     }
     
     /* Hide overflow on smaller screens */
@@ -912,19 +905,9 @@ h1 {
     text-shadow: 0 0 10px currentColor;
 }
 
-/* Power creep indicator enhancement */
+/* Power creep indicator enhancement - removed pseudo-element */
 .power-creep-adjusted {
-    position: relative;
-}
-
-.power-creep-adjusted::before {
-    content: '*';
-    position: absolute;
-    right: -8px;
-    top: -2px;
-    color: #ff9800;
-    font-weight: bold;
-    animation: pulse 2s ease-in-out infinite;
+    /* Removed position: relative and pseudo-element to prevent layout issues */
 }
 
 @keyframes pulse {

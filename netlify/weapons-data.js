@@ -24,12 +24,12 @@
         // Industrial weapons
         { name: "Revolver", dps: 6.5, range: 16, damage: 12, burst: 1, acc: [0.80, 0.75, 0.45, 0.35] },
         { name: "Autopistol", dps: 9, range: 16, damage: 10, burst: 1, acc: [0.80, 0.70, 0.40, 0.30] },
-        { name: "Pump Shotgun", dps: 14, range: 9, damage: 18, burst: 1, acc: [0.80, 0.87, 0.77, 0.64] },
+        { name: "Pump Shotgun", dps: 14, range: 16, damage: 18, burst: 1, acc: [0.80, 0.87, 0.77, 0.64] },
         { name: "Machine Pistol", dps: 10.5, range: 15, damage: 7, burst: 3, acc: [0.60, 0.50, 0.35, 0.25] },
         { name: "Bolt-Action Rifle", dps: 8, range: 30, damage: 18, burst: 1, acc: [0.65, 0.80, 0.90, 0.80] },
         { name: "Assault Rifle", dps: 11.5, range: 23, damage: 11, burst: 3, acc: [0.65, 0.65, 0.65, 0.55] },
         { name: "Sniper Rifle", dps: 9.5, range: 37, damage: 25, burst: 1, acc: [0.50, 0.70, 0.86, 0.88] },
-        { name: "Chain Shotgun", dps: 16, range: 9, damage: 13, burst: 1, acc: [0.85, 0.80, 0.73, 0.64] },
+        { name: "Chain Shotgun", dps: 18.73, range: 13, damage: 18, burst: 3, acc: [0.57, 0.64, 0.55, 0.45] },
         { name: "Heavy SMG", dps: 13, range: 16, damage: 12, burst: 5, acc: [0.50, 0.45, 0.35, 0.25] },
         { name: "LMG", dps: 12, range: 19, damage: 11, burst: 6, acc: [0.35, 0.45, 0.55, 0.35] },
 
@@ -53,10 +53,6 @@
 
     // MeleeWeapon_AverageDPS and MeleeWeapon_AverageArmorPenetration values at Normal quality
     const vanillaMeleeWeapons = [
-        // Improvised
-        { name: "Fists", dps: 4.5, ap: 0.07 },
-        { name: "Beer", dps: 5.5, ap: 0.08 },
-
         // Neolithic
         { name: "Club", dps: 7.5, ap: 0.112 },
         { name: "Ikwa", dps: 9, ap: 0.135 },
