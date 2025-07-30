@@ -1,3 +1,8 @@
+/* Ensure no horizontal overflow from tables */
+* {
+    box-sizing: border-box;
+}
+
 /* AutoArm Weapon Balance Analyzer - Steam-themed Dark CSS */
 
 body {
@@ -9,6 +14,7 @@ body {
     min-height: 100vh;
     color: #c7d5e0;
     position: relative;
+    overflow-x: hidden; /* Prevent horizontal scrollbar on body */
 }
 
 body::before {
@@ -35,6 +41,7 @@ body::before {
     box-shadow: 0 0 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255,255,255,0.05);
+    overflow-x: hidden; /* Prevent horizontal overflow in container */
 }
 
 h1 {
@@ -242,8 +249,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .table-container {
     flex: 1;
-    overflow-x: auto; /* Explicit horizontal scroll */
-    overflow-y: auto; /* Vertical scroll */
+    overflow-x: hidden; /* Hide horizontal scroll */
+    overflow-y: auto; /* Keep vertical scroll */
     margin-top: 10px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255,255,255,0.05);
@@ -280,19 +287,18 @@ table {
     table-layout: auto; /* Let browser calculate column widths */
     word-spacing: normal; /* Ensure normal word spacing */
     letter-spacing: normal; /* Ensure normal letter spacing */
-    min-width: 900px; /* Ensure table has minimum width for all columns */
 }
 
 #rangedTable {
-    min-width: 1000px; /* Ensure enough width for all 9 columns */
+    /* Remove min-width to allow table to fit container */
 }
 
 #meleeTable {
-    min-width: 700px; /* Ensure enough width for all 6 columns */
+    /* Remove min-width to allow table to fit container */
 }
 
 th, td {
-    padding: 8px 12px;
+    padding: 6px 8px; /* Reduced padding */
     text-align: left;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     color: #c7d5e0;
@@ -300,19 +306,19 @@ th, td {
 
 /* Weapon name column - first column */
 th:first-child {
-    min-width: 200px; /* Reduced from 300px */
+    min-width: 150px; /* Reduced from 200px */
     text-align: left;
-    padding-left: 12px;
-    padding-right: 15px;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 td:first-child {
-    min-width: 200px; /* Reduced from 300px */
-    padding-left: 12px;
-    padding-right: 15px;
+    min-width: 150px; /* Reduced from 200px */
+    padding-left: 8px;
+    padding-right: 8px;
     white-space: nowrap; /* Keep weapon names on one line */
-    overflow: visible; /* Make sure content isn't hidden */
-    text-overflow: initial; /* No ellipsis for now */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis for very long names */
     /* Reset any potential inherited styles */
     font-family: inherit;
     font-size: inherit;
@@ -327,8 +333,9 @@ th:not(:first-child),
 td:not(:first-child) {
     white-space: nowrap;
     text-align: center;
-    padding: 8px 6px; /* Reduced horizontal padding */
-    min-width: 45px; /* Reduced minimum width */
+    padding: 6px 4px; /* Further reduced padding */
+    min-width: 40px; /* Reduced minimum width */
+    font-size: 0.9em; /* Slightly smaller font for data cells */
     /* Reset any potential inherited styles */
     letter-spacing: 0;
     word-spacing: 0;
@@ -751,6 +758,11 @@ thead th {
     
     .weapon-section {
         height: 600px;
+    }
+    
+    /* Hide overflow on smaller screens */
+    body {
+        overflow-x: hidden;
     }
 }
 
