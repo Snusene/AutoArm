@@ -663,10 +663,6 @@
             } else {
                 rangedScores.forEach(({ weapon, scores }) => {
                     const row = rangedTbody.insertRow();
-                    
-                    // Ensure the row is completely empty
-                    row.innerHTML = '';
-                    
                     const burstText = weapon.burst > 1 ? `${weapon.burst}x` : '-';
                     const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const weaponName = weapon.name;
@@ -684,32 +680,23 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Create cells by directly setting innerHTML to avoid any issues
-                    const rowData = [
-                        weaponName,
-                        scores.qualityDPS > 25 ? 
-                            `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
-                            scores.qualityDPS.toFixed(1),
-                        accuracyDisplay,
-                        burstText,
-                        weapon.range,
-                        scores.ap.toFixed(3),
-                        scores.baseTotal.toFixed(1),
-                        scores.skillScore > 0 ? `<span style="color: green">+${scores.skillScore.toFixed(0)}</span>` :
-                            scores.skillScore < 0 ? `<span style="color: red">${scores.skillScore.toFixed(0)}</span>` : '0',
-                        scores.total.toFixed(1)
-                    ];
+                    // Use innerHTML like the working version
+                    const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
+                    const dpsContent = scores.qualityDPS > 25 ? 
+                        `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
+                        scores.qualityDPS.toFixed(1);
                     
-                    // Create all cells with proper content
-                    rowData.forEach((content, i) => {
-                        const cell = row.insertCell(i);
-                        cell.innerHTML = content;
-                        
-                        // Add classes where needed
-                        if (i === 2) cell.className = 'acc-value';
-                        if (i === 5) cell.className = 'ap-value';
-                        if (i === 8) cell.className = 'score';
-                    });
+                    row.innerHTML = `
+                        <td>${weaponName}</td>
+                        <td>${dpsContent}</td>
+                        <td class="acc-value">${accuracyDisplay}</td>
+                        <td>${burstText}</td>
+                        <td>${weapon.range}</td>
+                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                        <td>${scores.baseTotal.toFixed(1)}</td>
+                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                        <td class="score">${scores.total.toFixed(1)}</td>
+                    `;
                 });
             }
 
@@ -750,10 +737,6 @@
             } else {
                 meleeScores.forEach(({ weapon, scores }) => {
                     const row = meleeTbody.insertRow();
-                    
-                    // Ensure the row is completely empty
-                    row.innerHTML = '';
-                    
                     const rowClass = weapon.mod ? 'modded-weapon' : '';
                     const weaponName = weapon.name;
 
@@ -767,28 +750,20 @@
                     
                     row.className = `${rowClass} ${tierClass}`;
                     
-                    // Create cells by directly setting innerHTML to avoid any issues
-                    const rowData = [
-                        weaponName,
-                        scores.qualityDPS > 25 ? 
-                            `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
-                            scores.qualityDPS.toFixed(1),
-                        scores.ap.toFixed(3),
-                        scores.baseTotal.toFixed(1),
-                        scores.skillScore > 0 ? `<span style="color: green">+${scores.skillScore.toFixed(0)}</span>` :
-                            scores.skillScore < 0 ? `<span style="color: red">${scores.skillScore.toFixed(0)}</span>` : '0',
-                        scores.total.toFixed(1)
-                    ];
+                    // Use innerHTML like the working version
+                    const skillScoreClass = scores.skillScore > 0 ? 'style="color: green;"' : scores.skillScore < 0 ? 'style="color: red;"' : '';
+                    const dpsContent = scores.qualityDPS > 25 ? 
+                        `<span class="power-creep-adjusted tooltip" data-tooltip="Original DPS: ${scores.qualityDPS.toFixed(1)}">${((scores.baseDPS * qualityMult) > 25 ? (25 + ((scores.baseDPS * qualityMult - 25) * 0.5)) : (scores.baseDPS * qualityMult)).toFixed(1)}</span>` :
+                        scores.qualityDPS.toFixed(1);
                     
-                    // Create all cells with proper content
-                    rowData.forEach((content, i) => {
-                        const cell = row.insertCell(i);
-                        cell.innerHTML = content;
-                        
-                        // Add classes where needed
-                        if (i === 2) cell.className = 'ap-value';
-                        if (i === 5) cell.className = 'score';
-                    });
+                    row.innerHTML = `
+                        <td>${weaponName}</td>
+                        <td>${dpsContent}</td>
+                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                        <td>${scores.baseTotal.toFixed(1)}</td>
+                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                        <td class="score">${scores.total.toFixed(1)}</td>
+                    `;
                 });
             }
 
