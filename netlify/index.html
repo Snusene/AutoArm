@@ -788,6 +788,102 @@
             // Base total includes damage, range, AP, and hunter bonus
             let baseTotal = baseScore + rangeBonus + apScore + hunterBonus;
 
+            // Calculate AP (default formula: damage * 0.015)
+            // If damage not specified, estimate from DPS
+            let damage = weapon.damage || (weapon.dps * 2); // rough estimate if not specified
+            let weaponAP = weapon.ap || (damage * 0.015);
+            // Apply quality to AP
+            weaponAP = weaponAP * qualityMult;
+
+            // Calculate AP (default formula: damage * 0.015)
+            // If damage not specified, estimate from DPS
+            let damage = weapon.damage || (weapon.dps * 2); // rough estimate if not specified
+            let weaponAP = weapon.ap || (damage * 0.015);
+            // Apply quality to AP
+            weaponAP = weaponAP * qualityMult;
+
+            // Apply range modifiers (from the code)
+            if (weapon.range < 15) {
+                baseScore *= 0.85;
+
+                // Strong penalty for short-range high-burst weapons (can't kite effectively)
+                if (weapon.burst > 3 && weapon.range < 18) {
+                    baseScore *= 0.75; // Heavy SMG gets significant penalty
+                }
+            } else if (weapon.range >= 15 && weapon.range < 25) {
+                baseScore *= 0.95;
+
+                // Slight bonus for medium range burst weapons (good kiting ability)
+                if (weapon.burst > 1 && weapon.range >= 20) {
+                    baseScore *= 1.05; // Assault rifle gets small bonus
+                }
+            } else if (weapon.range >= 25 && weapon.range <= 35) {
+                baseScore *= 1.0;
+            } else if (weapon.range > 35) {
+                baseScore *= 1.05;
+            }
+
+            // Range bonus (from the updated code)
+            let rangeBonus = 0;
+            if (weapon.range >= 30 && weapon.range <= 35) {
+                rangeBonus = 70;  // Reduced from 100
+            } else if (weapon.range >= 25 && weapon.range < 30) {
+                rangeBonus = 55;  // Reduced from 80
+            } else if (weapon.range >= 20 && weapon.range < 25) {
+                rangeBonus = 40;  // Reduced from 60
+            } else if (weapon.range >= 15 && weapon.range < 20) {
+                rangeBonus = 25;  // Reduced from 40
+            } else if (weapon.range >= 10 && weapon.range < 15) {
+                rangeBonus = 15;  // Reduced from 25
+            } else if (weapon.range < 10) {
+                rangeBonus = 5;   // Reduced from 10
+            } else if (weapon.range > 35 && weapon.range <= 45) {
+                rangeBonus = 50;  // Reduced from 70
+            }
+
+            // Hunter bonus for long-range weapons
+            const isHunter = document.getElementById('hunterRole').checked;
+            let hunterBonus = 0;
+            if (isHunter) {
+                if (weapon.range >= 30) {
+                    hunterBonus = 200; // +300 total (100 from skill score + 200 here)
+                } else if (weapon.range >= 20) {
+                    hunterBonus = 100; // +200 total (100 from skill score + 100 here)
+                } else {
+                    hunterBonus = 0; // +100 total (100 from skill score only)
+                }
+            }
+
+            // Burst bonus with diminishing returns
+            let burstBonus = 0;
+            if (weapon.burst > 1) {
+                // Diminishing returns: first extra shot worth 25, second worth 15, third+ worth 5 each
+                if (weapon.burst >= 2) burstBonus += 25; // 2-shot gets +25
+                if (weapon.burst >= 3) burstBonus += 15; // 3-shot gets +40 total
+                if (weapon.burst >= 4) burstBonus += (weapon.burst - 3) * 5; // 4+ shots get +5 each
+
+                baseScore += burstBonus;
+
+                // Range-based burst penalty - short range burst weapons can't kite effectively
+                if (weapon.range < 20) {
+                    // The shorter the range, the worse burst weapons perform (can't kite)
+                    const rangePenalty = (20 - weapon.range) / 20; // 0-1 scale
+                    const burstPenalty = (weapon.burst - 1) * 10 * rangePenalty;
+                    baseScore -= burstPenalty;
+
+                    // Extra penalty for very high burst at very short range
+                    if (weapon.burst >= 5 && weapon.range < 17) {
+                        baseScore -= 20; // Heavy SMG specific penalty
+                    }
+                }
+            }
+
+            let apScore = calculateArmorPenetrationScore(weaponAP);
+            let skillScore = calculateSkillScore(shootingSkill, meleeSkill, true); // true for ranged
+
+            // Base total includes damage, range, AP, and hunter bonus
+            let baseTotal = baseScore + rangeBonus + apScore + hunterBonus;
+
             return {
                 baseDPS: weapon.dps,
                 qualityDPS: qualityDPS,
@@ -1012,7 +1108,6 @@
                                     <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
                                     <hr>
                                     <h4>Current Configuration Notes:</h4>
-                                    <ul>
                                     <ul>
                                         <li>Situational weapons (grenades, launchers) are capped at ~80 points to ensure they're only used when needed</li>
                                         <li>Ranged multiplier is set to 8 because ranged weapons are inherently superior - they allow kiting, safer engagement, and first strike advantage</li>
