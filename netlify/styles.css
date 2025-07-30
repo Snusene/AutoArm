@@ -27,7 +27,7 @@ body::before {
 }
 
 .container {
-    max-width: 1400px;
+    max-width: 1600px; /* Increased max width for more space */
     margin: 0 auto;
     background: linear-gradient(to bottom, rgba(23, 29, 37, 0.95) 0%, rgba(16, 20, 24, 0.95) 100%);
     padding: 30px;
@@ -207,6 +207,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     grid-template-columns: 1fr 1fr;
     gap: 20px;
     margin-bottom: 30px;
+    width: 100%; /* Ensure full width usage */
 }
 
 .weapon-section {
@@ -217,8 +218,9 @@ input[type="range"]::-webkit-slider-thumb:hover {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 0 10px rgba(0,0,0,0.3);
     display: flex;
     flex-direction: column;
-    height: 1000px;
+    height: 800px; /* Reduced height for better fit */
     transition: all 0.3s ease;
+    min-width: 0; /* Prevent grid blowout */
 }
 
 .weapon-section:hover {
@@ -239,11 +241,12 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .table-container {
     flex: 1;
-    overflow-y: auto;
+    overflow: auto; /* Allow both vertical and horizontal scroll */
     margin-top: 10px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255,255,255,0.05);
     border-radius: 3px;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
 }
 
 /* Custom scrollbar for webkit browsers */
@@ -270,44 +273,53 @@ table {
     width: 100%;
     border-collapse: collapse;
     background-color: transparent;
-    table-layout: fixed; /* Force fixed table layout for better column control */
+    table-layout: auto; /* Let browser calculate column widths */
+    word-spacing: normal; /* Ensure normal word spacing */
+    letter-spacing: normal; /* Ensure normal letter spacing */
 }
 
 th, td {
-    padding: 8px;
+    padding: 8px 12px;
     text-align: left;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     color: #c7d5e0;
-    white-space: nowrap; /* Prevent text wrapping by default */
-    overflow: hidden;
-    text-overflow: ellipsis; /* Add ellipsis for overflow text */
 }
 
-/* Special handling for weapon name column */
-th:first-child,
+/* Weapon name column - first column */
+th:first-child {
+    min-width: 300px;
+    text-align: left;
+    padding-left: 12px;
+    padding-right: 20px;
+}
+
 td:first-child {
-    width: 35%; /* Give weapon name column a fixed percentage */
-    min-width: 200px;
-    white-space: normal; /* Allow wrapping in weapon names */
-    word-break: break-word; /* Break long words if needed */
+    min-width: 300px;
+    padding-left: 12px;
+    padding-right: 20px;
+    white-space: nowrap; /* Keep weapon names on one line */
+    overflow: visible; /* Make sure content isn't hidden */
+    text-overflow: initial; /* No ellipsis for now */
+    /* Reset any potential inherited styles */
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: normal;
+    letter-spacing: 0;
+    word-spacing: 0;
+    text-transform: none;
 }
 
-/* Column widths for ranged weapons table */
-#rangedTable th:nth-child(2), #rangedTable td:nth-child(2) { width: 10%; } /* DPS */
-#rangedTable th:nth-child(3), #rangedTable td:nth-child(3) { width: 8%; }  /* Acc */
-#rangedTable th:nth-child(4), #rangedTable td:nth-child(4) { width: 8%; }  /* Burst */
-#rangedTable th:nth-child(5), #rangedTable td:nth-child(5) { width: 8%; }  /* Range */
-#rangedTable th:nth-child(6), #rangedTable td:nth-child(6) { width: 8%; }  /* AP */
-#rangedTable th:nth-child(7), #rangedTable td:nth-child(7) { width: 10%; } /* Base Score */
-#rangedTable th:nth-child(8), #rangedTable td:nth-child(8) { width: 10%; } /* Skill Score */
-#rangedTable th:nth-child(9), #rangedTable td:nth-child(9) { width: 10%; } /* Total Score */
-
-/* Column widths for melee weapons table */
-#meleeTable th:nth-child(2), #meleeTable td:nth-child(2) { width: 15%; } /* DPS */
-#meleeTable th:nth-child(3), #meleeTable td:nth-child(3) { width: 15%; } /* AP */
-#meleeTable th:nth-child(4), #meleeTable td:nth-child(4) { width: 15%; } /* Base Score */
-#meleeTable th:nth-child(5), #meleeTable td:nth-child(5) { width: 15%; } /* Skill Score */
-#meleeTable th:nth-child(6), #meleeTable td:nth-child(6) { width: 15%; } /* Total Score */
+/* All other columns - compact */
+th:not(:first-child),
+td:not(:first-child) {
+    white-space: nowrap;
+    text-align: center;
+    padding: 8px 10px;
+    min-width: 50px; /* Ensure minimum width for all columns */
+    /* Reset any potential inherited styles */
+    letter-spacing: 0;
+    word-spacing: 0;
+}
 
 tbody tr:nth-child(even) {
     background-color: rgba(0, 0, 0, 0.1);
@@ -691,6 +703,7 @@ tbody tr.poor-tier { --tier-color: #8B4513; }
     font-size: 0.85em;
     transition: all 0.2s ease;
     margin-right: 4px;
+    margin-left: 2px;
     vertical-align: middle; /* Ensure proper alignment */
     white-space: nowrap; /* Prevent tag breaking */
 }
@@ -708,6 +721,7 @@ thead th {
     background: linear-gradient(to bottom, 
         rgba(23, 29, 37, 0.98) 0%, 
         rgba(16, 20, 24, 0.98) 100%);
+    white-space: nowrap; /* Prevent header text from wrapping */
 }
 
 /* Add shadow when scrolled */
@@ -750,14 +764,13 @@ thead th {
     
     table {
         min-width: 600px;
-        table-layout: auto; /* Allow auto layout on mobile for better responsiveness */
     }
     
     /* Adjust column widths for mobile */
     th:first-child,
     td:first-child {
-        width: auto;
         min-width: 150px;
+        max-width: none; /* Remove max-width constraint on mobile */
     }
     
     /* Adjust font sizes for mobile */

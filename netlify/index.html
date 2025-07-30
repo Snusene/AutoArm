@@ -265,6 +265,11 @@
         };
 
         function processWeaponNameWithLinks(weaponName, searchText) {
+            // For debugging: just return the plain weapon name
+            return weaponName;
+            
+            // TODO: Re-enable mod links and search highlighting after fixing display issue
+            /*
             let processedName = weaponName;
 
             // First, add mod links
@@ -277,19 +282,8 @@
                 return match;
             });
 
-            // Then highlight search terms (but not inside links)
-            if (searchText) {
-                const searchTerms = searchText.split(' ').filter(term => term.length > 0);
-                searchTerms.forEach(term => {
-                    // Escape special regex characters
-                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    // Only highlight text that's not inside HTML tags
-                    const regex = new RegExp(`(?![^<]*>)(${escapedTerm})`, 'gi');
-                    processedName = processedName.replace(regex, '<span class="highlight">$1</span>');
-                });
-            }
-
             return processedName;
+            */
         }
 
         function updateSkillDisplay(slider, displayId) {
@@ -647,7 +641,7 @@
                     
                     // Weapon name cell
                     cells[0] = row.insertCell();
-                    cells[0].innerHTML = processedName;
+                    cells[0].textContent = weaponName; // Use plain text for debugging
                     
                     // DPS cell
                     cells[1] = row.insertCell();
@@ -758,7 +752,7 @@
                     
                     // Weapon name cell
                     cells[0] = row.insertCell();
-                    cells[0].innerHTML = processedName;
+                    cells[0].textContent = weaponName; // Use plain text for debugging
                     
                     // DPS cell
                     cells[1] = row.insertCell();
