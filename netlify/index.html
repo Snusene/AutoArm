@@ -363,7 +363,7 @@
                     <br><br>
                     <strong>Note:</strong> Orange DPS values with an asterisk (*) indicate weapons affected by power creep protection. Hover over them to see the original value.
                     <br>
-                    Accuracy values for vanilla weapons are exact. Modded weapons without accuracy data use estimates based on weapon type.
+                    Accuracy values for vanilla weapons are exact. Modded weapons without accuracy data use estimates based on weapon type. Situational weapons (grenades, launchers) show "-" for accuracy since they use area effects.
                 </div>
             </div>
 
@@ -881,11 +881,14 @@
                     const weaponName = weapon.mod ? weapon.name : weapon.name;
                     const processedName = processWeaponNameWithLinks(weaponName, searchText);
 
+                    // Display accuracy as "-" for situational weapons
+                    const accuracyDisplay = weapon.situational ? '-' : `${(scores.accuracy * 100).toFixed(0)}%`;
+                    
                     row.className = rowClass;
                     row.innerHTML = `
                                             <td>${processedName}</td>
                                             <td>${scores.qualityDPS.toFixed(1)}</td>
-                                            <td class="acc-value">${(scores.accuracy * 100).toFixed(0)}%</td>
+                                            <td class="acc-value">${accuracyDisplay}</td>
                                             <td>${burstText}</td>
                                             <td>${weapon.range}</td>
                                             <td class="ap-value">${scores.ap.toFixed(3)}</td>
