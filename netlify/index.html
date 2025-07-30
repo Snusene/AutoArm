@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoArm Weapon Balance Analyzer</title>
+    <title>AutoArm Weapon Balance Analyzer Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -573,15 +573,15 @@
 
                 row.className = rowClass;
                 row.innerHTML = `
-                        <td>${weaponName}</td>
-                        <td>${scores.qualityDPS.toFixed(1)}</td>
-                        <td>${burstText}</td>
-                        <td>${weapon.range}</td>
-                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                        <td>${scores.baseTotal.toFixed(1)}</td>
-                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                        <td class="score">${scores.total.toFixed(1)}</td>
-                    `;
+                            <td>${weaponName}</td>
+                            <td>${scores.qualityDPS.toFixed(1)}</td>
+                            <td>${burstText}</td>
+                            <td>${weapon.range}</td>
+                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                            <td>${scores.baseTotal.toFixed(1)}</td>
+                            <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                            <td class="score">${scores.total.toFixed(1)}</td>
+                        `;
             });
 
             // Update melee weapons table
@@ -611,13 +611,13 @@
 
                 row.className = rowClass;
                 row.innerHTML = `
-                        <td>${weaponName}</td>
-                        <td>${scores.qualityDPS.toFixed(1)}</td>
-                        <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                        <td>${scores.baseTotal.toFixed(1)}</td>
-                        <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
-                        <td class="score">${scores.total.toFixed(1)}</td>
-                    `;
+                            <td>${weaponName}</td>
+                            <td>${scores.qualityDPS.toFixed(1)}</td>
+                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                            <td>${scores.baseTotal.toFixed(1)}</td>
+                            <td ${skillScoreClass}>${scores.skillScore > 0 ? '+' : ''}${scores.skillScore !== 0 ? scores.skillScore.toFixed(0) : '0'}</td>
+                            <td class="score">${scores.total.toFixed(1)}</td>
+                        `;
             });
 
             // Update recommendation
@@ -669,37 +669,37 @@
             const filterNote = filter === 'all' ? '<p><em>Note: Including modded weapons in balance calculation. Some modded weapons may skew the balance significantly.</em></p>' : '';
 
             document.getElementById('recommendation').innerHTML = `
-                    <h3>Balance Analysis at ${qualityName}</h3>
-                    ${filterNote}
-                    ${skillPref}
-                    <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
-                    <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
-                    <p><strong>Melee/Ranged Ratio:</strong> ${ratio.toFixed(2)} (Target: 1.20-1.30)</p>
-                    <p><strong>Recommendation:</strong> ${recommendation}</p>
-                    ${ratio < 1.1 || ratio > 1.35 ? `<p><strong>Suggested Melee Multiplier:</strong> ${suggestedMeleeMult.toFixed(1)}</p>` : ''}
-                    <hr>
-                    <h4>Current Configuration Notes:</h4>
-                    <ul>
-                    <ul>
-                        <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
-                        <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
-                        <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
-                        <li>Quality affects both DPS and armor penetration values</li>
-                        <li>Armor penetration adds significant value for late-game effectiveness</li>
-                        <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
-                        <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged</li>
-                        <li>Pawn traits and work assignments will further modify these scores</li>
-                    </ul>
-                    <h4>Notable Weapon Insights:</h4>
-                    <ul>
-                        <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
-                        <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
-                        <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
-                        <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
-                        <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
-                        <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
-                    </ul>
-                `;
+                        <h3>Balance Analysis at ${qualityName}</h3>
+                        ${filterNote}
+                        ${skillPref}
+                        <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
+                        <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
+                        <p><strong>Melee/Ranged Ratio:</strong> ${ratio.toFixed(2)} (Target: 1.20-1.30)</p>
+                        <p><strong>Recommendation:</strong> ${recommendation}</p>
+                        ${ratio < 1.1 || ratio > 1.35 ? `<p><strong>Suggested Melee Multiplier:</strong> ${suggestedMeleeMult.toFixed(1)}</p>` : ''}
+                        <hr>
+                        <h4>Current Configuration Notes:</h4>
+                        <ul>
+                        <ul>
+                            <li>DPS and burst matter, but range enables kiting - short-range burst weapons penalized</li>
+                            <li>Burst bonus: +25/+15/+5 for extra shots, minus range penalties if under 20 range</li>
+                            <li>Heavy SMG (5-burst, 16 range) gets -28 burst penalty plus -20 extra penalty</li>
+                            <li>Quality affects both DPS and armor penetration values</li>
+                            <li>Armor penetration adds significant value for late-game effectiveness</li>
+                            <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(levels-1)</li>
+                            <li>Melee multiplier of ${meleeMult} gives ${((meleeMult / rangedMult - 1) * 100).toFixed(0)}% bonus over ranged</li>
+                            <li>Pawn traits and work assignments will further modify these scores</li>
+                        </ul>
+                        <h4>Notable Weapon Insights:</h4>
+                        <ul>
+                            <li><strong>Vanilla balance:</strong> Assault rifles properly dominate with burst fire AND good kiting range</li>
+                            <li><strong>[RS] Suppressor Cannon:</strong> Insane DPS (93.3) with 25-burst shows mod power creep</li>
+                            <li><strong>[RS] Anti-Mech Rifle:</strong> 55 damage and 75% AP makes it a late-game monster</li>
+                            <li><strong>[VWE] weapons:</strong> Generally well-balanced additions that fill vanilla gaps</li>
+                            <li><strong>Modded melee:</strong> [VWEL] Laser Sword approaches vanilla Plasmasword power</li>
+                            <li><strong>Range still matters:</strong> Even high-DPS modded weapons suffer with poor range</li>
+                        </ul>
+                    `;
         }
 
         // Initial load
