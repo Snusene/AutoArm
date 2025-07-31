@@ -18,7 +18,11 @@ namespace AutoArm.Testing
                 new ForcedWeaponTest(),
                 new ThinkTreeInjectionTest(),
                 new CooldownSystemTest(),
-                new WeaponSwapChainTest()
+                new WeaponSwapChainTest(),
+                // Additional forced weapon tests
+                new ForcedWeaponBasicTest(),
+                new ForcedWeaponDefTrackingTest(),
+                new ForcedWeaponSaveLoadTest()
             };
 
             return RunTests(tests, map, "Core");
@@ -33,7 +37,9 @@ namespace AutoArm.Testing
                 new SimpleSidearmsWeightLimitTest(),
                 new SimpleSidearmsSlotLimitTest(),
                 new SimpleSidearmsForcedWeaponTest(),
-                new CombatExtendedAmmoTest()
+                new CombatExtendedAmmoTest(),
+                // New edge case tests
+                new SimpleSidearmsEdgeCasesTest()
             };
 
             return RunTests(tests, map, "Compatibility");
@@ -98,7 +104,14 @@ namespace AutoArm.Testing
                 new WeaponBlacklistIntegrationTest(),
                 new OutfitFilterTest(),
                 new JobPriorityTest(),
-                new WorkInterruptionTest()
+                new WorkInterruptionTest(),
+                // New weapon scoring tests
+                new WeaponScoringSystemTest(),
+                new WeaponCachePerformanceTest(), // Tests the new caching system
+                new TraitAndRoleScoringTest(),
+                new WeaponScoringDebugTest(), // Debug test to diagnose scoring issues
+                // New comprehensive work interruption test
+                new ComprehensiveWorkInterruptionTest()
             };
 
             return RunTests(tests, map, "Weapon");
@@ -113,7 +126,8 @@ namespace AutoArm.Testing
                 new ThinkTreeInjectionTest(),
                 new SimpleSidearmsIntegrationTest(),
                 new WeaponContainerManagementTest(),
-                new CooldownSystemTest()
+                new CooldownSystemTest(),
+                new WeaponScoringSystemTest() // Quick scoring validation
             };
 
             return RunTests(tests, map, "Quick");

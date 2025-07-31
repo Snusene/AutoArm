@@ -107,11 +107,16 @@
     <Compile Include="Source\Testing\Scenarios\BasicTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CompatibilityTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CoreTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\DiagnosticTest.cs" />
+    <Compile Include="Source\Testing\Scenarios\ForcedWeaponTests.cs" />
     <Compile Include="Source\Testing\Scenarios\MiscTests.cs" />
     <Compile Include="Source\Testing\Scenarios\PawnBehaviorTests.cs" />
     <Compile Include="Source\Testing\Scenarios\PerformanceTests.cs" />
     <Compile Include="Source\Testing\Scenarios\SystemTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\WeaponScoringDebugTest.cs" />
+    <Compile Include="Source\Testing\Scenarios\WeaponScoringTests.cs" />
     <Compile Include="Source\Testing\Scenarios\WeaponTests.cs" />
+    <Compile Include="Source\Testing\TestDebugger.cs" />
     <Compile Include="Source\Testing\TestHelpers.cs" />
     <Compile Include="Source\Testing\TestInterfaces.cs" />
     <Compile Include="Source\Testing\TestRunner.cs" />

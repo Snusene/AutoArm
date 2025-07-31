@@ -17,6 +17,9 @@ namespace AutoArm.Testing.Scenarios
         {
             if (map == null) return;
 
+            // Clear weapon cache first to avoid interference from other tests
+            ImprovedWeaponCacheManager.InvalidateCache(map);
+
             testPawn = TestHelpers.CreateTestPawn(map);
             if (testPawn != null)
             {
@@ -235,6 +238,10 @@ namespace AutoArm.Testing.Scenarios
         {
             if (map == null) return;
 
+            // Clear weapon cache and dropped item tracker to avoid interference
+            ImprovedWeaponCacheManager.InvalidateCache(map);
+            DroppedItemTracker.CleanupOldEntries();
+
             testPawn = TestHelpers.CreateTestPawn(map);
             if (testPawn != null)
             {
@@ -279,10 +286,16 @@ namespace AutoArm.Testing.Scenarios
             result.Data["Weapon1Score"] = score1;
             result.Data["Weapon2Score"] = score2;
             result.Data["ScoreDifference"] = Math.Abs(score1 - score2);
-            result.Data["ThresholdRequired"] = score1 * 0.1f;
+            result.Data["ThresholdRequired"] = score1 * 0.05f; // 5% improvement threshold
 
             // Test: Should not create job for nearly identical weapon
             var job = jobGiver.TestTryGiveJob(testPawn);
+            
+            result.Data["JobCreated"] = job != null;
+            if (job != null)
+            {
+                result.Data["JobTarget"] = job.targetA.Thing?.Label ?? "null";
+            }
 
             if (job != null && job.targetA.Thing == weapon2)
             {
@@ -290,11 +303,21 @@ namespace AutoArm.Testing.Scenarios
                 float improvement = score2 / score1;
                 result.Data["ImprovementRatio"] = improvement;
 
-                if (improvement < 1.1f)
+                if (improvement < 1.05f) // Use actual threshold from settings (5%)
                 {
                     result.Success = false;
-                    AutoArmDebug.LogError($"[TEST] WeaponSwapChainTest: Job created for insignificant upgrade - improvement: {improvement:F2}, required: 1.1");
+                    AutoArmDebug.LogError($"[TEST] WeaponSwapChainTest: Job created for insignificant upgrade - improvement: {improvement:F2}, required: 1.05");
                 }
+            }
+            else if (job == null && Math.Abs(score1 - score2) < 0.01f)
+            {
+                // If weapons have identical scores and no job was created, that's correct
+                result.Data["Note"] = "No job created for identical weapons - correct behavior";
+            }
+            else if (job != null && job.targetA.Thing != weapon2)
+            {
+                // Job was created but for a different weapon (maybe something else on the map)
+                result.Data["Warning"] = $"Job created for different weapon: {job.targetA.Thing?.Label}";
             }
 
             // Test dropped item tracking
@@ -438,7 +461,7 @@ namespace AutoArm.Testing.Scenarios
                 if (jobDef == JobDefOf.HaulToCell && minorImprovement < 1.15f && minorShouldInterrupt)
                 {
                     result.Success = false;
-                    AutoArmDebug.LogError($"[TEST] WorkInterruptionTest: Hauling interrupted for minor upgrade - improvement: {minorImprovement:F2}");
+                    AutoArmDebug.LogError($"[TEST] WorkInterruptionTest: Hauling interrupted for minor upgrade - improvement: {minorImprovement:F2}, required: 1.15");
                 }
             }
 

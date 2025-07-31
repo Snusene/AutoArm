@@ -42,6 +42,9 @@ namespace AutoArm
                 // Clean up weapon caches
                 ImprovedWeaponCacheManager.CleanupDestroyedMaps();
                 WeaponScoreCache.CleanupCache();
+                
+                // Clean up our new optimized caches
+                WeaponScoringHelper.ClearWeaponScoreCache();
 
                 // Clean up job giver data
                 CleanupJobGiverData();

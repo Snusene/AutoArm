@@ -1160,5 +1160,45 @@ namespace AutoArm
             
             Log.Message($"\n[AutoArm] === End Comparison ===");
         }
+        
+        [DebugAction("AutoArm", "Test Weapon Defs Available",
+            allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        private static void TestWeaponDefsAvailable()
+        {
+            Log.Message("\n[AutoArm] === Testing Weapon Def Availability ===");
+            
+            // Test all our VanillaWeaponDefOf references
+            Log.Message($"[AutoArm] Gun_Autopistol: {VanillaWeaponDefOf.Gun_Autopistol != null}");
+            Log.Message($"[AutoArm] Gun_AssaultRifle: {VanillaWeaponDefOf.Gun_AssaultRifle != null}");
+            Log.Message($"[AutoArm] Gun_BoltActionRifle: {VanillaWeaponDefOf.Gun_BoltActionRifle != null}");
+            Log.Message($"[AutoArm] Gun_PumpShotgun: {VanillaWeaponDefOf.Gun_PumpShotgun != null}");
+            Log.Message($"[AutoArm] Gun_HeavySMG: {VanillaWeaponDefOf.Gun_HeavySMG != null}");
+            Log.Message($"[AutoArm] Gun_SniperRifle: {VanillaWeaponDefOf.Gun_SniperRifle != null}");
+            Log.Message($"[AutoArm] Gun_Revolver: {VanillaWeaponDefOf.Gun_Revolver != null}");
+            
+            Log.Message($"\n[AutoArm] MeleeWeapon_Knife: {VanillaWeaponDefOf.MeleeWeapon_Knife != null}");
+            Log.Message($"[AutoArm] MeleeWeapon_LongSword: {VanillaWeaponDefOf.MeleeWeapon_LongSword != null}");
+            
+            // Check if grenades/launchers exist
+            var grenadeDef = DefDatabase<ThingDef>.GetNamed("Weapon_GrenadeFrag", false);
+            var launcherDef = DefDatabase<ThingDef>.GetNamed("Gun_IncendiaryLauncher", false);
+            Log.Message($"\n[AutoArm] Weapon_GrenadeFrag: {grenadeDef != null}");
+            Log.Message($"[AutoArm] Gun_IncendiaryLauncher: {launcherDef != null}");
+            
+            // List some actual weapon defs
+            Log.Message($"\n[AutoArm] Sample weapon defs found:");
+            var weaponDefs = DefDatabase<ThingDef>.AllDefs
+                .Where(d => d.IsWeapon && (d.IsRangedWeapon || d.IsMeleeWeapon))
+                .Take(20)
+                .ToList();
+                
+            foreach (var def in weaponDefs)
+            {
+                Log.Message($"  - {def.defName}: {def.label} (Ranged: {def.IsRangedWeapon}, Melee: {def.IsMeleeWeapon})");
+            }
+            
+            Log.Message($"\n[AutoArm] Total weapon defs: {DefDatabase<ThingDef>.AllDefs.Count(d => d.IsWeapon)}");
+            Log.Message($"[AutoArm] === End Test ===");
+        }
     }
 }

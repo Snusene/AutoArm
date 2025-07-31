@@ -169,6 +169,15 @@ namespace AutoArm.Testing
                 tests.Add(new WorkInterruptionTest());
                 tests.Add(new ProgressiveSearchTest());
 
+                // Weapon scoring tests (matching web analyzer)
+                tests.Add(new WeaponScoringSystemTest());
+                tests.Add(new WeaponCachePerformanceTest());
+                tests.Add(new TraitAndRoleScoringTest());
+
+                // Diagnostic test
+                tests.Add(new DiagnosticTest());
+                tests.Add(new WeaponScoringDebugTest());
+
                 // Note: Additional test scenarios can be found in TestScenarios_Fixed.cs
                 // Add them here as needed
             }

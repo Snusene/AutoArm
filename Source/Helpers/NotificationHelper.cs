@@ -86,23 +86,8 @@ namespace AutoArm
         /// </summary>
         public static void NotifyWeaponDropped(Pawn pawn, ThingWithComps weapon, string reason = null)
         {
-            if (!ShouldSendNotification(pawn))
-                return;
-
-            string weaponLabel = weapon?.Label ?? weapon?.def?.label ?? "weapon";
-
-            if (reason == "sidearm")
-            {
-                SendNotification("AutoArm_DroppingSidearmDisallowed", pawn,
-                    pawn.LabelShort.CapitalizeFirst().Named("PAWN"),
-                    weaponLabel.Named("WEAPON"));
-            }
-            else
-            {
-                SendNotification("AutoArm_DroppingDisallowed", pawn,
-                    pawn.LabelShort.CapitalizeFirst().Named("PAWN"),
-                    weaponLabel.Named("WEAPON"));
-            }
+            // Weapon drop notifications are disabled - we don't show notifications when items are dropped
+            return;
         }
 
         /// <summary>

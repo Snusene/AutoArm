@@ -25,6 +25,9 @@ namespace AutoArm
             public Dictionary<IntVec3, List<ThingWithComps>> SpatialIndex { get; set; }
             public Dictionary<ThingWithComps, IntVec3> WeaponToGrid { get; set; }
             public Dictionary<WeaponCategory, List<ThingWithComps>> CategorizedWeapons { get; set; }
+            
+            // Performance optimization: Cache pawn-weapon scores
+            public Dictionary<string, float> PawnWeaponScoreCache { get; set; }
 
             public WeaponCacheEntry()
             {
@@ -32,6 +35,7 @@ namespace AutoArm
                 SpatialIndex = new Dictionary<IntVec3, List<ThingWithComps>>();
                 WeaponToGrid = new Dictionary<ThingWithComps, IntVec3>();
                 CategorizedWeapons = new Dictionary<WeaponCategory, List<ThingWithComps>>();
+                PawnWeaponScoreCache = new Dictionary<string, float>();
                 LastChangeDetectedTick = 0;
 
                 // Initialize categories
@@ -279,6 +283,9 @@ namespace AutoArm
             {
                 rebuildStates.Remove(map);
             }
+
+            // Also clear weapon base score cache when map cache is invalidated
+            WeaponScoringHelper.ClearWeaponScoreCache();
 
             AutoArmDebug.Log($"Invalidated weapon cache for {map}");
         }
@@ -565,6 +572,66 @@ namespace AutoArm
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Get cached pawn-weapon score or calculate and cache it
+        /// </summary>
+        public static float GetCachedWeaponScore(Pawn pawn, ThingWithComps weapon)
+        {
+            if (pawn?.Map == null || weapon == null)
+                return 0f;
+
+            if (!weaponCache.TryGetValue(pawn.Map, out var cache))
+                return WeaponScoringHelper.GetTotalScore(pawn, weapon);
+
+            // Create cache key with pawn ID and weapon instance ID
+            string cacheKey = $"{pawn.thingIDNumber}_{weapon.thingIDNumber}";
+
+            // Check if score is already cached
+            if (cache.PawnWeaponScoreCache.TryGetValue(cacheKey, out float cachedScore))
+            {
+                return cachedScore;
+            }
+
+            // Calculate score and cache it
+            float score = WeaponScoringHelper.GetTotalScore(pawn, weapon);
+            cache.PawnWeaponScoreCache[cacheKey] = score;
+
+            // Keep cache size reasonable - clear if too large
+            if (cache.PawnWeaponScoreCache.Count > 5000)
+            {
+                cache.PawnWeaponScoreCache.Clear();
+                AutoArmDebug.Log("Cleared pawn-weapon score cache due to size");
+            }
+
+            return score;
+        }
+
+        /// <summary>
+        /// Clear pawn-weapon score cache for a specific pawn (when skills/traits change)
+        /// </summary>
+        public static void ClearPawnScoreCache(Pawn pawn)
+        {
+            if (pawn?.Map == null)
+                return;
+
+            if (!weaponCache.TryGetValue(pawn.Map, out var cache))
+                return;
+
+            var keysToRemove = cache.PawnWeaponScoreCache.Keys
+                .Where(key => key.StartsWith($"{pawn.thingIDNumber}_"))
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                cache.PawnWeaponScoreCache.Remove(key);
+            }
+
+            if (keysToRemove.Any())
+            {
+                AutoArmDebug.Log($"Cleared {keysToRemove.Count} cached scores for pawn {pawn.Name?.ToStringShort ?? pawn.Label}");
+            }
         }
     }
 }

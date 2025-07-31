@@ -1,4 +1,5 @@
 ﻿using RimWorld;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -296,43 +297,66 @@ namespace AutoArm.Testing
                     // Find appropriate stuff
                     ThingDef stuffDef = null;
 
-                    // Try to find the best material for this weapon
-                    if (weaponDef.stuffCategories != null && weaponDef.stuffCategories.Count > 0)
+                    // For tests, always use Steel for consistency
+                    // This prevents material differences from affecting test results
+                    stuffDef = ThingDefOf.Steel;
+
+                    // Verify the weapon can use this material
+                    if (!CanUseStuff(weaponDef, stuffDef))
                     {
-                        // For melee weapons, prefer plasteel if available
-                        if (weaponDef.IsMeleeWeapon)
+                        // For knives and other weapons that might not accept steel, try other materials
+                        if (weaponDef.defName.Contains("Knife") || weaponDef.defName.Contains("Shiv"))
                         {
-                            var plasteel = DefDatabase<ThingDef>.GetNamedSilentFail("Plasteel");
-                            if (plasteel != null && CanUseStuff(weaponDef, plasteel))
+                            // Try common materials for knives
+                            var materials = new[] { ThingDefOf.Steel, ThingDefOf.Plasteel, ThingDefOf.WoodLog };
+                            foreach (var mat in materials.Where(m => m != null))
                             {
-                                stuffDef = plasteel;
+                                if (CanUseStuff(weaponDef, mat))
+                                {
+                                    stuffDef = mat;
+                                    break;
+                                }
                             }
                         }
-
-                        // If no stuff found yet, use first valid material
-                        if (stuffDef == null)
+                        
+                        // If still no valid material, find first valid material
+                        if (stuffDef == null || !CanUseStuff(weaponDef, stuffDef))
                         {
-                            foreach (var category in weaponDef.stuffCategories)
+                            if (weaponDef.stuffCategories != null)
                             {
-                                var validStuff = DefDatabase<ThingDef>.AllDefs
-                                    .Where(td => td.stuffProps != null &&
-                                                td.stuffProps.categories != null &&
-                                                td.stuffProps.categories.Contains(category))
-                                    .FirstOrDefault();
-                                if (validStuff != null)
+                                foreach (var category in weaponDef.stuffCategories)
                                 {
-                                    stuffDef = validStuff;
-                                    break;
+                                    var validStuff = DefDatabase<ThingDef>.AllDefs
+                                        .Where(td => td.stuffProps != null &&
+                                                    td.stuffProps.categories != null &&
+                                                    td.stuffProps.categories.Contains(category))
+                                        .FirstOrDefault();
+                                    if (validStuff != null)
+                                    {
+                                        stuffDef = validStuff;
+                                        break;
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Final fallback
+                    // Final safety check - if still null, use wood as last resort
                     if (stuffDef == null)
                     {
-                        stuffDef = ThingDefOf.Steel;
-                        AutoArmDebug.Log($"[TEST] Using Steel as fallback material for {weaponDef.defName}");
+                        stuffDef = ThingDefOf.WoodLog;
+                        // If wood doesn't work either, just use the first available material
+                        if (!CanUseStuff(weaponDef, stuffDef))
+                        {
+                            stuffDef = DefDatabase<ThingDef>.AllDefs
+                                .FirstOrDefault(td => td.stuffProps != null && CanUseStuff(weaponDef, td));
+                        }
+                    }
+                    
+                    if (stuffDef == null)
+                    {
+                        AutoArmDebug.LogError($"[TEST] No valid material found for {weaponDef.defName}");
+                        return null;
                     }
 
                     weapon = ThingMaker.MakeThing(weaponDef, stuffDef) as ThingWithComps;
@@ -383,6 +407,63 @@ namespace AutoArm.Testing
         public static ThingDef GetWeaponDef(string defName)
         {
             return DefDatabase<ThingDef>.GetNamedSilentFail(defName);
+        }
+
+        /// <summary>
+        /// Safely destroy a weapon, handling container removal
+        /// </summary>
+        public static void SafeDestroyWeapon(ThingWithComps weapon)
+        {
+            if (weapon == null || weapon.Destroyed)
+                return;
+
+            try
+            {
+                // Track that we're destroying this to prevent double-destroy
+                var weaponId = weapon.thingIDNumber;
+                
+                // Remove from equipment if equipped
+                if (weapon.ParentHolder is Pawn_EquipmentTracker equipment)
+                {
+                    var pawn = equipment.pawn;
+                    if (pawn?.equipment?.Primary == weapon)
+                    {
+                        pawn.equipment.Remove(weapon);
+                    }
+                }
+                
+                // Remove from inventory if in inventory
+                else if (weapon.ParentHolder is Pawn_InventoryTracker inventory)
+                {
+                    inventory.innerContainer.Remove(weapon);
+                }
+                
+                // Remove from any other container
+                else if (weapon.holdingOwner != null)
+                {
+                    weapon.holdingOwner.Remove(weapon);
+                }
+
+                // Despawn if spawned
+                if (weapon.Spawned)
+                {
+                    weapon.DeSpawn();
+                }
+
+                // Now destroy - but check again in case it was destroyed during cleanup
+                if (!weapon.Destroyed)
+                {
+                    weapon.Destroy();
+                }
+            }
+            catch (Exception e)
+            {
+                // Don't log errors for already destroyed weapons
+                if (!e.Message.Contains("already-destroyed"))
+                {
+                    AutoArmDebug.LogError($"[TEST] Failed to safely destroy weapon {weapon?.Label}: {e.Message}");
+                }
+            }
         }
     }
 }

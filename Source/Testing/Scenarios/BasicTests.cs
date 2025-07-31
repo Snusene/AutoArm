@@ -17,6 +17,20 @@ namespace AutoArm.Testing.Scenarios
 
             // Clear all systems before test
             TestRunnerFix.ResetAllSystems();
+            
+            // Clear any existing weapons in the test area to prevent interference
+            var testArea = CellRect.CenteredOn(map.Center, 20);
+            var existingWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
+                .Where(t => testArea.Contains(t.Position) && t.Spawned)
+                .ToList();
+            
+            foreach (var weapon in existingWeapons)
+            {
+                weapon.DeSpawn();
+            }
+            
+            // Force cache rebuild
+            ImprovedWeaponCacheManager.InvalidateCache(map);
 
             testPawn = TestHelpers.CreateTestPawn(map);
             if (testPawn != null)

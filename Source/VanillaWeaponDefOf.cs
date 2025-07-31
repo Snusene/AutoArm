@@ -13,6 +13,9 @@ namespace AutoArm
         public static ThingDef Gun_AssaultRifle => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_AssaultRifle");
         public static ThingDef Gun_SniperRifle => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_SniperRifle");
         public static ThingDef Gun_ChargeRifle => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_ChargeRifle");
+        public static ThingDef Gun_HeavySMG => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_HeavySMG");
+        public static ThingDef Gun_LMG => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_LMG");
+        public static ThingDef Gun_Minigun => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_Minigun");
 
         public static ThingDef MeleeWeapon_Knife => DefDatabase<ThingDef>.GetNamedSilentFail("MeleeWeapon_Knife");
         public static ThingDef MeleeWeapon_Club => DefDatabase<ThingDef>.GetNamedSilentFail("MeleeWeapon_Club");

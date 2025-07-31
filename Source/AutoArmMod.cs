@@ -229,7 +229,7 @@ namespace AutoArm
         private void DrawGeneralTab(Listing_Standard listing)
         {
             DrawCheckbox(listing, "Enable Auto Arm", ref settings.modEnabled,
-                "When enabled, colonists will automatically equip better weapons based on their outfit policy.");
+                "When enabled, colonists will automatically equip better weapons based on their outfit policy. Turn this off if you just want the weapon filter.");
 
             listing.Gap(SMALL_GAP);
 
@@ -338,7 +338,7 @@ namespace AutoArm
 
             // Detect state changes
             bool stateChanged = ceAmmoSystemEnabled != settings.lastKnownCEAmmoState;
-            
+
             // Force disable if CE ammo system is off
             if (!ceAmmoSystemEnabled && settings.checkCEAmmo)
             {
@@ -351,7 +351,7 @@ namespace AutoArm
                 settings.checkCEAmmo = true;
                 AutoArmDebug.Log("CE ammo system was enabled - auto-enabling ammo checks");
             }
-            
+
             // Update the tracked state
             settings.lastKnownCEAmmoState = ceAmmoSystemEnabled;
 
@@ -372,7 +372,7 @@ namespace AutoArm
             }
 
             GUI.color = oldColor;
-            
+
             // Show status message if CE ammo is disabled
             if (!ceAmmoSystemEnabled)
             {

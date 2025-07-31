@@ -368,111 +368,167 @@ namespace AutoArm.Testing.Scenarios
 
             // Create weapons in different spatial regions
             var weaponDef = VanillaWeaponDefOf.Gun_Autopistol;
-            if (weaponDef == null) return;
+            if (weaponDef == null)
+            {
+                AutoArmDebug.LogError("[TEST] WeaponCacheSpatialIndexTest: Gun_Autopistol def not found");
+                return;
+            }
 
             // Create weapons in a grid pattern across the map
-            for (int x = 10; x < map.Size.x - 10; x += 20)
+            int weaponsCreated = 0;
+            int weaponsAttempted = 0;
+            for (int x = 10; x < Math.Min(map.Size.x - 10, 100); x += 20)
             {
-                for (int z = 10; z < map.Size.z - 10; z += 20)
+                for (int z = 10; z < Math.Min(map.Size.z - 10, 100); z += 20)
                 {
+                    weaponsAttempted++;
                     var pos = new IntVec3(x, 0, z);
-                    if (!pos.InBounds(map) || !pos.Standable(map))
+                    
+                    // Ensure position is valid and standable
+                    if (!pos.InBounds(map))
+                    {
+                        AutoArmDebug.Log($"[TEST] Position {pos} is out of bounds");
                         continue;
+                    }
+                    
+                    if (!pos.Standable(map))
+                    {
+                        // Try to find a nearby standable position
+                        bool found = false;
+                        for (int dx = -2; dx <= 2; dx++)
+                        {
+                            for (int dz = -2; dz <= 2; dz++)
+                            {
+                                var testPos = new IntVec3(x + dx, 0, z + dz);
+                                if (testPos.InBounds(map) && testPos.Standable(map))
+                                {
+                                    pos = testPos;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (found) break;
+                        }
+                        
+                        if (!found)
+                        {
+                            AutoArmDebug.Log($"[TEST] No standable position near {x},{z}");
+                            continue;
+                        }
+                    }
 
                     var weapon = TestHelpers.CreateWeapon(map, weaponDef, pos);
                     if (weapon != null)
                     {
                         testWeapons.Add(weapon);
                         ImprovedWeaponCacheManager.AddWeaponToCache(weapon);
+                        weaponsCreated++;
+                    }
+                    else
+                    {
+                        AutoArmDebug.LogError($"[TEST] Failed to create weapon at {pos}");
                     }
                 }
             }
+            
+            AutoArmDebug.Log($"[TEST] WeaponCacheSpatialIndexTest: Attempted {weaponsAttempted} weapons, created {weaponsCreated} weapons");
         }
 
         public TestResult Run()
         {
-            if (testMap == null)
-            {
-                AutoArmDebug.LogError("[TEST] WeaponCacheSpatialIndexTest: No test map available");
-                return TestResult.Failure("No test map");
-            }
-
-            if (testWeapons.Count == 0)
-            {
-                AutoArmDebug.LogError("[TEST] WeaponCacheSpatialIndexTest: No weapons were created during setup");
-                return TestResult.Failure("No weapons created during setup");
-            }
-
             var result = new TestResult { Success = true };
-            result.Data["TotalWeapons"] = testWeapons.Count;
-
-            // Test 1: Spatial query accuracy
-            var centerPos = testMap.Center;
-            var radius = 50f;
-
-            // First, ensure all weapons are properly cached
-            foreach (var weapon in testWeapons)
+            
+            try
             {
-                if (!weapon.Destroyed && weapon.Spawned)
+                if (testMap == null)
                 {
-                    ImprovedWeaponCacheManager.AddWeaponToCache(weapon);
+                    AutoArmDebug.LogError("[TEST] WeaponCacheSpatialIndexTest: No test map available");
+                    return TestResult.Failure("No test map");
+                }
+
+                if (testWeapons.Count == 0)
+                {
+                    AutoArmDebug.LogError("[TEST] WeaponCacheSpatialIndexTest: No weapons were created during setup");
+                    return TestResult.Failure("No weapons created during setup");
+                }
+
+                result.Data["TotalWeapons"] = testWeapons.Count;
+
+                // Test 1: Spatial query accuracy
+                var centerPos = testMap.Center;
+                var radius = 50f;
+
+                // First, ensure all weapons are properly cached
+                foreach (var weapon in testWeapons)
+                {
+                    if (!weapon.Destroyed && weapon.Spawned)
+                    {
+                        ImprovedWeaponCacheManager.AddWeaponToCache(weapon);
+                    }
+                }
+
+                var nearbyWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(testMap, centerPos, radius).ToList();
+                result.Data["WeaponsInRadius"] = nearbyWeapons.Count;
+
+                // Verify spatial query is accurate - only count spawned, non-destroyed weapons
+                int actualInRange = 0;
+                foreach (var weapon in testWeapons)
+                {
+                    if (!weapon.Destroyed && weapon.Spawned && weapon.Position.DistanceTo(centerPos) <= radius)
+                        actualInRange++;
+                }
+
+                result.Data["ExpectedInRange"] = actualInRange;
+
+                // Remove duplicates from nearbyWeapons
+                var uniqueNearbyWeapons = nearbyWeapons.Distinct().ToList();
+                result.Data["UniqueWeaponsInRadius"] = uniqueNearbyWeapons.Count;
+
+                if (uniqueNearbyWeapons.Count != actualInRange)
+                {
+                    // Allow small discrepancy due to edge cases
+                    if (Math.Abs(uniqueNearbyWeapons.Count - actualInRange) > 2)
+                    {
+                        result.Success = false;
+                        result.Data["Error"] = "Spatial query returned incorrect number of weapons";
+                        AutoArmDebug.LogError($"[TEST] WeaponCacheSpatialIndexTest: Spatial query mismatch - expected: {actualInRange}, got: {uniqueNearbyWeapons.Count} (total with dupes: {nearbyWeapons.Count})");
+                    }
+                }
+
+                // Test 2: Cache invalidation
+                ImprovedWeaponCacheManager.InvalidateCache(testMap);
+
+                // Should rebuild cache on next query
+                var weaponsAfterInvalidate = ImprovedWeaponCacheManager.GetWeaponsNear(testMap, centerPos, radius).ToList();
+                result.Data["WeaponsAfterInvalidate"] = weaponsAfterInvalidate.Count;
+
+                // Test 3: Weapon removal from cache
+                if (testWeapons.Count > 0)
+                {
+                    var weaponToRemove = testWeapons[0];
+                    weaponToRemove.Destroy();
+
+                    // Give cache time to process the destruction
+                    ImprovedWeaponCacheManager.RemoveWeaponFromCache(weaponToRemove);
+
+                    // Cache should handle destroyed weapons
+                    var weaponsAfterDestroy = ImprovedWeaponCacheManager.GetWeaponsNear(testMap, centerPos, 1000f).ToList();
+                    result.Data["WeaponsAfterDestroy"] = weaponsAfterDestroy.Count;
+
+                    if (weaponsAfterDestroy.Contains(weaponToRemove))
+                    {
+                        result.Success = false;
+                        result.Data["Error2"] = "Destroyed weapon still in cache";
+                        AutoArmDebug.LogError($"[TEST] WeaponCacheSpatialIndexTest: Destroyed weapon still in cache - weapon: {weaponToRemove.Label}");
+                    }
                 }
             }
-
-            var nearbyWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(testMap, centerPos, radius).ToList();
-            result.Data["WeaponsInRadius"] = nearbyWeapons.Count;
-
-            // Verify spatial query is accurate - only count spawned, non-destroyed weapons
-            int actualInRange = 0;
-            foreach (var weapon in testWeapons)
+            catch (Exception ex)
             {
-                if (!weapon.Destroyed && weapon.Spawned && weapon.Position.DistanceTo(centerPos) <= radius)
-                    actualInRange++;
-            }
-
-            result.Data["ExpectedInRange"] = actualInRange;
-
-            // Remove duplicates from nearbyWeapons
-            var uniqueNearbyWeapons = nearbyWeapons.Distinct().ToList();
-            result.Data["UniqueWeaponsInRadius"] = uniqueNearbyWeapons.Count;
-
-            if (uniqueNearbyWeapons.Count != actualInRange)
-            {
-                // Allow small discrepancy due to edge cases
-                if (Math.Abs(uniqueNearbyWeapons.Count - actualInRange) > 2)
-                {
-                    result.Success = false;
-                    result.Data["Error"] = "Spatial query returned incorrect number of weapons";
-                    AutoArmDebug.LogError($"[TEST] WeaponCacheSpatialIndexTest: Spatial query mismatch - expected: {actualInRange}, got: {uniqueNearbyWeapons.Count} (total with dupes: {nearbyWeapons.Count})");
-                }
-            }
-
-            // Test 2: Cache invalidation
-            ImprovedWeaponCacheManager.InvalidateCache(testMap);
-
-            // Should rebuild cache on next query
-            var weaponsAfterInvalidate = ImprovedWeaponCacheManager.GetWeaponsNear(testMap, centerPos, radius).ToList();
-            result.Data["WeaponsAfterInvalidate"] = weaponsAfterInvalidate.Count;
-
-            // Test 3: Weapon removal from cache
-            if (testWeapons.Count > 0)
-            {
-                var weaponToRemove = testWeapons[0];
-                weaponToRemove.Destroy();
-
-                // Give cache time to process the destruction
-                ImprovedWeaponCacheManager.RemoveWeaponFromCache(weaponToRemove);
-
-                // Cache should handle destroyed weapons
-                var weaponsAfterDestroy = ImprovedWeaponCacheManager.GetWeaponsNear(testMap, centerPos, 1000f).ToList();
-                result.Data["WeaponsAfterDestroy"] = weaponsAfterDestroy.Count;
-
-                if (weaponsAfterDestroy.Contains(weaponToRemove))
-                {
-                    result.Success = false;
-                    result.Data["Error2"] = "Destroyed weapon still in cache";
-                    AutoArmDebug.LogError($"[TEST] WeaponCacheSpatialIndexTest: Destroyed weapon still in cache - weapon: {weaponToRemove.Label}");
-                }
+                result.Success = false;
+                result.Data["Exception"] = ex.Message;
+                result.Data["StackTrace"] = ex.StackTrace;
+                AutoArmDebug.LogError($"[TEST] WeaponCacheSpatialIndexTest exception: {ex}");
             }
 
             return result;
