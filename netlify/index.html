@@ -787,14 +787,14 @@
                             `<span class="score">${scores.total.toFixed(1)}</span>`);
 
                     tableHTML += `<tr class="${rowClasses}">
-                                            <td>${weaponDisplay}</td>
-                                            <td>${dpsDisplay}</td>
-                                            <td class="acc-value">${accuracyDisplay}</td>
-                                            <td>${burstText}</td>
-                                            <td>${weapon.range}</td>
-                                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                            <td>${totalScoreDisplay}</td>
-                                        </tr>`;
+                                                <td>${weaponDisplay}</td>
+                                                <td>${dpsDisplay}</td>
+                                                <td class="acc-value">${accuracyDisplay}</td>
+                                                <td>${burstText}</td>
+                                                <td>${weapon.range}</td>
+                                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                                <td>${totalScoreDisplay}</td>
+                                            </tr>`;
                 });
 
                 // Set all HTML at once
@@ -878,11 +878,11 @@
                         `<span class="score">${scores.total.toFixed(1)}</span>`;
 
                     tableHTML += `<tr class="${rowClasses}">
-                                            <td>${weaponDisplay}</td>
-                                            <td>${dpsDisplay}</td>
-                                            <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                            <td>${totalScoreDisplay}</td>
-                                        </tr>`;
+                                                <td>${weaponDisplay}</td>
+                                                <td>${dpsDisplay}</td>
+                                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                                <td>${totalScoreDisplay}</td>
+                                            </tr>`;
                 });
 
                 // Set all HTML at once
@@ -952,12 +952,12 @@
             const filterNote = '';
 
             document.getElementById('recommendation').innerHTML = `
-                                <h3>Balance at ${qualityName}</h3>
-                                ${filterNote}
-                                ${skillPref}
-                                <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
-                                <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
-                                `;
+                                    <h3>Balance at ${qualityName}</h3>
+                                    ${filterNote}
+                                    ${skillPref}
+                                    <p><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</p>
+                                    <p><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</p>
+                                    `;
         }
     </script>
 </body>
