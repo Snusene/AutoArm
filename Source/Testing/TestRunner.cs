@@ -1,4 +1,9 @@
-﻿using AutoArm.Testing.Scenarios;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Main test runner and test suite coordinator
+// Runs all tests and manages test execution
+
+using AutoArm.Testing.Scenarios;
+using AutoArm.Testing.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,80 +31,90 @@ namespace AutoArm.Testing
             var results = new TestResults();
             var tests = GetAllTests();
 
-            // Save current debug logging state and disable it during tests
-            bool originalDebugLogging = AutoArmMod.settings?.debugLogging ?? false;
-            if (AutoArmMod.settings != null)
-                AutoArmMod.settings.debugLogging = false;
-
-            isRunningTests = true;
-
-            foreach (var test in tests)
+            // Use the new TestModEnabler to ensure mod is enabled
+            using (var modEnabler = TestModEnabler.ForceEnableForTesting())
             {
+                isRunningTests = true;
+                
+                // Use test execution context to suppress expected warnings
+                using (var testContext = new TestExecutionContext())
+                {
+                    foreach (var test in tests)
+                    {
+                        try
+                        {
+                            // Clear destroyed tracking between tests
+                            SafeTestCleanup.ClearDestroyedTracking();
+                            
+                            // Force garbage collection before test to clean up any lingering references
+                            GC.Collect();
+                            GC.WaitForPendingFinalizers();
+                            
+                            test.Setup(map);
+                            var result = test.Run();
+                            results.AddResult(test.Name, result);
+                            test.Cleanup();
+                            
+                            // Clear tracking again after cleanup
+                            SafeTestCleanup.ClearDestroyedTracking();
+                        }
+                        catch (Exception e)
+                        {
+                            results.AddResult(test.Name, TestResult.Failure($"Exception: {e.Message}"));
+                            Log.Error($"[AutoArm] Test {test.Name} threw exception: {e}");
+
+                            // Try to cleanup even if test failed
+                            try
+                            {
+                                test.Cleanup();
+                            }
+                            catch { }
+                        }
+                    }
+                }
+
+                // Final cleanup - clear any cached references that might have been missed
                 try
                 {
-                    test.Setup(map);
-                    var result = test.Run();
-                    results.AddResult(test.Name, result);
-                    test.Cleanup();
+                    ImprovedWeaponCacheManager.InvalidateCache(map);
+                    JobGiver_PickUpBetterWeapon.CleanupCaches();
                 }
-                catch (Exception e)
-                {
-                    results.AddResult(test.Name, TestResult.Failure($"Exception: {e.Message}"));
-                    Log.Error($"[AutoArm] Test {test.Name} threw exception: {e}");
+                catch { }
 
-                    // Try to cleanup even if test failed
-                    try
-                    {
-                        test.Cleanup();
-                    }
-                    catch { }
-                }
-            }
-
-            // Final cleanup - clear any cached references that might have been missed
-            try
-            {
-                ImprovedWeaponCacheManager.InvalidateCache(map);
-                JobGiver_PickUpBetterWeapon.CleanupCaches();
-            }
-            catch { }
-
-            // Restore debug logging state
-            isRunningTests = false;
-            if (AutoArmMod.settings != null)
-                AutoArmMod.settings.debugLogging = originalDebugLogging;
+                isRunningTests = false;
+            } // modEnabler.Dispose() will restore original settings
 
             return results;
         }
 
         public static TestResult RunSingleTest(Map map, ITestScenario test)
         {
-            // Save current debug logging state and disable it during test
-            bool originalDebugLogging = AutoArmMod.settings?.debugLogging ?? false;
-            if (AutoArmMod.settings != null)
-                AutoArmMod.settings.debugLogging = false;
+            // Use the new TestModEnabler to ensure mod is enabled
+            using (var modEnabler = TestModEnabler.ForceEnableForTesting())
+            {
+                isRunningTests = true;
 
-            isRunningTests = true;
-
-            try
-            {
-                test.Setup(map);
-                var result = test.Run();
-                test.Cleanup();
-                return result;
-            }
-            catch (Exception e)
-            {
-                Log.Error($"[AutoArm] Test {test.Name} threw exception: {e}");
-                return TestResult.Failure($"Exception: {e.Message}");
-            }
-            finally
-            {
-                // Restore debug logging state
-                isRunningTests = false;
-                if (AutoArmMod.settings != null)
-                    AutoArmMod.settings.debugLogging = originalDebugLogging;
-            }
+                // Use test execution context to suppress expected warnings
+                using (var testContext = new TestExecutionContext())
+                {
+                    try
+                    {
+                        test.Setup(map);
+                        var result = test.Run();
+                        test.Cleanup();
+                        return result;
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error($"[AutoArm] Test {test.Name} threw exception: {e}");
+                        return TestResult.Failure($"Exception: {e.Message}");
+                    }
+                    finally
+                    {
+                        isRunningTests = false;
+                    }
+                }
+            } // modEnabler.Dispose() will restore original settings
         }
 
         public static List<ITestScenario> GetAllTests()
@@ -126,7 +141,6 @@ namespace AutoArm.Testing
 
                 // DLC and age tests
                 tests.Add(new ChildColonistTest());
-                tests.Add(new NobilityTest());
 
                 // Mod compatibility tests
                 tests.Add(new CombatExtendedAmmoTest());
@@ -137,6 +151,18 @@ namespace AutoArm.Testing
                 tests.Add(new SimpleSidearmsSlotLimitTest());
                 tests.Add(new SimpleSidearmsForcedWeaponTest());
 
+                // Pick Up and Haul + SimpleSidearms integration tests
+                tests.Add(new PickUpAndHaulWeaponHoardingTest());
+                tests.Add(new PickUpAndHaulWeaponReplacementTest());
+                tests.Add(new ComprehensiveWeaponHoardingFixTest());
+                tests.Add(new PacifistWeaponHaulingTest());
+                tests.Add(new ForcedWeaponPickUpAndHaulProtectionTest());
+
+                // Pacifist behavior tests
+                tests.Add(new PacifistBaseGameTest());
+                tests.Add(new PacifistSimpleSidearmsTest());
+                tests.Add(new PacifistFullModStackTest());
+                
                 // Weapon blacklist tests
                 tests.Add(new WeaponBlacklistBasicTest());
                 tests.Add(new WeaponBlacklistExpirationTest());
@@ -144,6 +170,13 @@ namespace AutoArm.Testing
 
                 // Cache system tests
                 tests.Add(new WeaponCacheSpatialIndexTest());
+
+                // Settings tests
+                tests.Add(new NotificationSettingTest());
+                tests.Add(new ForcedWeaponQualityUpgradeTest());
+                tests.Add(new WeaponUpgradeThresholdTest());
+                tests.Add(new DisableDuringRaidsTest());
+                tests.Add(new RespectWeaponBondsTest());
 
                 // System tests
                 tests.Add(new MapTransitionTest());

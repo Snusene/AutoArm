@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Test runner utility fixes
+// Ensures proper test isolation and cleanup
+
 using System;
 using System.Linq;
 using Verse;
@@ -22,7 +26,7 @@ namespace AutoArm.Testing
                 TimingHelper.ClearCooldown(pawn, cooldownType);
             }
 
-            AutoArmDebug.Log($"[TEST] Cleared all cooldowns for {pawn.Name}");
+            AutoArmLogger.Log($"[TEST] Cleared all cooldowns for {pawn.Name}");
         }
 
         /// <summary>
@@ -32,7 +36,7 @@ namespace AutoArm.Testing
         {
             // Clear all cooldowns by cleaning up
             TimingHelper.CleanupOldCooldowns();
-            AutoArmDebug.Log("[TEST] Cleared all global cooldowns");
+            AutoArmLogger.Log("[TEST] Cleared all global cooldowns");
         }
 
         /// <summary>
@@ -40,6 +44,12 @@ namespace AutoArm.Testing
         /// </summary>
         public static void ResetAllSystems()
         {
+            // Use TestModEnabler to ensure mod is enabled
+            TestModEnabler.EnsureModEnabled();
+            
+            AutoArmLogger.Log($"[TEST] Mod state after reset: modEnabled={AutoArmMod.settings?.modEnabled}");
+            AutoArmLogger.Log($"[TEST] Settings instance hash: {AutoArmMod.settings?.GetHashCode() ?? -1}");
+            
             // Clear weapon caches
             ClearAllWeaponCaches();
             WeaponScoreCache.ClearAllCaches();
@@ -49,6 +59,9 @@ namespace AutoArm.Testing
             ClearAllForcedWeapons();
             ClearAllAutoEquipTracking();
             ClearAllWeaponBlacklists();
+            
+            // Clear settings cache to ensure fresh state
+            SettingsCacheHelper.ClearAllCaches();
 
             // Clear timing systems
             ClearAllGlobalCooldowns();
@@ -56,7 +69,7 @@ namespace AutoArm.Testing
             // Clear validation caches
             CleanupHelper.PerformFullCleanup();
 
-            AutoArmDebug.Log("[TEST] Reset all AutoArm systems");
+            AutoArmLogger.Log("[TEST] Reset all AutoArm systems");
         }
 
         /// <summary>
@@ -81,7 +94,7 @@ namespace AutoArm.Testing
             // Stop any current jobs that might interfere
             pawn.jobs?.StopAll();
 
-            AutoArmDebug.Log($"[TEST] Prepared {pawn.Name} for weapon testing");
+            AutoArmLogger.Log($"[TEST] Prepared {pawn.Name} for weapon testing");
         }
 
         /// <summary>

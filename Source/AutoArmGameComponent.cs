@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Game save/load persistence for forced weapon assignments
+// Handles: Saving forced weapon data between game sessions
+// Uses: ForcedWeaponHelper for runtime data management
+// Critical: Handles legacy save format migration for backwards compatibility
+
 using System;
 using System.Collections.Generic;
 using Verse;
@@ -272,7 +278,7 @@ namespace AutoArm
             foreach (var key in keysToRemove)
                 forcedSidearmDefs.Remove(key);
 
-            AutoArmDebug.Log($"Saving forced weapon data: {forcedPrimaryWeaponDefs.Count} primary, {forcedSidearmDefs.Count} sidearm entries");
+            AutoArmLogger.Log($"Saving forced weapon data: {forcedPrimaryWeaponDefs.Count} primary, {forcedSidearmDefs.Count} sidearm entries");
         }
 
         /// <summary>
@@ -341,7 +347,7 @@ namespace AutoArm
 
             ForcedWeaponHelper.LoadSidearmSaveData(sidearmDataToRestore);
 
-            AutoArmDebug.Log($"Loaded forced weapon data: {primaryDataToRestore.Count} primary, {sidearmDataToRestore.Count} sidearm entries");
+            AutoArmLogger.Log($"Loaded forced weapon data: {primaryDataToRestore.Count} primary, {sidearmDataToRestore.Count} sidearm entries");
 
             // Clear the temporary storage
             forcedPrimaryWeaponDefs?.Clear();
@@ -354,7 +360,7 @@ namespace AutoArm
         public override void StartedNewGame()
         {
             base.StartedNewGame();
-            AutoArmDebug.Log("AutoArm GameComponent initialized for new game");
+            AutoArmLogger.Log("AutoArm GameComponent initialized for new game");
         }
 
         /// <summary>
@@ -363,7 +369,7 @@ namespace AutoArm
         public override void LoadedGame()
         {
             base.LoadedGame();
-            AutoArmDebug.Log("AutoArm GameComponent loaded from save");
+            AutoArmLogger.Log("AutoArm GameComponent loaded from save");
         }
 
         /// <summary>

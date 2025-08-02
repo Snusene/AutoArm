@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Core equipping logic and auto-equip job tracking
+// Handles: Weapon pickup decisions, job creation, forced weapon tracking
+// Uses: ValidationHelper, TimingHelper, WeaponScoringHelper, JobHelper
+// Critical: Maintains AutoEquipTracker to prevent re-pickup loops
+
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -112,7 +118,7 @@ namespace AutoArm
 
             if (toRemove.Count > 0)
             {
-                AutoArmDebug.Log($"Cleaned up {toRemove.Count} old job IDs and {deadPawns.Count} dead pawn records");
+                AutoArmLogger.Log($"Cleaned up {toRemove.Count} old job IDs and {deadPawns.Count} dead pawn records");
             }
         }
     }
@@ -125,7 +131,7 @@ namespace AutoArm
             {
                 if (!ValidationHelper.SafeIsColonist(pawn))
                 {
-                    AutoArmDebug.LogPawn(pawn, "Not colonist");
+                    AutoArmLogger.LogPawn(pawn, "Not colonist");
                     return false;
                 }
 
@@ -140,41 +146,19 @@ namespace AutoArm
                 catch
                 {
                     // If we can't check work tags, continue
-                    AutoArmDebug.LogPawn(pawn, "Could not check work tags - continuing");
+                    AutoArmLogger.LogPawn(pawn, "Could not check work tags - continuing");
                 }
 
                 if (pawn.Drafted)
                 {
-                    AutoArmDebug.LogPawn(pawn, "Drafted");
+                    AutoArmLogger.LogPawn(pawn, "Drafted");
                     return false;
                 }
 
-                if (pawn.outfits?.CurrentApparelPolicy?.filter == null)
-                {
-                    AutoArmDebug.LogPawn(pawn, "No outfit filter");
-                    return true;
-                }
-
-                var filter = pawn.outfits.CurrentApparelPolicy.filter;
-                bool anyWeaponAllowed = WeaponThingFilterUtility.AllWeapons.Any(td => filter.Allows(td));
-
-                // Only log when weapons are NOT allowed (more interesting case)
-                if (!anyWeaponAllowed)
-                {
-                    // Also check and drop any sidearms when no weapons are allowed
-                    if (SimpleSidearmsCompat.IsLoaded())
-                    {
-                        LongEventHandler.ExecuteWhenFinished(() =>
-                        {
-                            if (pawn != null && pawn.Spawned && !pawn.Dead)
-                            {
-                                Pawn_OutfitTracker_CurrentApparelPolicy_Setter_Patch.CheckAndDropDisallowedSidearms(pawn);
-                            }
-                        });
-                    }
-                }
-
-                return anyWeaponAllowed;
+                // Always return true - let the JobGiver run and check actual weapons
+                // The outfit filter will be checked per-weapon in ValidationHelper.IsValidWeapon
+                // This avoids the issue where quality filters cause false negatives
+                return true;
             }
             catch (Exception ex)
             {

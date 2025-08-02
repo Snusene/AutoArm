@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Shared job generation utilities and pawn validation
+// Common functions used by multiple job generators
+
 using RimWorld;
 using System;
 using System.Linq;
@@ -25,7 +29,7 @@ namespace AutoArm
                 {
                     if (pawn.IsQuestLodger())
                     {
-                        AutoArmDebug.LogPawn(pawn, "Is quest lodger");
+                        AutoArmLogger.LogPawn(pawn, "Is quest lodger");
                         return true;
                     }
                 }
@@ -52,7 +56,7 @@ namespace AutoArm
                         tag.Contains("Lend") ||         // Pawn lend quests
                         tag.Contains("Borrowed"))
                     {
-                        AutoArmDebug.LogPawn(pawn, $"Has temporary quest tag: {tag}");
+                        AutoArmLogger.LogPawn(pawn, $"Has temporary quest tag: {tag}");
                         return true;
                     }
                 }
@@ -79,7 +83,7 @@ namespace AutoArm
 
                         if (questPawns.Contains(pawn))
                         {
-                            AutoArmDebug.LogPawn(pawn, $"Is part of temporary quest: {quest.name}");
+                            AutoArmLogger.LogPawn(pawn, $"Is part of temporary quest: {quest.name}");
                             return true;
                         }
                     }
@@ -96,7 +100,7 @@ namespace AutoArm
                     tag.Contains("BeggarsJoin") ||    // Beggars who join permanently
                     tag.Contains("QuestReward") && !tag.Contains("Temporary"))) // Quest rewards that aren't temporary
                 {
-                    AutoArmDebug.LogPawn(pawn, "Has permanent joiner quest tag - treating as permanent");
+                    AutoArmLogger.LogPawn(pawn, "Has permanent joiner quest tag - treating as permanent");
                     return false; // These are permanent joiners
                 }
 
@@ -106,19 +110,19 @@ namespace AutoArm
                     pawn.ownership?.OwnedBed != null &&
                     pawn.ownership.OwnedBed.Map == pawn.Map)
                 {
-                    AutoArmDebug.LogPawn(pawn, "Has quest tags but is integrated (work + bed) - treating as permanent");
+                    AutoArmLogger.LogPawn(pawn, "Has quest tags but is integrated (work + bed) - treating as permanent");
                     return false;
                 }
 
                 // Log that we found quest tags but treating as permanent by default
-                AutoArmDebug.LogPawn(pawn, $"Has quest tags ({string.Join(", ", pawn.questTags)}) but no temporary indicators - treating as permanent");
+                AutoArmLogger.LogPawn(pawn, $"Has quest tags ({string.Join(", ", pawn.questTags)}) but no temporary indicators - treating as permanent");
                 return false; // Default to permanent for unknown quest types
             }
 
             // Borrowed by another faction
             if (pawn.IsBorrowedByAnyFaction())
             {
-                AutoArmDebug.LogPawn(pawn, "Is borrowed by faction");
+                AutoArmLogger.LogPawn(pawn, "Is borrowed by faction");
                 return true;
             }
 
@@ -126,7 +130,7 @@ namespace AutoArm
             if (pawn.guest != null && pawn.guest.HostFaction == Faction.OfPlayer &&
                 pawn.Faction != Faction.OfPlayer)
             {
-                AutoArmDebug.LogPawn(pawn, $"Is guest from {pawn.Faction?.Name}");
+                AutoArmLogger.LogPawn(pawn, $"Is guest from {pawn.Faction?.Name}");
                 return true;
             }
 
@@ -134,7 +138,7 @@ namespace AutoArm
             if (pawn.Faction == Faction.OfPlayer && pawn.HostFaction != null &&
                 pawn.HostFaction != Faction.OfPlayer)
             {
-                AutoArmDebug.LogPawn(pawn, $"Is on loan to {pawn.HostFaction.Name}");
+                AutoArmLogger.LogPawn(pawn, $"Is on loan to {pawn.HostFaction.Name}");
                 return true;
             }
 

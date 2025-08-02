@@ -76,9 +76,9 @@
     <Compile Include="Source\AutoArmGameComponent.cs" />
     <Compile Include="Source\AutoArmMod.cs" />
     <Compile Include="Source\AutoArmSettings.cs" />
-    <Compile Include="Source\CombinedHarmonyPatches.cs" />
     <Compile Include="Source\compatibility\CECompat.cs" />
     <Compile Include="Source\compatibility\InfusionCompat.cs" />
+    <Compile Include="Source\compatibility\PickUpAndHaulCompat.cs" />
     <Compile Include="Source\compatibility\SimpleSidearmsCompat.cs" />
     <Compile Include="Source\ConflictDetection.cs" />
     <Compile Include="Source\Helpers\CleanupHelper.cs" />
@@ -96,13 +96,18 @@
     <Compile Include="Source\Helpers\WeaponBlacklist.cs" />
     <Compile Include="Source\Helpers\WeaponScoringHelper.cs" />
     <Compile Include="Source\JobGiverHelpers.cs" />
-    <Compile Include="Source\Logging\AutoArmDebugLogger.cs" />
     <Compile Include="Source\Logging\AutoArmLogger.cs" />
-    <Compile Include="Source\Logging\DebugLogConverter.cs" />
-    <Compile Include="Source\Logging\DebugLogFlushPatches.cs" />
-    <Compile Include="Source\Logging\DebugLogHelpers.cs" />
     <Compile Include="Source\MemoryCleanupManager.cs" />
     <Compile Include="Source\ModInit.cs" />
+    <Compile Include="Source\Patches\ChildWeaponPatches.cs" />
+    <Compile Include="Source\Patches\EquipmentPatches.cs" />
+    <Compile Include="Source\Patches\InventoryPatches.cs" />
+    <Compile Include="Source\Patches\OutfitFilterPatches.cs" />
+    <Compile Include="Source\Patches\UIPatches.cs" />
+    <Compile Include="Source\Patches\WeaponCachePatches.cs" />
+    <Compile Include="Source\Testing\Helpers\SafeTestCleanup.cs" />
+    <Compile Include="Source\Testing\Helpers\TestLogFilter.cs" />
+    <Compile Include="Source\Testing\Helpers\TestResultBuilder.cs" />
     <Compile Include="Source\Testing\PerformanceTestRunner.cs" />
     <Compile Include="Source\Testing\Scenarios\BasicTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CompatibilityTests.cs" />
@@ -110,8 +115,11 @@
     <Compile Include="Source\Testing\Scenarios\DiagnosticTest.cs" />
     <Compile Include="Source\Testing\Scenarios\ForcedWeaponTests.cs" />
     <Compile Include="Source\Testing\Scenarios\MiscTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\PacifistBehaviorTests.cs" />
     <Compile Include="Source\Testing\Scenarios\PawnBehaviorTests.cs" />
     <Compile Include="Source\Testing\Scenarios\PerformanceTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\PickUpAndHaulSidearmsTest.cs" />
+    <Compile Include="Source\Testing\Scenarios\SettingsTests.cs" />
     <Compile Include="Source\Testing\Scenarios\SystemTests.cs" />
     <Compile Include="Source\Testing\Scenarios\WeaponScoringDebugTest.cs" />
     <Compile Include="Source\Testing\Scenarios\WeaponScoringTests.cs" />
@@ -119,11 +127,11 @@
     <Compile Include="Source\Testing\TestDebugger.cs" />
     <Compile Include="Source\Testing\TestHelpers.cs" />
     <Compile Include="Source\Testing\TestInterfaces.cs" />
+    <Compile Include="Source\Testing\TestModEnabler.cs" />
     <Compile Include="Source\Testing\TestRunner.cs" />
     <Compile Include="Source\Testing\TestRunnerFix.cs" />
     <Compile Include="Source\Testing\TestSimpleSidearmsValidation.cs" />
     <Compile Include="Source\Testing\TestSuites.cs" />
-    <Compile Include="Source\Testing\TestValidator.cs" />
     <Compile Include="Source\Testing\WeaponCategorizationDiagnostic.cs" />
     <Compile Include="Source\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\VanillaWeaponDefOf.cs" />
@@ -154,8 +162,7 @@
     <None Include="obj\Debug\DesignTimeResolveAssemblyReferencesInput.cache" />
     <None Include="obj\Release\AutoArm.csproj.AssemblyReference.cache" />
     <None Include="README.md" />
-    <None Include="Source\Logging\README.md" />
-    <None Include="Source\Logging\SUMMARY.md" />
+    <None Include="Source\Testing\TEST_ERROR_GUIDELINES.md" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="bin\Release\" />

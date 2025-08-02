@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Optimized distance calculations for weapon searches
+// Uses squared distances to avoid expensive sqrt operations in hot paths
+// Critical: Performance optimization for large colonies with many weapons
+// Note: Always use squared distance for comparisons, real distance only when needed
+
 using System.Collections.Generic;
 using Verse;
 

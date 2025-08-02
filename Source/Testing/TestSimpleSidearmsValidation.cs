@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: SimpleSidearms validation test
+// Tests SimpleSidearms compatibility and weapon validation
+
 using RimWorld;
 using System;
 using System.Linq;
@@ -22,7 +26,7 @@ namespace AutoArm
                 if (pawn == null)
                 {
                     Log.Warning("[AutoArm Test] No colonist found for testing");
-                    AutoArmDebug.Log("[TEST] TestSimpleSidearmsValidation: No colonist found for testing - test cannot proceed");
+                    AutoArmLogger.Log("[TEST] TestSimpleSidearmsValidation: No colonist found for testing - test cannot proceed");
                     return;
                 }
 
@@ -32,7 +36,7 @@ namespace AutoArm
                 if (!SimpleSidearmsCompat.IsLoaded())
                 {
                     Log.Warning("[AutoArm Test] SimpleSidearms not loaded - test cannot proceed");
-                    AutoArmDebug.Log("[TEST] TestSimpleSidearmsValidation: SimpleSidearms not loaded - this test requires SimpleSidearms mod");
+                    AutoArmLogger.Log("[TEST] TestSimpleSidearmsValidation: SimpleSidearms not loaded - this test requires SimpleSidearms mod");
                     return;
                 }
 
@@ -56,7 +60,7 @@ namespace AutoArm
                     Log.Message($"[AutoArm Test] Unarmed pawn can pickup {testWeapon.Label}: {canPickup} (reason: {reason})");
                     if (!canPickup && pawn.equipment?.Primary == null)
                     {
-                        AutoArmDebug.Log($"[TEST] TestSimpleSidearmsValidation: FAILURE - Unarmed pawn {pawn.Label} cannot pickup {testWeapon.Label}: {reason}");
+                        AutoArmLogger.Log($"[TEST] TestSimpleSidearmsValidation: FAILURE - Unarmed pawn {pawn.Label} cannot pickup {testWeapon.Label}: {reason}");
                     }
                 }
 
@@ -77,7 +81,7 @@ namespace AutoArm
                         // Log if SimpleSidearms is incorrectly blocking weapon pickup
                         if (!canPickup && reason != null && reason.Contains("sidearm") && !SimpleSidearmsCompat.IsRememberedSidearm(pawn, originalPrimary))
                         {
-                            AutoArmDebug.Log($"[TEST] TestSimpleSidearmsValidation: Potential issue - primary weapon not marked as remembered sidearm, blocking pickup: {reason}");
+                            AutoArmLogger.Log($"[TEST] TestSimpleSidearmsValidation: Potential issue - primary weapon not marked as remembered sidearm, blocking pickup: {reason}");
                         }
                     }
                 }
@@ -143,7 +147,7 @@ namespace AutoArm
             catch (Exception ex)
             {
                 Log.Error($"[AutoArm Test] Error during test: {ex}");
-                AutoArmDebug.Log($"[TEST] TestSimpleSidearmsValidation: Test failed with exception: {ex.Message}");
+                AutoArmLogger.Log($"[TEST] TestSimpleSidearmsValidation: Test failed with exception: {ex.Message}");
             }
         }
 
@@ -161,7 +165,7 @@ namespace AutoArm
             if (!isValid)
             {
                 Log.Message($"[AutoArm Test] Rejection reason: {reason}");
-                AutoArmDebug.Log($"[TEST] TestSimpleSidearmsValidation: Weapon {weapon.Label} rejected for {pawn.Label}: {reason}");
+                AutoArmLogger.Log($"[TEST] TestSimpleSidearmsValidation: Weapon {weapon.Label} rejected for {pawn.Label}: {reason}");
             }
 
             // Additional diagnostics

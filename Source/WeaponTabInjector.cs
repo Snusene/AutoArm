@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Runtime weapon category injection for outfit filtering
+// Moves weapons under apparel category for UI integration
+
 using HarmonyLib;
 using System;
 using System.Linq;
@@ -81,6 +85,14 @@ namespace AutoArm
         public static void Postfix()
         {
             OutfitWeaponHelper.AddWeaponsToOutfits();
+            
+            // Check for bonded weapons if setting is enabled
+            if (AutoArmMod.settings?.modEnabled == true &&
+                AutoArmMod.settings?.respectWeaponBonds == true && 
+                ModsConfig.RoyaltyActive)
+            {
+                AutoArmMod.MarkAllBondedWeaponsAsForcedOnLoad();
+            }
         }
     }
 

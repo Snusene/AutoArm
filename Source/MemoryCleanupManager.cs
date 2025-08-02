@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Memory management and cleanup coordination
+// Prevents memory leaks in long-running games
+
 using System;
 using Verse;
 

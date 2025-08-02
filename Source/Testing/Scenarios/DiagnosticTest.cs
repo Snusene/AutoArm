@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Diagnostic test for verifying basic mod functionality
+// Checks weapon def availability and scoring system
+
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -25,6 +29,20 @@ namespace AutoArm.Testing.Scenarios
             
             try
             {
+                // Ensure mod is enabled for diagnostic
+                TestModEnabler.EnsureModEnabled();
+                
+                // Test 0: Check mod status
+                result.Data["Mod_Enabled"] = AutoArmMod.settings?.modEnabled ?? false;
+                result.Data["Settings_Instance"] = AutoArmMod.settings?.GetHashCode() ?? -1;
+                result.Data["TestRunner_Active"] = TestRunner.IsRunningTests;
+                
+                if (AutoArmMod.settings?.modEnabled != true)
+                {
+                    result.Success = false;
+                    result.FailureReason = "Mod is disabled during test execution";
+                    result.Data["CRITICAL_ERROR"] = "Mod must be enabled for tests to work";
+                }
                 // Test 1: Check weapon defs are available
                 result.Data["Gun_Autopistol_Available"] = VanillaWeaponDefOf.Gun_Autopistol != null;
                 result.Data["Gun_AssaultRifle_Available"] = VanillaWeaponDefOf.Gun_AssaultRifle != null;

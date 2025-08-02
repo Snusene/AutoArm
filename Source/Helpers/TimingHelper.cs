@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Centralized cooldown and timing management system
+// Prevents spam and controls action frequency across all mod systems
+// Uses: Unified dictionary tracking with configurable durations
+// Critical: Prevents performance issues and log spam in large colonies
+
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
@@ -128,7 +134,7 @@ namespace AutoArm
 
             if (!IsOnCooldown(pawn, cooldownType))
             {
-                AutoArmDebug.LogPawn(pawn, message);
+                AutoArmLogger.LogPawn(pawn, message);
                 SetCooldown(pawn, cooldownType);
             }
         }
@@ -144,6 +150,19 @@ namespace AutoArm
             // Use pawn's thingIDNumber for consistent variance
             int actualInterval = baseInterval + (pawn.thingIDNumber % variance);
             return pawn.IsHashIntervalTick(actualInterval);
+        }
+
+        /// <summary>
+        /// Clear all cooldowns for all pawns and objects
+        /// </summary>
+        public static void ClearAllCooldowns()
+        {
+            foreach (var cooldownType in cooldowns.Keys)
+            {
+                cooldowns[cooldownType].Clear();
+            }
+            
+            AutoArmLogger.Log("Cleared all cooldowns");
         }
 
         /// <summary>

@@ -72,6 +72,27 @@ namespace AutoArm
         private const string REFLECTION_KEY_SKIPEMP = "SimpleSidearms.SkipEMP";
         private const string REFLECTION_KEY_ALLOWBLOCKED = "SimpleSidearms.AllowBlocked";
 
+        // Failed search tracking for performance optimization
+        private static Dictionary<int, FailedSearchInfo> failedSearches = new Dictionary<int, FailedSearchInfo>();
+        private static readonly object failedSearchLock = new object();
+        private const int MIN_BACKOFF_TICKS = 1800; // 30 seconds
+        private const int MAX_BACKOFF_TICKS = 36000; // 10 hours
+        private const int CLEANUP_INTERVAL = 2500; // Clean up every ~40 seconds
+        private static int lastCleanupTick = 0;
+
+        private class FailedSearchInfo
+        {
+            public int FailCount;
+            public int LastFailTick;
+            public HashSet<string> FailedWeaponIds;
+            public int NextAllowedSearchTick;
+
+            public FailedSearchInfo()
+            {
+                FailedWeaponIds = new HashSet<string>();
+            }
+        }
+
         public class SidearmUpgradeInfo
         {
             public ThingWithComps oldWeapon;
@@ -103,11 +124,11 @@ namespace AutoArm
 
                     if (detectedMod != null)
                     {
-                        AutoArmDebug.Log($"Simple Sidearms detected: {detectedMod.PackageIdPlayerFacing} ({detectedMod.Name})");
+                        AutoArmLogger.Log($"Simple Sidearms detected: {detectedMod.PackageIdPlayerFacing} ({detectedMod.Name})");
                     }
                     else
                     {
-                        AutoArmDebug.Log("Simple Sidearms detected and loaded");
+                        AutoArmLogger.Log("Simple Sidearms detected and loaded");
                     }
                 }
             }
@@ -172,12 +193,12 @@ namespace AutoArm
                 CacheSettingsAccess();
 
                 _initialized = true;
-                AutoArmDebug.Log("Simple Sidearms compatibility initialized successfully");
+                AutoArmLogger.Log("Simple Sidearms compatibility initialized successfully");
             }
             catch (Exception e)
             {
                 Log.Warning($"[AutoArm] Failed to initialize Simple Sidearms compatibility: {e.Message}");
-                AutoArmDebug.Log($"Stack trace: {e.StackTrace}");
+                AutoArmLogger.Log($"Stack trace: {e.StackTrace}");
             }
         }
 
@@ -231,7 +252,7 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Failed to cache SimpleSidearms settings access: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Failed to cache SimpleSidearms settings access: {e.Message}");
             }
         }
 
@@ -263,12 +284,12 @@ namespace AutoArm
                 if (comp != null && informOfDroppedSidearmMethod != null)
                 {
                     informOfDroppedSidearmMethod.Invoke(comp, new object[] { weapon, true });
-                    AutoArmDebug.LogWeapon(pawn, weapon, "Informed SS of weapon drop");
+                    AutoArmLogger.LogWeapon(pawn, weapon, "Informed SS of weapon drop");
                 }
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Failed to inform SS of dropped weapon: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Failed to inform SS of dropped weapon: {e.Message}");
             }
         }
 
@@ -348,7 +369,7 @@ namespace AutoArm
 
                             if (totalValidations > 10) // Only log summary if there's been significant activity
                             {
-                                AutoArmDebug.LogPawn(pawn, $"SimpleSidearms validations in last {VALIDATION_SUMMARY_INTERVAL / 60} seconds: {totalValidations} checks");
+                                AutoArmLogger.LogPawn(pawn, $"SimpleSidearms validations in last {VALIDATION_SUMMARY_INTERVAL / 60} seconds: {totalValidations} checks");
                                 lastValidationSummaryTick[pawn.ThingID] = currentTick;
 
                                 // Clear old counts for this pawn
@@ -361,7 +382,7 @@ namespace AutoArm
                         // Only log individual messages for unusual cases
                         if (shouldLog)
                         {
-                            AutoArmDebug.LogWeapon(pawn, weapon,
+                            AutoArmLogger.LogWeapon(pawn, weapon,
                                 $"SimpleSidearms validation: {(result ? "ALLOWED" : "DENIED")} - {reason}");
                         }
                     }
@@ -371,7 +392,7 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Error checking sidearm compatibility: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Error checking sidearm compatibility: {e.Message}");
             }
 
             return true;
@@ -449,7 +470,7 @@ namespace AutoArm
                     pawn.equipment.AddEquipment(sidearm);
                     pawnsWithTemporarySidearmEquipped.Add(pawn);
 
-                    AutoArmDebug.LogWeapon(pawn, sidearm, "Swapped sidearm to primary");
+                    AutoArmLogger.LogWeapon(pawn, sidearm, "Swapped sidearm to primary");
                     return true;
                 }
             }
@@ -477,7 +498,7 @@ namespace AutoArm
                     if (pawn.inventory.innerContainer.TryAdd(weapon))
                     {
                         pawnsWithTemporarySidearmEquipped.Remove(pawn);
-                        AutoArmDebug.LogWeapon(pawn, weapon, "Moved back to inventory");
+                        AutoArmLogger.LogWeapon(pawn, weapon, "Moved back to inventory");
                         return true;
                     }
                 }
@@ -537,7 +558,7 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Failed to calculate weapon score: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Failed to calculate weapon score: {e.Message}");
                 // Fallback to basic market value scoring
                 score = weapon.MarketValue * 0.01f;
             }
@@ -599,39 +620,215 @@ namespace AutoArm
             return count;
         }
 
+        // Failed search tracking methods
+        private static bool IsOnSidearmCooldown(Pawn pawn)
+        {
+            if (pawn == null) return false;
+
+            lock (failedSearchLock)
+            {
+                if (failedSearches.TryGetValue(pawn.thingIDNumber, out var info))
+                {
+                    return Find.TickManager.TicksGame < info.NextAllowedSearchTick;
+                }
+            }
+            return false;
+        }
+
+        private static void RecordFailedSearch(Pawn pawn, List<string> attemptedWeaponIds = null)
+        {
+            if (pawn == null) return;
+
+            lock (failedSearchLock)
+            {
+                if (!failedSearches.TryGetValue(pawn.thingIDNumber, out var info))
+                {
+                    info = new FailedSearchInfo();
+                    failedSearches[pawn.thingIDNumber] = info;
+                }
+
+                info.FailCount++;
+                info.LastFailTick = Find.TickManager.TicksGame;
+                
+                // Add attempted weapon IDs to the failed list
+                if (attemptedWeaponIds != null)
+                {
+                    foreach (var id in attemptedWeaponIds)
+                    {
+                        info.FailedWeaponIds.Add(id);
+                    }
+                }
+
+                // Calculate exponential backoff
+                int backoffTicks = GetBackoffTicks(info.FailCount);
+                info.NextAllowedSearchTick = Find.TickManager.TicksGame + backoffTicks;
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.LogPawn(pawn, $"[SimpleSidearms] Failed search #{info.FailCount}, next retry in {backoffTicks} ticks ({backoffTicks / 60}s)");
+                }
+            }
+        }
+
+        private static void ClearFailedSearch(Pawn pawn, string successfulWeaponId = null)
+        {
+            if (pawn == null) return;
+
+            lock (failedSearchLock)
+            {
+                if (failedSearches.TryGetValue(pawn.thingIDNumber, out var info))
+                {
+                    if (successfulWeaponId != null)
+                    {
+                        // Only remove the specific weapon from failed list
+                        info.FailedWeaponIds.Remove(successfulWeaponId);
+                        
+                        // If we still have failed weapons, don't clear the whole entry
+                        if (info.FailedWeaponIds.Count > 0)
+                        {
+                            // Reduce fail count but don't reset completely
+                            info.FailCount = Math.Max(1, info.FailCount - 1);
+                            return;
+                        }
+                    }
+                    
+                    // Clear the entire entry
+                    failedSearches.Remove(pawn.thingIDNumber);
+                    
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.LogPawn(pawn, "[SimpleSidearms] Cleared failed search tracking");
+                    }
+                }
+            }
+        }
+
+        private static int GetBackoffTicks(int failCount)
+        {
+            // Exponential backoff: 30s, 1m, 2m, 4m, 8m, etc. up to 10 hours
+            int backoff = MIN_BACKOFF_TICKS * (1 << Math.Min(failCount - 1, 10));
+            return Math.Min(backoff, MAX_BACKOFF_TICKS);
+        }
+
+        private static void CleanupOldFailedSearches()
+        {
+            int currentTick = Find.TickManager.TicksGame;
+            
+            // Only cleanup periodically
+            if (currentTick - lastCleanupTick < CLEANUP_INTERVAL)
+                return;
+                
+            lastCleanupTick = currentTick;
+
+            lock (failedSearchLock)
+            {
+                var cutoffTick = currentTick - MAX_BACKOFF_TICKS;
+                var toRemove = new List<int>();
+
+                foreach (var kvp in failedSearches)
+                {
+                    // Remove entries older than max backoff
+                    if (kvp.Value.LastFailTick < cutoffTick)
+                    {
+                        toRemove.Add(kvp.Key);
+                    }
+                    // Also remove entries for dead/destroyed pawns
+                    else
+                    {
+                        var pawn = Find.CurrentMap?.mapPawns?.AllPawnsSpawned?.FirstOrDefault(p => p.thingIDNumber == kvp.Key);
+                        if (pawn == null || pawn.Dead || pawn.Destroyed)
+                        {
+                            toRemove.Add(kvp.Key);
+                        }
+                    }
+                }
+
+                foreach (var id in toRemove)
+                {
+                    failedSearches.Remove(id);
+                }
+
+                if (toRemove.Count > 0 && AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Log($"[SimpleSidearms] Cleaned up {toRemove.Count} old failed search entries");
+                }
+            }
+        }
+
+        private static bool HasFailedWeapon(Pawn pawn, string weaponId)
+        {
+            if (pawn == null || weaponId == null) return false;
+
+            lock (failedSearchLock)
+            {
+                if (failedSearches.TryGetValue(pawn.thingIDNumber, out var info))
+                {
+                    return info.FailedWeaponIds.Contains(weaponId);
+                }
+            }
+            return false;
+        }
+
         public static Job TryGetSidearmUpgradeJob(Pawn pawn)
         {
             if (!IsLoaded() || pawn == null || !pawn.IsColonist)
                 return null;
 
+            // Perform periodic cleanup
+            CleanupOldFailedSearches();
+
+            // Check if on sidearm search cooldown (exponential backoff)
+            if (IsOnSidearmCooldown(pawn))
+            {
+                return null;
+            }
+
             // Check if temporary colonists are allowed
             if (AutoArmMod.settings?.allowTemporaryColonists != true && JobGiverHelpers.IsTemporaryColonist(pawn))
                 return null;
 
-            // Use timing helper for failed searches
+            // Check if raids are happening and setting is enabled - should be consistent with primary weapons
+            if (AutoArmMod.settings?.disableDuringRaids == true)
+            {
+                // Check for active raids on ANY map (not just current)
+                foreach (var checkMap in Find.Maps)
+                {
+                    if (JobGiver_PickUpBetterWeapon.IsRaidActive(checkMap))
+                    {
+                        AutoArmLogger.LogPawn(pawn, $"[SIDEARM] Raid active on map {checkMap.uniqueID} and disableDuringRaids is true, skipping sidearm upgrade check");
+                        return null;
+                    }
+                }
+            }
+
+            // Use timing helper for failed searches as secondary check
             if (TimingHelper.IsOnCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch))
                 return null;
 
             if (AutoArmMod.settings?.autoEquipSidearms != true)
             {
-                AutoArmDebug.Log("Sidearm auto-equip disabled in settings");
+                AutoArmLogger.Log("Sidearm auto-equip disabled in settings");
                 return null;
             }
 
             EnsureInitialized();
             if (!_initialized)
             {
-                AutoArmDebug.Log("SimpleSidearms not initialized properly");
+                AutoArmLogger.Log("SimpleSidearms not initialized properly");
                 return null;
             }
 
             if (equipSecondaryJobDef == null)
             {
-                AutoArmDebug.Log("Warning: EquipSecondary JobDef not found, will use vanilla Equip");
+                AutoArmLogger.Log("Warning: EquipSecondary JobDef not found, will use vanilla Equip");
             }
+
+            // Track attempted weapons for failed search recording - moved outside try block
+            var attemptedWeaponIds = new List<string>();
 
             try
             {
+
                 // Build weapon counts per def
                 var weaponCounts = new Dictionary<ThingDef, int>();
                 var allWeapons = new List<ThingWithComps>();
@@ -655,12 +852,7 @@ namespace AutoArm
                     }
                 }
 
-                // Debug log the current weapon counts
-                if (AutoArmMod.settings?.debugLogging == true && allWeapons.Count > 0)
-                {
-                    var weaponSummary = string.Join(", ", weaponCounts.Select(kvp => $"{kvp.Key.defName}: {kvp.Value}"));
-                    AutoArmDebug.LogPawn(pawn, $"Current weapons ({allWeapons.Count} total): {weaponSummary}");
-                }
+                // Removed spammy debug log for current weapon counts - this happens frequently during sidearm checks
 
                 bool preferMelee = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level > pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level;
 
@@ -676,6 +868,15 @@ namespace AutoArm
 
                 foreach (var weapon in nearbyWeapons)
                 {
+                    // Skip weapons that have previously failed for this pawn
+                    if (HasFailedWeapon(pawn, weapon.ThingID))
+                    {
+                        continue;
+                    }
+
+                    // Track this weapon as attempted
+                    attemptedWeaponIds.Add(weapon.ThingID);
+
                     // Outfit filter check FIRST - respect the player's configuration
                     var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
                     if (filter != null && !filter.Allows(weapon))
@@ -695,7 +896,7 @@ namespace AutoArm
                                 weapon.def.defName.IndexOf("Exo", StringComparison.Ordinal) >= 0 ||
                                 weapon.GetStatValue(StatDefOf.Mass) > 5.0f)
                             {
-                                AutoArmDebug.LogPawn(pawn, $"Skipping {weapon.Label} for sidearm - body size restriction (pawn size: {pawn.BodySize:F1})");
+                                AutoArmLogger.LogPawn(pawn, $"Skipping {weapon.Label} for sidearm - body size restriction (pawn size: {pawn.BodySize:F1})");
                             }
                             continue; // Skip this weapon entirely
                         }
@@ -703,17 +904,89 @@ namespace AutoArm
                     catch (Exception ex)
                     {
                         // If we can't validate, skip the weapon
-                        AutoArmDebug.LogPawn(pawn, $"Skipping {weapon.Label} - validation error: {ex.Message}");
+                        AutoArmLogger.LogPawn(pawn, $"Skipping {weapon.Label} - validation error: {ex.Message}");
                         continue;
                     }
 
                     int currentCount = weaponCounts.ContainsKey(weapon.def) ? weaponCounts[weapon.def] : 0;
                     bool isForced = ForcedWeaponHelper.IsWeaponDefForced(pawn, weapon.def);
 
-                    // Safety check - we should never have 2+ of the same type
+                    // Safety check - we should never have 2+ of the same type (unless duplicates are allowed)
                     if (currentCount >= 2)
                     {
-                        AutoArmDebug.LogPawn(pawn, $"WARNING: Already have {currentCount} of {weapon.def.defName} - this shouldn't happen");
+                        AutoArmLogger.LogPawn(pawn, $"WARNING: Already have {currentCount} of {weapon.def.defName}");
+                        
+                        // If we somehow have duplicates and upgrades are allowed, still check if we should replace the worst
+                        if (AutoArmMod.settings?.allowSidearmUpgrades == true && !ALLOW_DUPLICATE_WEAPON_TYPES)
+                        {
+                            // Find the worst weapon of this type
+                            float worstScoreOfType = float.MaxValue;
+                            ThingWithComps worstOfType = null;
+                            
+                            if (pawn.equipment?.Primary?.def == weapon.def)
+                            {
+                                float score = GetWeaponScore(pawn.equipment.Primary, pawn, preferMelee);
+                                if (score < worstScoreOfType)
+                                {
+                                    worstScoreOfType = score;
+                                    worstOfType = pawn.equipment.Primary;
+                                }
+                            }
+                            
+                            foreach (var item in pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
+                            {
+                                if (item is ThingWithComps invWeapon && invWeapon.def == weapon.def)
+                                {
+                                    float score = GetWeaponScore(invWeapon, pawn, preferMelee);
+                                    if (score < worstScoreOfType)
+                                    {
+                                        worstScoreOfType = score;
+                                        worstOfType = invWeapon;
+                                    }
+                                }
+                            }
+                            
+                            if (worstOfType != null)
+                            {
+                                float newScore = GetWeaponScore(weapon, pawn, preferMelee);
+                                if (newScore > worstScoreOfType * 1.15f) // 15% better
+                                {
+                                    AutoArmLogger.LogPawn(pawn, $"Will replace duplicate {worstOfType.Label} (score: {worstScoreOfType:F2}) with {weapon.Label} (score: {newScore:F2})");
+                                    
+                                    // Drop the worst duplicate
+                                    if (pawn.inventory?.innerContainer?.Contains(worstOfType) == true)
+                                    {
+                                        Thing droppedWeapon;
+                                        if (pawn.inventory.innerContainer.TryDrop(worstOfType, pawn.Position, pawn.Map,
+                                            ThingPlaceMode.Near, out droppedWeapon))
+                                        {
+                                            if (droppedWeapon != null)
+                                            {
+                                                DroppedItemTracker.MarkAsDropped(droppedWeapon, 3600); // 60 seconds
+                                                InformOfDroppedSidearm(pawn, worstOfType);
+                                                
+                                                AutoArmLogger.LogPawn(pawn, $"Dropped duplicate {worstOfType.Label}");
+                                                
+                                                // Return job to pick up the better weapon
+                                                if (equipSecondaryJobDef != null)
+                                                {
+                                                    var pickupJob = JobMaker.MakeJob(equipSecondaryJobDef, weapon);
+                                                    ClearFailedSearch(pawn, weapon.ThingID);
+                                                    return pickupJob;
+                                                }
+                                                else
+                                                {
+                                                    var equipJob = JobMaker.MakeJob(JobDefOf.Equip, weapon);
+                                                    equipJob.count = 1;
+                                                    ClearFailedSearch(pawn, weapon.ThingID);
+                                                    return equipJob;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         continue;
                     }
 
@@ -727,7 +1000,7 @@ namespace AutoArm
                             if (!lastForcedWeaponLogTick.TryGetValue(pawn, out int lastLog) ||
                                 tick - lastLog > FORCED_WEAPON_LOG_COOLDOWN)
                             {
-                                AutoArmDebug.LogPawn(pawn, $"Skipping forced weapon type: {weapon.def.defName}");
+                                AutoArmLogger.LogPawn(pawn, $"Skipping forced weapon type: {weapon.def.defName}");
                                 lastForcedWeaponLogTick[pawn] = tick;
                             }
                             continue;
@@ -736,7 +1009,7 @@ namespace AutoArm
                         {
                             // If we have 0 of this forced type, we can't pick up a new one even with upgrades enabled
                             // (forced weapons should already exist in inventory)
-                            AutoArmDebug.LogPawn(pawn, $"Not picking up new forced weapon type: {weapon.def.defName}");
+                            AutoArmLogger.LogPawn(pawn, $"Not picking up new forced weapon type: {weapon.def.defName}");
                             continue;
                         }
                         // If currentCount == 1 and upgrades are allowed, we'll check for upgrades below
@@ -759,7 +1032,7 @@ namespace AutoArm
                             if (!lastWorseWeaponLogTick.TryGetValue(worseWeaponKey, out int lastLogTick) ||
                                 currentTick - lastLogTick > WORSE_WEAPON_LOG_COOLDOWN)
                             {
-                                AutoArmDebug.LogPawn(pawn, $"Skipping {weapon.Label} - worse than equipped primary {pawn.equipment.Primary.Label}");
+                                AutoArmLogger.LogPawn(pawn, $"Skipping {weapon.Label} - worse than equipped primary {pawn.equipment.Primary.Label}");
                                 lastWorseWeaponLogTick[worseWeaponKey] = currentTick;
                             }
                             continue;
@@ -790,156 +1063,124 @@ namespace AutoArm
 
                                 if (worstWeapon != null && newScore > worstScore * 1.15f) // 15% better
                                 {
-                                    // Extra safety check: don't replace if it would create a duplicate
-                                    if (!ALLOW_DUPLICATE_WEAPON_TYPES && worstWeapon.def != weapon.def && currentCount > 0)
+                                    // CRITICAL FIX: Ensure we're not creating duplicates
+                                    if (!ALLOW_DUPLICATE_WEAPON_TYPES && worstWeapon.def == weapon.def)
                                     {
-                                        AutoArmDebug.LogPawn(pawn, $"Not replacing {worstWeapon.Label} with {weapon.Label} - would create duplicate");
+                                        AutoArmLogger.LogPawn(pawn, $"Not replacing {worstWeapon.Label} - same weapon type");
                                         continue;
                                     }
 
-                                    // CRITICAL: Check if the new weapon is actually within limits
-                                    // This prevents bypassing SimpleSidearms' restrictions
+                                    // CRITICAL FIX: Actually validate the replacement is possible
+                                    // Temporarily remove the worst weapon to check if new weapon would be allowed
+                                    bool worstIsInInventory = pawn.inventory?.innerContainer?.Contains(worstWeapon) == true;
+                                    bool worstIsPrimary = pawn.equipment?.Primary == worstWeapon;
+                                    
+                                    // Simulate removing the worst weapon
+                                    float removedMass = worstWeapon.GetStatValue(StatDefOf.Mass);
+                                    
+                                    // HACK: We can't easily simulate the removal, so we check if the new weapon
+                                    // is lighter or the same weight as the worst weapon
+                                    float newWeaponMass = weapon.GetStatValue(StatDefOf.Mass);
+                                    
+                                    if (newWeaponMass > removedMass && reason.IndexOf("weight", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        AutoArmLogger.LogPawn(pawn, $"Not replacing {worstWeapon.Label} - new weapon is heavier ({newWeaponMass:F1}kg vs {removedMass:F1}kg)");
+                                        continue;
+                                    }
 
-                                    // FIRST: Check body size restrictions with EquipmentUtility
+                                    // Additional validation
                                     try
                                     {
                                         if (!EquipmentUtility.CanEquip(weapon, pawn))
                                         {
-                                            AutoArmDebug.LogPawn(pawn, $"Not replacing {worstWeapon.Label} with {weapon.Label} - new weapon has equipment restrictions (likely body size)");
+                                            AutoArmLogger.LogPawn(pawn, $"Not replacing {worstWeapon.Label} - new weapon has equipment restrictions");
                                             continue;
                                         }
                                     }
                                     catch
                                     {
-                                        AutoArmDebug.LogPawn(pawn, $"Not replacing {worstWeapon.Label} with {weapon.Label} - couldn't validate equipment compatibility");
+                                        AutoArmLogger.LogPawn(pawn, $"Not replacing {worstWeapon.Label} - couldn't validate equipment compatibility");
                                         continue;
                                     }
 
-                                    // Check weight limits
-                                    if (reason.IndexOf("heavy", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                        reason.IndexOf("weight", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                        reason.IndexOf("mass", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    AutoArmLogger.LogPawn(pawn, $"Will replace worst weapon {worstWeapon.Label} (score: {worstScore:F2}) with {weapon.Label} (score: {newScore:F2})");
+
+                                    // CRITICAL FIX: Ensure proper job sequencing
+                                    if (worstIsPrimary)
                                     {
-                                        // The weapon was rejected for weight - check actual weight limit
-                                        float weaponWeight = weapon.GetStatValue(StatDefOf.Mass);
-                                        float weightLimit = GetSimpleSidearmsWeightLimit(weapon.def.IsRangedWeapon, weapon.def.IsMeleeWeapon);
-
-                                        if (weaponWeight >= weightLimit)
-                                        {
-                                            AutoArmDebug.LogPawn(pawn, $"Not replacing {worstWeapon.Label} with {weapon.Label} - new weapon ({weaponWeight:F1}kg) exceeds SimpleSidearms weight limit ({weightLimit:F1}kg)");
-                                            continue;
-                                        }
-                                        // If we get here, the weapon is within limits despite the rejection message
-                                        // This might happen if rejection was due to total weight, not individual weapon weight
-                                    }
-
-                                    // Check slot limits
-                                    if (reason.IndexOf("slot", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                        reason.IndexOf("full", StringComparison.OrdinalIgnoreCase) >= 0)
-                                    {
-                                        // The weapon was rejected for slot limits - check if we're at max
-                                        int currentTotal = GetTotalWeaponCount(pawn);
-                                        int slotLimit = GetSimpleSidearmsSlotLimit(weapon.def.IsRangedWeapon, weapon.def.IsMeleeWeapon, true);
-
-                                        // Since we're replacing, the total count should stay the same
-                                        // But let's verify we're not already over the limit somehow
-                                        if (currentTotal > slotLimit)
-                                        {
-                                            AutoArmDebug.LogPawn(pawn, $"Not replacing {worstWeapon.Label} with {weapon.Label} - already at/over slot limit ({currentTotal}/{slotLimit})");
-                                            continue;
-                                        }
-
-                                        // Also check type-specific limits if using separate modes
-                                        if (weapon.def.IsRangedWeapon)
-                                        {
-                                            int rangedCount = allWeapons.Count(w => w.def.IsRangedWeapon);
-                                            int rangedLimit = GetSimpleSidearmsSlotLimit(true, false, false);
-                                            if (worstWeapon.def.IsMeleeWeapon && rangedCount >= rangedLimit)
-                                            {
-                                                AutoArmDebug.LogPawn(pawn, $"Not replacing melee with ranged - would exceed ranged slot limit ({rangedCount}/{rangedLimit})");
-                                                continue;
-                                            }
-                                        }
-                                        else if (weapon.def.IsMeleeWeapon)
-                                        {
-                                            int meleeCount = allWeapons.Count(w => w.def.IsMeleeWeapon);
-                                            int meleeLimit = GetSimpleSidearmsSlotLimit(false, true, false);
-                                            if (worstWeapon.def.IsRangedWeapon && meleeCount >= meleeLimit)
-                                            {
-                                                AutoArmDebug.LogPawn(pawn, $"Not replacing ranged with melee - would exceed melee slot limit ({meleeCount}/{meleeLimit})");
-                                                continue;
-                                            }
-                                        }
-                                    }
-
-                                    AutoArmDebug.LogPawn(pawn, $"Will replace worst weapon {worstWeapon.Label} (score: {worstScore:F2}) with {weapon.Label} (score: {newScore:F2})");
-
-                                    // Mark old weapon as dropped to prevent immediate re-pickup
-                                    InformSimpleSidearmsOfDrop(pawn, worstWeapon);
-                                    DroppedItemTracker.MarkPendingDrop(worstWeapon);
-
-                                    // Check if the worst weapon is primary or in inventory
-                                    if (pawn.equipment?.Primary == worstWeapon)
-                                    {
-                                        AutoArmDebug.LogPawn(pawn, $"Replacing primary weapon {worstWeapon.Label} with {weapon.Label}");
-
-                                        // For primary weapons, use vanilla Equip to replace directly
-                                        // This will automatically drop the current primary
+                                        // For primary weapons, mark for drop prevention
+                                        DroppedItemTracker.MarkPendingDrop(worstWeapon);
+                                        InformOfDroppedSidearm(pawn, worstWeapon);
+                                        
+                                        // Use standard equip job - it will drop current and equip new
                                         var equipJob = JobMaker.MakeJob(JobDefOf.Equip, weapon);
                                         equipJob.count = 1;
-
-                                        AutoArmDebug.LogPawn(pawn, $"Using Equip job for primary replacement");
-
+                                        
+                                        AutoArmLogger.LogPawn(pawn, $"Replacing primary weapon directly");
+                                        ClearFailedSearch(pawn, weapon.ThingID);
                                         return equipJob;
                                     }
-                                    else if (pawn.inventory?.innerContainer?.Contains(worstWeapon) == true)
+                                    else if (worstIsInInventory)
                                     {
-                                        AutoArmDebug.LogPawn(pawn, $"Replacing inventory weapon {worstWeapon.Label} with {weapon.Label}");
-
-                                        // For inventory weapons, we need to swap to primary first, then equip the new weapon
-                                        // The equip job will automatically drop the old weapon
-
-                                        // Store current primary before swapping
-                                        var currentPrimary = pawn.equipment?.Primary;
-
-                                        if (TrySwapSidearmToPrimary(pawn, worstWeapon))
+                                        // CRITICAL FIX: For inventory replacements, we need a different approach
+                                        // First drop the worst weapon, then pick up the new one
+                                        
+                                        // Drop the worst weapon immediately
+                                        Thing droppedWeapon;
+                                        if (pawn.inventory.innerContainer.TryDrop(worstWeapon, pawn.Position, pawn.Map,
+                                            ThingPlaceMode.Near, out droppedWeapon))
                                         {
-                                            // Mark this as a replacement operation
-                                            pendingSidearmUpgrades[pawn] = new SidearmUpgradeInfo
+                                            if (droppedWeapon != null)
                                             {
-                                                oldWeapon = worstWeapon,
-                                                newWeapon = weapon,
-                                                originalPrimary = currentPrimary, // Store it but won't restore for replacements
-                                                isTemporarySwap = false, // This is a replacement, not an upgrade
-                                                swapStartTick = Find.TickManager.TicksGame
-                                            };
-
-                                            // Note: TrySwapSidearmToPrimary already adds pawn to pawnsWithTemporarySidearmEquipped
-
-                                            // Use vanilla Equip which will drop the swapped weapon and equip the new one
-                                            // SimpleSidearms can then move it to inventory if appropriate
-                                            var equipJob = JobMaker.MakeJob(JobDefOf.Equip, weapon);
-                                            equipJob.count = 1;
-
-                                            AutoArmDebug.LogPawn(pawn, $"Using Equip job for inventory replacement");
-
-                                            return equipJob;
+                                                // Mark as dropped with long cooldown
+                                                DroppedItemTracker.MarkAsDropped(droppedWeapon, 3600); // 60 seconds
+                                                InformOfDroppedSidearm(pawn, worstWeapon);
+                                                
+                                                AutoArmLogger.LogPawn(pawn, $"Dropped worst inventory weapon {worstWeapon.Label}");
+                                                
+                                                // Now create job to pick up the new weapon
+                                                if (equipSecondaryJobDef != null)
+                                                {
+                                                    var pickupJob = JobMaker.MakeJob(equipSecondaryJobDef, weapon);
+                                                    AutoArmLogger.LogPawn(pawn, $"Created job to pick up replacement weapon {weapon.Label}");
+                                                    ClearFailedSearch(pawn, weapon.ThingID);
+                                                    return pickupJob;
+                                                    }
+                                                    else
+                                                    {
+                                                    // Fallback to regular equip
+                                                    var equipJob = JobMaker.MakeJob(JobDefOf.Equip, weapon);
+                                                    equipJob.count = 1;
+                                                    AutoArmLogger.LogPawn(pawn, $"Created fallback equip job for replacement weapon {weapon.Label}");
+                                                    ClearFailedSearch(pawn, weapon.ThingID);
+                                                        return equipJob;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        AutoArmLogger.LogPawn(pawn, $"ERROR: Failed to drop worst weapon {worstWeapon.Label}");
+                                        }
                                         }
                                         else
                                         {
-                                            AutoArmDebug.LogPawn(pawn, $"Failed to swap {worstWeapon.Label} to primary for replacement");
+                                            AutoArmLogger.LogPawn(pawn, $"ERROR: Could not drop worst weapon {worstWeapon.Label} from inventory");
                                         }
                                     }
                                     else
                                     {
-                                        AutoArmDebug.LogPawn(pawn, $"ERROR: Worst weapon {worstWeapon.Label} not found in equipment or inventory");
+                                        AutoArmLogger.LogPawn(pawn, $"ERROR: Worst weapon {worstWeapon.Label} not found in equipment or inventory");
                                     }
+                                }
+                                else
+                                {
+                                    // Worst weapon doesn't meet the 15% threshold for replacement
+                                    AutoArmLogger.LogPawn(pawn, $"Weapon {weapon.Label} (score: {newScore:F2}) not significantly better than worst {worstWeapon?.Label} (score: {worstScore:F2})");
                                 }
                             }
                             continue;
                         }
 
-                        AutoArmDebug.LogWeapon(pawn, weapon, "Picking up new sidearm type");
+                        AutoArmLogger.LogWeapon(pawn, weapon, "Picking up new sidearm type");
 
                         if (equipSecondaryJobDef == null)
                         {
@@ -947,6 +1188,7 @@ namespace AutoArm
                             return null;
                         }
 
+                        ClearFailedSearch(pawn, weapon.ThingID);
                         return JobMaker.MakeJob(equipSecondaryJobDef, weapon);
                     }
                     else if (currentCount == 1 && AutoArmMod.settings?.allowSidearmUpgrades == true)
@@ -955,7 +1197,7 @@ namespace AutoArm
                         // This prevents forced sidearms from being upgraded
                         if (isForced && AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
                         {
-                            AutoArmDebug.LogPawn(pawn, $"Not checking upgrades for {weapon.def.defName} - weapon type is forced and upgrades disabled");
+                            AutoArmLogger.LogPawn(pawn, $"Not checking upgrades for {weapon.def.defName} - weapon type is forced and upgrades disabled");
                             continue;
                         }
 
@@ -985,14 +1227,14 @@ namespace AutoArm
 
                         if (existingWeapon == null)
                         {
-                            AutoArmDebug.LogPawn(pawn, $"ERROR: Count says 1 but couldn't find {weapon.def.defName}");
+                            AutoArmLogger.LogPawn(pawn, $"ERROR: Count says 1 but couldn't find {weapon.def.defName}");
                             continue;
                         }
 
                         // Double-check if the specific existing weapon is forced - extra safety
                         if (ForcedWeaponHelper.IsForced(pawn, existingWeapon) && AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
                         {
-                            AutoArmDebug.LogPawn(pawn, $"Not upgrading {existingWeapon.Label} - specific weapon is forced and upgrades disabled");
+                            AutoArmLogger.LogPawn(pawn, $"Not upgrading {existingWeapon.Label} - specific weapon is forced and upgrades disabled");
                             continue;
                         }
 
@@ -1008,7 +1250,7 @@ namespace AutoArm
                             if (!lastWorseWeaponLogTick.TryGetValue(worseWeaponKey, out int lastLogTick) ||
                                 currentTick - lastLogTick > WORSE_WEAPON_LOG_COOLDOWN)
                             {
-                                AutoArmDebug.LogPawn(pawn, $"Skipping {weapon.Label} - not significantly better than equipped {existingWeapon.Label} ({newScore:F2} vs {existingScore:F2})");
+                                AutoArmLogger.LogPawn(pawn, $"Skipping {weapon.Label} - not significantly better than equipped {existingWeapon.Label} ({newScore:F2} vs {existingScore:F2})");
                                 lastWorseWeaponLogTick[worseWeaponKey] = currentTick;
                             }
                             continue;
@@ -1035,29 +1277,30 @@ namespace AutoArm
                             // Log why it was rejected for debugging
                             if (upgradeReason != null)
                             {
-                                AutoArmDebug.LogPawn(pawn, $"SimpleSidearms rejected upgrade to {weapon.Label}: {upgradeReason}");
+                                AutoArmLogger.LogPawn(pawn, $"SimpleSidearms rejected upgrade to {weapon.Label}: {upgradeReason}");
                             }
                             continue;
                         }
 
-                        AutoArmDebug.LogPawn(pawn, $"Found same-type upgrade: {existingWeapon.Label} (score: {existingScore:F2}) -> {weapon.Label} (score: {newScore:F2})");
+                        AutoArmLogger.LogPawn(pawn, $"Found same-type upgrade: {existingWeapon.Label} (score: {existingScore:F2}) -> {weapon.Label} (score: {newScore:F2})");
 
                         // Check if this is a primary weapon upgrade
                         if (pawn.equipment?.Primary == existingWeapon)
                         {
                             // Primary weapon upgrade - use standard equip job
-                            AutoArmDebug.LogPawn(pawn, "Upgrading primary weapon through sidearm logic");
+                            AutoArmLogger.LogPawn(pawn, "Upgrading primary weapon through sidearm logic");
 
                             // Mark the old weapon to prevent SimpleSidearms from saving it
                             DroppedItemTracker.MarkPendingSameTypeUpgrade(existingWeapon);
 
                             // Use standard equip job which will handle the swap
+                            ClearFailedSearch(pawn, weapon.ThingID);
                             return JobMaker.MakeJob(JobDefOf.Equip, weapon);
                         }
                         else
                         {
                             // Inventory weapon upgrade - use swap method
-                            AutoArmDebug.LogPawn(pawn, $"Will upgrade sidearm using swap method");
+                            AutoArmLogger.LogPawn(pawn, $"Will upgrade sidearm using swap method");
 
                             pendingSidearmUpgrades[pawn] = new SidearmUpgradeInfo
                             {
@@ -1073,7 +1316,8 @@ namespace AutoArm
                                 var equipJob = JobMaker.MakeJob(JobDefOf.Equip, weapon);
                                 equipJob.count = 1;
 
-                                AutoArmDebug.LogPawn(pawn, "Created swap-based upgrade job");
+                                AutoArmLogger.LogPawn(pawn, "Created swap-based upgrade job");
+                                ClearFailedSearch(pawn, weapon.ThingID);
                                 return equipJob;
                             }
                             else
@@ -1085,13 +1329,27 @@ namespace AutoArm
                     }
                 }
 
-                // Track failed search
+                // Track failed search with exponential backoff
+                if (attemptedWeaponIds.Count > 0)
+                {
+                    RecordFailedSearch(pawn, attemptedWeaponIds);
+                }
+                else
+                {
+                    // No weapons were even attempted - still record failed search but without specific weapon IDs
+                    RecordFailedSearch(pawn, null);
+                }
+                
+                // Also use old timing helper as secondary tracking
                 TimingHelper.SetCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch);
                 return null;
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"ERROR in sidearm check: {e.Message}\n{e.StackTrace}");
+                AutoArmLogger.Log($"ERROR in sidearm check: {e.Message}\n{e.StackTrace}");
+                
+                // Record failed search on exception too
+                RecordFailedSearch(pawn, attemptedWeaponIds.Count > 0 ? attemptedWeaponIds : null);
                 return null;
             }
         }
@@ -1198,8 +1456,78 @@ namespace AutoArm
             lastWorseWeaponLogTick.Clear();
             validationMessageCount.Clear();
             lastValidationSummaryTick.Clear();
+            
+            // Clear failed search tracking
+            lock (failedSearchLock)
+            {
+                failedSearches.Clear();
+            }
 
-            AutoArmDebug.Log("Cleared sidearm upgrade state after load");
+            AutoArmLogger.Log("Cleared sidearm upgrade state after load");
+        }
+        
+        /// <summary>
+        /// Get failed search statistics for debugging
+        /// </summary>
+        public static string GetFailedSearchStats()
+        {
+            if (!IsLoaded())
+                return "SimpleSidearms not loaded";
+                
+            lock (failedSearchLock)
+            {
+                if (failedSearches.Count == 0)
+                    return "No failed searches tracked";
+                    
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Failed search tracking ({failedSearches.Count} pawns):");
+                
+                foreach (var kvp in failedSearches)
+                {
+                    var info = kvp.Value;
+                    var pawn = Find.CurrentMap?.mapPawns?.AllPawnsSpawned?.FirstOrDefault(p => p.thingIDNumber == kvp.Key);
+                    var pawnName = pawn?.LabelShort ?? $"Unknown({kvp.Key})";
+                    
+                    var timeUntilRetry = info.NextAllowedSearchTick - Find.TickManager.TicksGame;
+                    sb.AppendLine($"  {pawnName}: {info.FailCount} failures, {info.FailedWeaponIds.Count} failed weapons, retry in {timeUntilRetry} ticks ({timeUntilRetry / 60}s)");
+                }
+                
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>
+        /// Clear all failed search tracking for SimpleSidearms
+        /// </summary>
+        public static void ClearFailedSearchTracking()
+        {
+            if (!IsLoaded())
+                return;
+                
+            // Clear upgrade tracking
+            recentlyCheckedUpgrades.Clear();
+            pendingSidearmUpgrades.Clear();
+            pawnsWithTemporarySidearmEquipped.Clear();
+            
+            // Clear validation tracking
+            validationMessageCount.Clear();
+            lastValidationSummaryTick.Clear();
+            
+            // Clear forced weapon tracking
+            lastForcedWeaponLogTick.Clear();
+            lastWorseWeaponLogTick.Clear();
+            
+            // Clear weapon score cache
+            weaponScoreCache.Clear();
+            weaponScoreCacheTick.Clear();
+            
+            // Clear exponential backoff tracking
+            lock (failedSearchLock)
+            {
+                failedSearches.Clear();
+            }
+            
+            AutoArmLogger.Log("Cleared SimpleSidearms failed search tracking");
         }
 
         public static bool HasPendingUpgrade(Pawn pawn)
@@ -1214,7 +1542,7 @@ namespace AutoArm
                 pendingSidearmUpgrades.Remove(pawn);
                 pawnsWithTemporarySidearmEquipped.Remove(pawn);
 
-                AutoArmDebug.Log($"Cancelled pending upgrade for {pawn.Name}");
+                AutoArmLogger.Log($"Cancelled pending upgrade for {pawn.Name}");
             }
         }
 
@@ -1262,7 +1590,7 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Error getting current sidearms: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Error getting current sidearms: {e.Message}");
             }
 
             return sidearmDefs;
@@ -1362,7 +1690,7 @@ namespace AutoArm
                 if (upgradeInfo.isTemporarySwap)
                 {
                     // This is a same-type upgrade, not a replacement
-                    AutoArmDebug.Log($"Completing sidearm upgrade for {pawn.Name}");
+                    AutoArmLogger.Log($"Completing sidearm upgrade for {pawn.Name}");
 
                     if (upgradeInfo.oldWeapon != null && !upgradeInfo.oldWeapon.Destroyed)
                     {
@@ -1381,7 +1709,7 @@ namespace AutoArm
                         }
                         else
                         {
-                            AutoArmDebug.Log($"Moved upgraded weapon {equippedWeapon.Label} to inventory");
+                            AutoArmLogger.Log($"Moved upgraded weapon {equippedWeapon.Label} to inventory");
                         }
                     }
 
@@ -1393,7 +1721,7 @@ namespace AutoArm
                             pawn.inventory.innerContainer.Remove(upgradeInfo.originalPrimary);
                             pawn.equipment.AddEquipment(upgradeInfo.originalPrimary);
 
-                            AutoArmDebug.Log($"Restored original primary weapon {upgradeInfo.originalPrimary.Label}");
+                            AutoArmLogger.Log($"Restored original primary weapon {upgradeInfo.originalPrimary.Label}");
                         }
                     }
 
@@ -1403,7 +1731,7 @@ namespace AutoArm
                 else
                 {
                     // This is a replacement operation - different handling
-                    AutoArmDebug.Log($"Completing sidearm replacement for {pawn.Name}");
+                    AutoArmLogger.Log($"Completing sidearm replacement for {pawn.Name}");
 
                     if (upgradeInfo.oldWeapon != null && !upgradeInfo.oldWeapon.Destroyed)
                     {
@@ -1433,7 +1761,7 @@ namespace AutoArm
 
                 // Set a cooldown after upgrade to prevent immediate weapon switching
                 TimingHelper.SetCooldown(pawn, TimingHelper.CooldownType.WeaponSearch);
-                AutoArmDebug.Log($"Set post-upgrade cooldown for {pawn.Name}");
+                AutoArmLogger.Log($"Set post-upgrade cooldown for {pawn.Name}");
             }
         }
 
@@ -1528,7 +1856,7 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Failed to get SimpleSidearms slot limit: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Failed to get SimpleSidearms slot limit: {e.Message}");
             }
 
             // Default to a reasonable limit if we can't read settings
@@ -1617,7 +1945,7 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                AutoArmDebug.Log($"WARNING: Failed to get SimpleSidearms weight limit: {e.Message}");
+                AutoArmLogger.Log($"WARNING: Failed to get SimpleSidearms weight limit: {e.Message}");
             }
 
             // Default to a reasonable limit if we can't read settings
@@ -1851,7 +2179,7 @@ namespace AutoArm
                         harmony.Patch(equipSpecificWeaponMethod,
                             prefix: new HarmonyMethod(typeof(SimpleSidearms_WeaponSwap_Patches), nameof(EquipSpecificWeapon_Prefix)),
                             postfix: new HarmonyMethod(typeof(SimpleSidearms_WeaponSwap_Patches), nameof(EquipSpecificWeapon_Postfix)));
-                        AutoArmDebug.Log("Patched SimpleSidearms.equipSpecificWeapon");
+                        AutoArmLogger.Log("Patched SimpleSidearms.equipSpecificWeapon");
                     }
 
                     // Patch equipSpecificWeaponFromInventory
@@ -1862,14 +2190,14 @@ namespace AutoArm
                     {
                         harmony.Patch(equipFromInventoryMethod,
                             prefix: new HarmonyMethod(typeof(SimpleSidearms_WeaponSwap_Patches), nameof(EquipFromInventory_Prefix)));
-                        AutoArmDebug.Log("Patched SimpleSidearms.equipSpecificWeaponFromInventory");
+                        AutoArmLogger.Log("Patched SimpleSidearms.equipSpecificWeaponFromInventory");
                     }
 
                     patchesApplied = true;
                 }
                 else
                 {
-                    AutoArmDebug.Log("WARNING: Could not find SimpleSidearms WeaponAssingment type");
+                    AutoArmLogger.Log("WARNING: Could not find SimpleSidearms WeaponAssingment type");
                 }
             }
             catch (Exception e)
@@ -1889,7 +2217,7 @@ namespace AutoArm
             // Store the current forced weapon state before the swap
             if (pawn.equipment?.Primary != null && ForcedWeaponHelper.IsForced(pawn, pawn.equipment.Primary))
             {
-                AutoArmDebug.LogWeapon(pawn, pawn.equipment.Primary, "SimpleSidearms swap starting - current weapon is forced");
+                AutoArmLogger.LogWeapon(pawn, pawn.equipment.Primary, "SimpleSidearms swap starting - current weapon is forced");
             }
         }
 
@@ -1911,7 +2239,7 @@ namespace AutoArm
 
                 if (forcedDefs.Count > 0)
                 {
-                    AutoArmDebug.LogPawn(pawn, $"Maintaining forced status for {forcedDefs.Count} weapon type(s) after SimpleSidearms operation");
+                    AutoArmLogger.LogPawn(pawn, $"Maintaining forced status for {forcedDefs.Count} weapon type(s) after SimpleSidearms operation");
                 }
 
                 // Check primary weapon
@@ -1921,7 +2249,7 @@ namespace AutoArm
                     if (forcedDefs.Contains(primary.def))
                     {
                         ForcedWeaponHelper.SetForced(pawn, primary);
-                        AutoArmDebug.LogWeapon(pawn, primary, "SimpleSidearms operation completed - maintained forced status on primary");
+                        AutoArmLogger.LogWeapon(pawn, primary, "SimpleSidearms operation completed - maintained forced status on primary");
                     }
                 }
 
@@ -1933,7 +2261,7 @@ namespace AutoArm
                         if (forcedDefs.Contains(invWeapon.def))
                         {
                             // No need to add it again, it's already in forcedDefs
-                            AutoArmDebug.LogWeapon(pawn, invWeapon, "SimpleSidearms operation completed - maintained forced status on sidearm");
+                            AutoArmLogger.LogWeapon(pawn, invWeapon, "SimpleSidearms operation completed - maintained forced status on sidearm");
                         }
                     }
                 }
@@ -1947,7 +2275,7 @@ namespace AutoArm
 
             // This method calls equipSpecificWeapon, so just mark the swap
             DroppedItemTracker.MarkSimpleSidearmsSwapInProgress(pawn);
-            AutoArmDebug.LogPawn(pawn, "SimpleSidearms inventory swap starting");
+            AutoArmLogger.LogPawn(pawn, "SimpleSidearms inventory swap starting");
         }
     }
 
@@ -2049,11 +2377,11 @@ namespace AutoArm
                 {
                     harmony.Patch(targetMethod,
                         prefix: new HarmonyMethod(typeof(SimpleSidearms_JobGiver_RetrieveWeapon_Patch), nameof(Prefix)));
-                    AutoArmDebug.Log("Patched SimpleSidearms JobGiver_RetrieveWeapon");
+                    AutoArmLogger.Log("Patched SimpleSidearms JobGiver_RetrieveWeapon");
                 }
                 else
                 {
-                    AutoArmDebug.Log("WARNING: Could not find SimpleSidearms JobGiver_RetrieveWeapon to patch");
+                    AutoArmLogger.Log("WARNING: Could not find SimpleSidearms JobGiver_RetrieveWeapon to patch");
                 }
             }
             catch (Exception e)

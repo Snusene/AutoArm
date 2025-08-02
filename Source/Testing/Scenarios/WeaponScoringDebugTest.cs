@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Debug test for understanding weapon scoring calculations
+// Uses extreme skill differences to validate scoring formulas
+
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -87,12 +91,12 @@ namespace AutoArm.Testing.Scenarios
                 result.Data["Balanced_SwordScore"] = balancedSwordScore;
                 
                 // Log everything
-                AutoArmDebug.Log("[TEST] === Weapon Scoring Debug ===");
-                AutoArmDebug.Log($"[TEST] Assault Rifle base: {rifleBase:F1}");
-                AutoArmDebug.Log($"[TEST] Longsword base: {swordBase:F1}");
-                AutoArmDebug.Log($"[TEST] Expected skill bonus (20 levels): {expectedBonus:F1}");
-                AutoArmDebug.Log($"[TEST] Extreme melee pawn - Rifle: {extremeMeleeRifleScore:F1}, Sword: {extremeMeleeSwordScore:F1}");
-                AutoArmDebug.Log($"[TEST] Balanced pawn - Rifle: {balancedRifleScore:F1}, Sword: {balancedSwordScore:F1}");
+                AutoArmLogger.Log("[TEST] === Weapon Scoring Debug ===");
+                AutoArmLogger.Log($"[TEST] Assault Rifle base: {rifleBase:F1}");
+                AutoArmLogger.Log($"[TEST] Longsword base: {swordBase:F1}");
+                AutoArmLogger.Log($"[TEST] Expected skill bonus (20 levels): {expectedBonus:F1}");
+                AutoArmLogger.Log($"[TEST] Extreme melee pawn - Rifle: {extremeMeleeRifleScore:F1}, Sword: {extremeMeleeSwordScore:F1}");
+                AutoArmLogger.Log($"[TEST] Balanced pawn - Rifle: {balancedRifleScore:F1}, Sword: {balancedSwordScore:F1}");
                 
                 // Cleanup
                 rifle?.Destroy();
@@ -104,7 +108,7 @@ namespace AutoArm.Testing.Scenarios
             {
                 result.Success = false;
                 result.Data["Exception"] = ex.Message;
-                AutoArmDebug.LogError($"[TEST] WeaponScoringDebugTest exception: {ex}");
+                AutoArmLogger.LogError($"[TEST] WeaponScoringDebugTest exception: {ex}");
             }
             
             return result;

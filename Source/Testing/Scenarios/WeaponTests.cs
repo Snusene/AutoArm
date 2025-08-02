@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Weapon tests for drop behavior and blacklist functionality
+// Validates weapon filtering and restriction systems
+
 using RimWorld;
 using Verse;
 
@@ -87,8 +91,15 @@ namespace AutoArm.Testing.Scenarios
 
             if (weaponAllowedByPolicy)
             {
-                AutoArmDebug.LogError($"[TEST] WeaponDropTest: Ranged weapon is still allowed by restrictive policy - expected: false, got: true (weapon: {rangedWeapon.Label})");
-                return TestResult.Failure("Ranged weapon is still allowed by restrictive policy");
+                result.Success = false;
+                result.FailureReason = "Ranged weapon is still allowed by restrictive policy";
+                result.Data["Error"] = "Policy failed to restrict ranged weapon";
+                result.Data["Weapon"] = rangedWeapon.Label;
+                result.Data["PolicyName"] = restrictivePolicy.label;
+                result.Data["WeaponAllowed"] = true;
+                result.Data["ExpectedAllowed"] = false;
+                AutoArmLogger.LogError($"[TEST] WeaponDropTest: Ranged weapon is still allowed by restrictive policy - expected: false, got: true (weapon: {rangedWeapon.Label})");
+                return result;
             }
 
             // In the actual game, the harmony patch would trigger the drop
@@ -149,8 +160,12 @@ namespace AutoArm.Testing.Scenarios
             if (!WeaponBlacklist.IsBlacklisted(testWeaponDef, testPawn))
             {
                 result.Success = false;
-                result.Data["Error"] = "Weapon not blacklisted after adding";
-                AutoArmDebug.LogError($"[TEST] WeaponBlacklistBasicTest: Weapon not blacklisted after adding - expected: true, got: false (weapon: {testWeaponDef.defName})");
+                result.FailureReason = "Weapon not blacklisted after adding";
+                result.Data["Error"] = "Blacklist add operation failed";
+                result.Data["WeaponDef"] = testWeaponDef.defName;
+                result.Data["BlacklistStatus"] = false;
+                result.Data["ExpectedStatus"] = true;
+                AutoArmLogger.LogError($"[TEST] WeaponBlacklistBasicTest: Weapon not blacklisted after adding - expected: true, got: false (weapon: {testWeaponDef.defName})");
             }
 
             // Test removing from blacklist
@@ -160,8 +175,12 @@ namespace AutoArm.Testing.Scenarios
             if (WeaponBlacklist.IsBlacklisted(testWeaponDef, testPawn))
             {
                 result.Success = false;
+                result.FailureReason = result.FailureReason ?? "Weapon still blacklisted after removing";
+                result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Blacklist remove operation failed" : "Blacklist remove operation failed";
                 result.Data["Error2"] = "Weapon still blacklisted after removing";
-                AutoArmDebug.LogError($"[TEST] WeaponBlacklistBasicTest: Weapon still blacklisted after removing - expected: false, got: true (weapon: {testWeaponDef.defName})");
+                result.Data["BlacklistStatusAfterRemove"] = true;
+                result.Data["ExpectedStatusAfterRemove"] = false;
+                AutoArmLogger.LogError($"[TEST] WeaponBlacklistBasicTest: Weapon still blacklisted after removing - expected: false, got: true (weapon: {testWeaponDef.defName})");
             }
 
             return result;
@@ -269,8 +288,12 @@ namespace AutoArm.Testing.Scenarios
                 if (job.targetA.Thing == blacklistedWeapon)
                 {
                     result.Success = false;
-                    result.Data["Error"] = "Job targets blacklisted weapon!";
-                    AutoArmDebug.LogError($"[TEST] WeaponBlacklistIntegrationTest: Job targets blacklisted weapon - expected: {normalWeapon?.Label}, got: {blacklistedWeapon?.Label}");
+                    result.FailureReason = "Job targets blacklisted weapon";
+                    result.Data["Error"] = "Blacklist validation failed - job created for blacklisted weapon";
+                    result.Data["BlacklistedWeapon"] = blacklistedWeapon?.Label;
+                    result.Data["ExpectedTarget"] = normalWeapon?.Label;
+                    result.Data["ActualTarget"] = job.targetA.Thing?.Label;
+                    AutoArmLogger.LogError($"[TEST] WeaponBlacklistIntegrationTest: Job targets blacklisted weapon - expected: {normalWeapon?.Label}, got: {blacklistedWeapon?.Label}");
                 }
             }
 

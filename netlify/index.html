@@ -294,7 +294,7 @@
                     <li>Armor penetration thresholds: 100pts (≥0.75), 70pts (≥0.52), 50pts (≥0.40), 30pts (≥0.20), linear scale below</li>
                     <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(skillDifference-1)</li>
                     <li>Brawler trait: +200 bonus for melee weapons</li>
-                    <li>Hunting work: +100 base bonus for ranged, plus +200 (range≥30) or +100 (range 20-29)</li>
+                    <li>Hunting work: +100 bonus for all ranged weapons</li>
                     <li>Natural weapons (Thrumbo Horn, Alpha Thrumbo Horn, Elephant Tusk, Mastodon Tusk) have fixed stats that don't change with quality</li>
                 </ul>
             </div>
@@ -552,10 +552,7 @@
             if (!isHunter) return 0;
 
             if (isRanged) {
-                let bonus = 100;
-                if (weapon.range >= 30) bonus += 200;
-                else if (weapon.range >= 20) bonus += 100;
-                return bonus;
+                return 100; // Flat bonus for any ranged weapon
             }
             return 0; // No penalty for melee weapons
         }
@@ -951,11 +948,11 @@
             // Build trait/role description
             let traitDesc = "";
             if (isBrawler && isHunter) {
-                traitDesc = " <strong>[Brawler: +200 melee] + [Hunting: +100 ranged, +200 (range≥30), +100 (range 20-29)]</strong>";
+                traitDesc = " <strong>[Brawler: +200 melee] + [Hunting: +100 ranged]</strong>";
             } else if (isBrawler) {
                 traitDesc = " <strong style='color: red;'>[Brawler: +200 melee]</strong>";
             } else if (isHunter) {
-                traitDesc = " <strong style='color: green;'>[Hunting: +100 ranged, +200 (range≥30), +100 (range 20-29)]</strong>";
+                traitDesc = " <strong style='color: green;'>[Hunting: +100 ranged]</strong>";
             }
 
             if (shootingSkill > meleeSkill + 3) {

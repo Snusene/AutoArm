@@ -1,4 +1,8 @@
-﻿using System;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Mod compatibility detection and load order warnings
+// Helps users identify potential conflicts with other mods
+
+using System;
 using System.Linq;
 using Verse;
 
@@ -88,12 +92,12 @@ namespace AutoArm
             // Only log detailed mod order if there are issues AND debug logging is enabled
             if (hasLoadOrderIssues && AutoArmMod.settings?.debugLogging == true)
             {
-                AutoArmDebug.Log($"AutoArm found at index: {autoArmIndex}");
-                AutoArmDebug.Log("First 20 mods in load order:");
+                AutoArmLogger.Log($"AutoArm found at index: {autoArmIndex}");
+                AutoArmLogger.Log("First 20 mods in load order:");
                 for (int i = 0; i < Math.Min(20, activeModsInOrder.Count); i++)
                 {
                     var mod = activeModsInOrder[i];
-                    AutoArmDebug.Log($"  {i}: {mod.PackageIdPlayerFacing} - {mod.Name}");
+                    AutoArmLogger.Log($"  {i}: {mod.PackageIdPlayerFacing} - {mod.Name}");
                 }
             }
         }

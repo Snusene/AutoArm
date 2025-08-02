@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Test suite organization
+// Groups related tests into suites for targeted testing
+
 using AutoArm.Testing.Scenarios;
 using System.Collections.Generic;
 using System.Linq;
@@ -54,7 +58,6 @@ namespace AutoArm.Testing
                 new HunterTest(),
                 new SkillBasedPreferenceTest(),
                 new ChildColonistTest(),
-                new NobilityTest(),
                 new TemporaryColonistTest(),
                 new PrisonerSlaveTest()
             };

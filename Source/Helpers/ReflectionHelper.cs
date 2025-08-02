@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Cached reflection operations for performance
+// Prevents redundant reflection lookups across mod systems
+// Uses: Type, method, field, and property caching with safe invocation
+// Critical: Performance optimization for frequent reflection operations
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -131,7 +137,7 @@ namespace AutoArm
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.LogError($"Failed to invoke {type.Name}.{methodName}", ex);
+                    AutoArmLogger.LogError($"Failed to invoke {type.Name}.{methodName}", ex);
                 }
                 return null;
             }
@@ -154,7 +160,7 @@ namespace AutoArm
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.LogError($"Failed to get field value {type.Name}.{fieldName}", ex);
+                    AutoArmLogger.LogError($"Failed to get field value {type.Name}.{fieldName}", ex);
                 }
                 return null;
             }
@@ -177,7 +183,7 @@ namespace AutoArm
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.LogError($"Failed to get property value {type.Name}.{propertyName}", ex);
+                    AutoArmLogger.LogError($"Failed to get property value {type.Name}.{propertyName}", ex);
                 }
                 return null;
             }
@@ -248,7 +254,7 @@ namespace AutoArm
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.LogError($"Failed to get cached field value for key {key}", ex);
+                    AutoArmLogger.LogError($"Failed to get cached field value for key {key}", ex);
                 }
                 return default(T);
             }

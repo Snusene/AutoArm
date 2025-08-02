@@ -1,4 +1,9 @@
-﻿using Verse;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Vanilla weapon definitions for testing and validation
+// Provides null-safe access to vanilla weapons for compatibility checks
+// Note: Uses GetNamedSilentFail to handle missing/modded weapon scenarios
+
+using Verse;
 
 namespace AutoArm
 {

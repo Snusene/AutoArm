@@ -1,4 +1,8 @@
-﻿using RimWorld;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Combat Extended compatibility for ammo-based weapon scoring
+// Integrates CE ammo requirements into weapon selection logic
+
+using RimWorld;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -185,7 +189,7 @@ namespace AutoArm
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"CE ammo check skipped - AutoArm setting disabled");
+                    AutoArmLogger.Log($"CE ammo check skipped - AutoArm setting disabled");
                 }
                 return false;
             }
@@ -194,7 +198,7 @@ namespace AutoArm
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"CE ammo check skipped - CE ammo system disabled");
+                    AutoArmLogger.Log($"CE ammo check skipped - CE ammo system disabled");
                 }
                 return false;
             }
@@ -212,7 +216,7 @@ namespace AutoArm
                 {
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        AutoArmDebug.Log($"Weapon {weapon.def.defName} has no ammo types defined");
+                        AutoArmLogger.Log($"Weapon {weapon.def.defName} has no ammo types defined");
                     }
                     return false;
                 }
@@ -241,7 +245,7 @@ namespace AutoArm
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     string ammoTypeNames = string.Join(", ", ammoTypes.Select(a => a.defName));
-                    AutoArmDebug.LogWeapon(pawn, weapon,
+                    AutoArmLogger.LogWeapon(pawn, weapon,
                         $"CE ammo check - Needs: [{ammoTypeNames}], " +
                         $"Inventory: {inventoryAmmoCount}, " +
                         $"Map available: {(hasAmmo && inventoryAmmoCount == 0 ? "Yes" : "No")}, " +
@@ -404,7 +408,7 @@ namespace AutoArm
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
-                AutoArmDebug.Log($"CE ammo check - Loaded: {isLoaded}, CE Ammo System: {ammoSystemEnabled}, AutoArm Setting: {settingEnabled}, Result: {result}");
+                AutoArmLogger.Log($"CE ammo check - Loaded: {isLoaded}, CE Ammo System: {ammoSystemEnabled}, AutoArm Setting: {settingEnabled}, Result: {result}");
             }
 
             return result;

@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Tracks recently dropped weapons to prevent re-pickup loops
+// Prevents pawns from immediately picking up weapons they just dropped
+// Uses: Outfit changes, weapon upgrades, SimpleSidearms integration
+// Critical: Prevents infinite drop/pickup loops that break pawn behavior
+
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
@@ -27,7 +33,7 @@ namespace AutoArm
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
-                AutoArmDebug.Log($"Marked {item.Label} as recently dropped - will ignore for {ignoreTicks} ticks");
+                AutoArmLogger.Log($"Marked {item.Label} as recently dropped - will ignore for {ignoreTicks} ticks");
             }
         }
 
@@ -132,7 +138,7 @@ namespace AutoArm
                 pendingUpgradeDrops.Add(weapon);
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"Marked {weapon.Label} as pending same-type upgrade drop");
+                    AutoArmLogger.Log($"Marked {weapon.Label} as pending same-type upgrade drop");
                 }
             }
         }
@@ -194,7 +200,7 @@ namespace AutoArm
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"Marked {weapon.Label} as pending drop for weapon replacement");
+                    AutoArmLogger.Log($"Marked {weapon.Label} as pending drop for weapon replacement");
                 }
             }
         }

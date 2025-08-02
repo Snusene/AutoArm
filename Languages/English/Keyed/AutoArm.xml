@@ -1,9 +1,9 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <LanguageData>
 	<!-- Mod Settings -->
-	<AutoArm_ModName>AutoArm</AutoArm_ModName>
-	<AutoArm_SettingsCategory>AutoArm</AutoArm_SettingsCategory>
-	<AutoArm_EnableMod>Enable AutoArm</AutoArm_EnableMod>
+	<AutoArm_ModName>Auto Arm</AutoArm_ModName>
+	<AutoArm_SettingsCategory>Auto Arm</AutoArm_SettingsCategory>
+	<AutoArm_EnableMod>Enable Auto Arm</AutoArm_EnableMod>
 	<AutoArm_EnableModDesc>When enabled, colonists will automatically equip better weapons based on their outfit policy. When disabled, all automatic weapon management is turned off.</AutoArm_EnableModDesc>
 	<AutoArm_EnableDebugLogging>Enable Debug Logging</AutoArm_EnableDebugLogging>
 	<AutoArm_EnableDebugLoggingDesc>Outputs detailed information to the debug log for troubleshooting. This will create many log entries and may impact performance. Only enable when reporting issues.</AutoArm_EnableDebugLoggingDesc>
@@ -15,6 +15,8 @@
 	<AutoArm_UpgradedWeapon>{0} upgraded from {1} to {2}</AutoArm_UpgradedWeapon>
 	<AutoArm_UpgradedSidearm>{0} upgraded sidearm from {1} to {2}</AutoArm_UpgradedSidearm>
 	<AutoArm_ReplacedWeapon>{0} replaced {1} with {2}</AutoArm_ReplacedWeapon>
+	<AutoArm_DroppingDisallowed>{0} dropped {1} (not allowed by outfit)</AutoArm_DroppingDisallowed>
+	<AutoArm_EquippedSidearm>{0} equipped {1} as sidearm</AutoArm_EquippedSidearm>
 	<!-- Mod Compatibility Settings -->
 	<AutoArm_EnableSidearmAutoEquip>Auto-equip sidearms</AutoArm_EnableSidearmAutoEquip>
 	<AutoArm_EnableSidearmAutoEquipDesc>Allows colonists to automatically pick up additional weapons as sidearms. Simple Sidearms must be installed and configured. This may impact performance with many colonists.</AutoArm_EnableSidearmAutoEquipDesc>
@@ -30,7 +32,7 @@
 	<AutoArm_SettingsReset>Settings have been reset to defaults</AutoArm_SettingsReset>
 
 	<AutoArm_TestRunner>Test Runner</AutoArm_TestRunner>
-	<AutoArm_RunAllTests>Run All AutoArm Tests</AutoArm_RunAllTests>
+	<AutoArm_RunAllTests>Run All Auto Arm Tests</AutoArm_RunAllTests>
 	<AutoArm_RunSpecificTest>Run Specific Test</AutoArm_RunSpecificTest>
 	<AutoArm_ExportLogs>Export Debug Logs</AutoArm_ExportLogs>
 	<AutoArm_TestResults>Test Results</AutoArm_TestResults>

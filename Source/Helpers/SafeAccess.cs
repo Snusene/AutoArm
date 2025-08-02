@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Null-safe property access helpers
+// Reduces defensive coding boilerplate while maintaining safety
+// Uses: Throughout mod for safe pawn property access
+// Note: Simplifies code readability without sacrificing null safety
+
 using RimWorld;
 using System.Linq;
 using Verse;

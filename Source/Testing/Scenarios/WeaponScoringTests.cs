@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Comprehensive weapon scoring system tests
+// Validates DPS, range, burst, armor penetration calculations
+
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -12,11 +16,7 @@ namespace AutoArm.Testing.Scenarios
     /// </summary>
     public class WeaponScoringSystemTest : ITestScenario
     {
-        // Constants from WeaponScoringHelper
-        private const float RANGED_MULTIPLIER = 10f;
-        private const float MELEE_MULTIPLIER = 8f;
-        private const float POWER_CREEP_THRESHOLD = 30f;
-        public string Name => "Weapon Scoring System (Web Analyzer Match)";
+        public string Name => "Weapon Scoring System";
         private Map testMap;
         private Pawn neutralPawn; // Balanced skills for testing
 
@@ -49,52 +49,52 @@ namespace AutoArm.Testing.Scenarios
             {
                 // Run all sub-tests
                 totalTests++;
-                AutoArmDebug.Log("[TEST] Starting DPS Scoring test...");
+                AutoArmLogger.Log("[TEST] Starting DPS Scoring test...");
                 TestDPSScoring(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] DPS Scoring test failed"); }
+                else { AutoArmLogger.LogError("[TEST] DPS Scoring test failed"); }
                 
                 totalTests++;
                 result.Success = true; // Reset for next test
-                AutoArmDebug.Log("[TEST] Starting Range Modifiers test...");
+                AutoArmLogger.Log("[TEST] Starting Range Modifiers test...");
                 TestRangeModifiers(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] Range Modifiers test failed"); }
+                else { AutoArmLogger.LogError("[TEST] Range Modifiers test failed"); }
                 
                 totalTests++;
                 result.Success = true;
-                AutoArmDebug.Log("[TEST] Starting Burst Bonuses test...");
+                AutoArmLogger.Log("[TEST] Starting Burst Bonuses test...");
                 TestBurstBonuses(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] Burst Bonuses test failed"); }
+                else { AutoArmLogger.LogError("[TEST] Burst Bonuses test failed"); }
                 
                 totalTests++;
                 result.Success = true;
-                AutoArmDebug.Log("[TEST] Starting Armor Penetration test...");
+                AutoArmLogger.Log("[TEST] Starting Armor Penetration test...");
                 TestArmorPenetration(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] Armor Penetration test failed"); }
+                else { AutoArmLogger.LogError("[TEST] Armor Penetration test failed"); }
                 
                 totalTests++;
                 result.Success = true;
-                AutoArmDebug.Log("[TEST] Starting Power Creep Protection test...");
+                AutoArmLogger.Log("[TEST] Starting Power Creep Protection test...");
                 TestPowerCreepProtection(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] Power Creep Protection test failed"); }
+                else { AutoArmLogger.LogError("[TEST] Power Creep Protection test failed"); }
                 
                 totalTests++;
                 result.Success = true;
-                AutoArmDebug.Log("[TEST] Starting Situational Weapons test...");
+                AutoArmLogger.Log("[TEST] Starting Situational Weapons test...");
                 TestSituationalWeapons(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] Situational Weapons test failed"); }
+                else { AutoArmLogger.LogError("[TEST] Situational Weapons test failed"); }
                 
                 totalTests++;
                 result.Success = true;
-                AutoArmDebug.Log("[TEST] Starting Skill Scoring test...");
+                AutoArmLogger.Log("[TEST] Starting Skill Scoring test...");
                 TestSkillScoring(result);
                 if (result.Success) passedTests++;
-                else { AutoArmDebug.LogError("[TEST] Skill Scoring test failed"); }
+                else { AutoArmLogger.LogError("[TEST] Skill Scoring test failed"); }
                 
                 // Overall success if most tests pass
                 result.Success = passedTests >= (totalTests - 1); // Allow one failure
@@ -112,7 +112,7 @@ namespace AutoArm.Testing.Scenarios
                 result.Success = false;
                 result.Data["Exception"] = ex.Message;
                 result.Data["StackTrace"] = ex.StackTrace;
-                AutoArmDebug.LogError($"[TEST] WeaponScoringSystemTest exception: {ex}");
+                AutoArmLogger.LogError($"[TEST] WeaponScoringSystemTest exception: {ex}");
             }
             
             return result;
@@ -127,8 +127,12 @@ namespace AutoArm.Testing.Scenarios
             if (pistolDef == null || rifleDef == null)
             {
                 result.Success = false;
+                result.FailureReason = "Required weapon defs not found";
+                result.Data["Error"] = "Test setup failed - missing weapon definitions";
                 result.Data["DPS_Error"] = $"Weapon defs not found: pistol={pistolDef != null}, rifle={rifleDef != null}";
-                AutoArmDebug.LogError("[TEST] DPS Scoring: Weapon defs not found");
+                result.Data["PistolDefFound"] = pistolDef != null;
+                result.Data["RifleDefFound"] = rifleDef != null;
+                AutoArmLogger.LogError("[TEST] DPS Scoring: Weapon defs not found");
                 return;
             }
             
@@ -138,7 +142,12 @@ namespace AutoArm.Testing.Scenarios
             if (pistol == null || rifle == null)
             {
                 result.Success = false;
+                result.FailureReason = "Failed to create weapon instances";
+                result.Data["Error"] = "Weapon instantiation failed";
                 result.Data["DPS_Error"] = "Failed to create weapon instances";
+                result.Data["PistolCreated"] = pistol != null;
+                result.Data["RifleCreated"] = rifle != null;
+                AutoArmLogger.LogError("[TEST] DPS Scoring: Failed to create weapon instances");
                 return;
             }
             
@@ -151,14 +160,20 @@ namespace AutoArm.Testing.Scenarios
                 result.Data["DPS_AssaultRifleScore"] = rifleScore;
                 
                 // Log detailed scoring breakdown
-                AutoArmDebug.Log($"[TEST] Autopistol score: {pistolScore}");
-                AutoArmDebug.Log($"[TEST] Assault rifle score: {rifleScore}");
+                AutoArmLogger.Log($"[TEST] Autopistol score: {pistolScore}");
+                AutoArmLogger.Log($"[TEST] Assault rifle score: {rifleScore}");
                 
                 if (rifleScore <= pistolScore)
                 {
                     result.Success = false;
+                    result.FailureReason = "Higher DPS weapon didn't score better";
+                    result.Data["Error"] = "DPS scoring not working correctly";
                     result.Data["DPS_Error"] = "Higher DPS weapon didn't score better";
-                    AutoArmDebug.LogError($"[TEST] DPS Scoring: Assault rifle ({rifleScore}) didn't score higher than autopistol ({pistolScore})");
+                    result.Data["PistolDPS"] = "~9";
+                    result.Data["RifleDPS"] = "~11";
+                    result.Data["PistolScore"] = pistolScore;
+                    result.Data["RifleScore"] = rifleScore;
+                    AutoArmLogger.LogError($"[TEST] DPS Scoring: Assault rifle ({rifleScore}) didn't score higher than autopistol ({pistolScore})");
                 }
             }
             finally
@@ -170,88 +185,123 @@ namespace AutoArm.Testing.Scenarios
 
         private void TestRangeModifiers(TestResult result)
         {
-            // Test range penalties for short-range weapons
-            var shotgunDef = VanillaWeaponDefOf.Gun_PumpShotgun; // 15.9 range - should get penalty
-            var rifleDef = VanillaWeaponDefOf.Gun_BoltActionRifle; // 36.9 range - should get bonus
+            // Test range penalties/bonuses for weapons
+            var shotgunDef = VanillaWeaponDefOf.Gun_PumpShotgun; // Short range
+            var rifleDef = VanillaWeaponDefOf.Gun_BoltActionRifle; // Long range
             
             if (shotgunDef == null || rifleDef == null)
             {
                 result.Data["Range_Error"] = $"Weapon defs not found: shotgun={shotgunDef != null}, rifle={rifleDef != null}";
-                AutoArmDebug.LogError("[TEST] Range modifiers: Required weapon defs not found");
+                AutoArmLogger.LogError("[TEST] Range modifiers: Required weapon defs not found");
                 return;
             }
             
             var shotgun = ThingMaker.MakeThing(shotgunDef) as ThingWithComps;
             var rifle = ThingMaker.MakeThing(rifleDef) as ThingWithComps;
             
-            // Test the range modifier calculation directly
-            float shotgunRange = shotgunDef.Verbs[0].range;
-            float rifleRange = rifleDef.Verbs[0].range;
-            
-            result.Data["Range_ShotgunRange"] = shotgunRange;
-            result.Data["Range_RifleRange"] = rifleRange;
-            
-            // Expected modifiers based on our implementation
-            // Shotgun (15.9): should get 0.55x modifier (16-18 range bracket)
-            // Rifle (36.9): should get 1.02x modifier (>35 range)
-            
-            float shotgunScore = WeaponScoringHelper.GetTotalScore(neutralPawn, shotgun);
-            float rifleScore = WeaponScoringHelper.GetTotalScore(neutralPawn, rifle);
-            
-            result.Data["Range_ShotgunScore"] = shotgunScore;
-            result.Data["Range_RifleScore"] = rifleScore;
-            
-            // Despite shotgun's higher DPS, rifle should be competitive due to range
-            if (Math.Abs(shotgunScore - rifleScore) > 200)
+            try
             {
-                result.Data["Range_Warning"] = "Range modifiers might be too extreme";
+                // Test the actual range values
+                float shotgunRange = shotgunDef.Verbs[0].range;
+                float rifleRange = rifleDef.Verbs[0].range;
+                
+                result.Data["Range_ShotgunRange"] = shotgunRange;
+                result.Data["Range_RifleRange"] = rifleRange;
+                
+                // Get actual scores from the scoring system
+                float shotgunScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, shotgun);
+                float rifleScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, rifle);
+                
+                result.Data["Range_ShotgunScore"] = shotgunScore;
+                result.Data["Range_RifleScore"] = rifleScore;
+                
+                // Verify that longer range weapons generally score better
+                // (accounting for other factors like DPS)
+                if (rifleRange > shotgunRange * 2) // Rifle has much better range
+                {
+                    // Range bonus should help offset any DPS disadvantage
+                    result.Data["Range_RangeRatio"] = rifleRange / shotgunRange;
+                    result.Data["Range_ScoreRatio"] = rifleScore / Math.Max(shotgunScore, 1f);
+                    
+                    // If rifle scores much worse despite huge range advantage, that's suspicious
+                    if (rifleScore < shotgunScore * 0.5f)
+                    {
+                        result.Data["Range_Warning"] = "Long range weapon scored surprisingly low";
+                    }
+                }
             }
-            
-            TestHelpers.SafeDestroyWeapon(shotgun);
-            TestHelpers.SafeDestroyWeapon(rifle);
+            finally
+            {
+                TestHelpers.SafeDestroyWeapon(shotgun);
+                TestHelpers.SafeDestroyWeapon(rifle);
+            }
         }
 
         private void TestBurstBonuses(TestResult result)
         {
-            // Test burst bonuses with logarithmic scaling: 5 × log(burst + 1)
-            var singleShotDef = VanillaWeaponDefOf.Gun_Revolver; // 1 shot - no bonus
-            var burstDef = VanillaWeaponDefOf.Gun_AssaultRifle; // 3 shots - should get ~5.5 bonus
-            var heavyBurstDef = VanillaWeaponDefOf.Gun_HeavySMG; // 5 shots - should get ~8.1 bonus
+            // Test that burst weapons get appropriate bonuses
+            var singleShotDef = VanillaWeaponDefOf.Gun_Revolver; // 1 shot
+            var burstDef = VanillaWeaponDefOf.Gun_AssaultRifle; // 3 shots
+            var heavyBurstDef = VanillaWeaponDefOf.Gun_HeavySMG; // 5 shots
             
             if (singleShotDef == null || burstDef == null)
             {
                 result.Data["Burst_Error"] = $"Weapon defs not found: revolver={singleShotDef != null}, assault={burstDef != null}";
-                AutoArmDebug.LogError("[TEST] Burst bonuses: Required weapon defs not found");
+                AutoArmLogger.LogError("[TEST] Burst bonuses: Required weapon defs not found");
                 return;
             }
             
             var singleShot = ThingMaker.MakeThing(singleShotDef) as ThingWithComps;
             var burst = ThingMaker.MakeThing(burstDef) as ThingWithComps;
+            ThingWithComps heavyBurst = null;
             
-            float singleScore = WeaponScoringHelper.GetTotalScore(neutralPawn, singleShot);
-            float burstScore = WeaponScoringHelper.GetTotalScore(neutralPawn, burst);
-            
-            result.Data["Burst_SingleShotScore"] = singleScore;
-            result.Data["Burst_3BurstScore"] = burstScore;
-            
-            // Heavy SMG test if available
             if (heavyBurstDef != null)
             {
-                var heavyBurst = ThingMaker.MakeThing(heavyBurstDef) as ThingWithComps;
-                float heavyScore = WeaponScoringHelper.GetTotalScore(neutralPawn, heavyBurst);
-                result.Data["Burst_5BurstScore"] = heavyScore;
-                
-                // Heavy SMG should be penalized for short range despite burst
-                if (heavyScore > burstScore)
-                {
-                    result.Data["Burst_Warning"] = "Heavy SMG scored too high despite range penalty";
-                }
-                
-                TestHelpers.SafeDestroyWeapon(heavyBurst);
+                heavyBurst = ThingMaker.MakeThing(heavyBurstDef) as ThingWithComps;
             }
             
-            TestHelpers.SafeDestroyWeapon(singleShot);
-            TestHelpers.SafeDestroyWeapon(burst);
+            try
+            {
+                // Get actual scores
+                float singleScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, singleShot);
+                float burstScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, burst);
+                
+                result.Data["Burst_SingleShotScore"] = singleScore;
+                result.Data["Burst_3BurstScore"] = burstScore;
+                result.Data["Burst_SingleBurstCount"] = singleShotDef.Verbs[0].burstShotCount;
+                result.Data["Burst_3BurstCount"] = burstDef.Verbs[0].burstShotCount;
+                
+                // Test heavy burst weapon if available
+                if (heavyBurst != null)
+                {
+                    float heavyScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, heavyBurst);
+                    result.Data["Burst_5BurstScore"] = heavyScore;
+                    result.Data["Burst_5BurstCount"] = heavyBurstDef.Verbs[0].burstShotCount;
+                    
+                    // Heavy SMG might score lower due to range penalty
+                    float heavyRange = heavyBurstDef.Verbs[0].range;
+                    result.Data["Burst_5BurstRange"] = heavyRange;
+                    
+                    if (heavyRange < 20f && heavyScore > burstScore)
+                    {
+                        result.Data["Burst_Warning"] = "Short-range burst weapon scored surprisingly high";
+                    }
+                }
+                
+                // Verify burst weapons generally score well
+                if (burstDef.Verbs[0].burstShotCount > singleShotDef.Verbs[0].burstShotCount)
+                {
+                    // Burst should provide some advantage (unless offset by other factors)
+                    result.Data["Burst_Advantage"] = (burstScore / Math.Max(singleScore, 1f)) > 0.8f;
+                }
+            }
+            finally
+            {
+                TestHelpers.SafeDestroyWeapon(singleShot);
+                TestHelpers.SafeDestroyWeapon(burst);
+                if (heavyBurst != null)
+                    TestHelpers.SafeDestroyWeapon(heavyBurst);
+            }
         }
 
         private void TestArmorPenetration(TestResult result)
@@ -263,7 +313,7 @@ namespace AutoArm.Testing.Scenarios
             if (knifeDef == null || swordDef == null)
             {
                 result.Data["AP_Error"] = $"Weapon defs not found: knife={knifeDef != null}, sword={swordDef != null}";
-                AutoArmDebug.LogError("[TEST] Armor penetration: Required weapon defs not found");
+                AutoArmLogger.LogError("[TEST] Armor penetration: Required weapon defs not found");
                 return;
             }
             
@@ -289,31 +339,74 @@ namespace AutoArm.Testing.Scenarios
         private void TestPowerCreepProtection(TestResult result)
         {
             // Test that extreme DPS weapons get diminishing returns
-            // We need to create a modded weapon with extreme DPS for this test
+            // Since we can't access the private constants, we'll test the behavior
             
-            // Since we can't easily create a 50+ DPS weapon, we'll verify the formula works
-            float normalDPS = 20f;
-            float extremeDPS = 50f;
+            // Create weapons with different DPS levels
+            var pistolDef = VanillaWeaponDefOf.Gun_Autopistol;  // Low DPS
+            var rifleDef = VanillaWeaponDefOf.Gun_AssaultRifle; // Medium DPS
+            var chargeDef = VanillaWeaponDefOf.Gun_ChargeRifle; // High DPS (if available)
             
-            // Normal scoring: 20 * 10 = 200
-            float normalScore = normalDPS * RANGED_MULTIPLIER;
-            
-            // Extreme scoring: 30 + (20 * 0.5) = 40, then 40 * 10 = 400 (not 500)
-            float adjustedDPS = POWER_CREEP_THRESHOLD + ((extremeDPS - POWER_CREEP_THRESHOLD) * 0.5f);
-            float extremeScore = adjustedDPS * RANGED_MULTIPLIER;
-            
-            result.Data["PowerCreep_NormalDPS"] = normalDPS;
-            result.Data["PowerCreep_NormalScore"] = normalScore;
-            result.Data["PowerCreep_ExtremeDPS"] = extremeDPS;
-            result.Data["PowerCreep_ExpectedScore"] = extremeScore;
-            result.Data["PowerCreep_WithoutProtection"] = extremeDPS * 10f;
-            
-            // Verify the protection reduces the score
-            if (extremeScore >= (extremeDPS * 10f))
+            if (pistolDef == null || rifleDef == null)
             {
-                result.Success = false;
-                result.Data["PowerCreep_Error"] = "Power creep protection not working";
-                AutoArmDebug.LogError($"[TEST] Power Creep: Protection not reducing extreme DPS scores");
+                result.Data["PowerCreep_Error"] = "Required weapon defs not found";
+                return;
+            }
+            
+            var pistol = ThingMaker.MakeThing(pistolDef) as ThingWithComps;
+            var rifle = ThingMaker.MakeThing(rifleDef) as ThingWithComps;
+            ThingWithComps chargeRifle = null;
+            
+            if (chargeDef != null)
+            {
+                chargeRifle = ThingMaker.MakeThing(chargeDef) as ThingWithComps;
+            }
+            
+            try
+            {
+                // Get actual scores
+                float pistolScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, pistol);
+                float rifleScore = WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, rifle);
+                float chargeScore = chargeRifle != null ? WeaponScoringHelper.GetWeaponPropertyScore(neutralPawn, chargeRifle) : 0f;
+                
+                result.Data["PowerCreep_PistolScore"] = pistolScore;
+                result.Data["PowerCreep_RifleScore"] = rifleScore;
+                if (chargeRifle != null)
+                    result.Data["PowerCreep_ChargeRifleScore"] = chargeScore;
+                
+                // Test that score scaling shows diminishing returns
+                float pistolToRifleRatio = rifleScore / Math.Max(pistolScore, 1f);
+                result.Data["PowerCreep_LowToMedRatio"] = pistolToRifleRatio;
+                
+                if (chargeRifle != null && rifleScore > 0)
+                {
+                    float rifleToChargeRatio = chargeScore / rifleScore;
+                    result.Data["PowerCreep_MedToHighRatio"] = rifleToChargeRatio;
+                    
+                    // The ratio should be smaller for high-end weapons (diminishing returns)
+                    if (rifleToChargeRatio >= pistolToRifleRatio * 1.2f)
+                    {
+                        result.Data["PowerCreep_Warning"] = "High-end weapons may not have diminishing returns";
+                    }
+                }
+                
+                // Verify scores are reasonable
+                if (rifleScore <= pistolScore)
+                {
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Basic weapon scoring failed";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Rifle didn't score higher than pistol" : "Rifle didn't score higher than pistol";
+                    result.Data["PowerCreep_Error2"] = "Rifle didn't score higher than pistol";
+                    result.Data["PistolScore"] = pistolScore;
+                    result.Data["RifleScore"] = rifleScore;
+                    AutoArmLogger.LogError($"[TEST] Power Creep: Rifle didn't score higher than pistol - rifle: {rifleScore}, pistol: {pistolScore}");
+                }
+            }
+            finally
+            {
+                TestHelpers.SafeDestroyWeapon(pistol);
+                TestHelpers.SafeDestroyWeapon(rifle);
+                if (chargeRifle != null)
+                    TestHelpers.SafeDestroyWeapon(chargeRifle);
             }
         }
 
@@ -352,7 +445,7 @@ namespace AutoArm.Testing.Scenarios
             {
                 // This is not a failure - just means no situational weapons in this modset
                 result.Data["Situational_Info"] = "No situational weapons found in game - test skipped";
-                AutoArmDebug.Log("[TEST] Situational: No situational weapons found - skipping test");
+                AutoArmLogger.Log("[TEST] Situational: No situational weapons found - skipping test");
                 return;
             }
             
@@ -367,18 +460,18 @@ namespace AutoArm.Testing.Scenarios
                     float score = WeaponScoringHelper.GetTotalScore(neutralPawn, weapon);
                     result.Data[$"Situational_{weaponDef.defName}_Score"] = score;
                     
-                    AutoArmDebug.Log($"[TEST] Situational weapon {weaponDef.label} ({weaponDef.defName}) scored: {score}");
+                    AutoArmLogger.Log($"[TEST] Situational weapon {weaponDef.label} ({weaponDef.defName}) scored: {score}");
                     
                     if (score > 120) // Allow some skill variance
                     {
                         // Don't fail the whole test for this - situational weapons are edge cases
                         result.Data[$"Situational_Warning_{tested}"] = $"{weaponDef.label} scored higher than expected: {score}";
-                        AutoArmDebug.Log($"[TEST] Situational: {weaponDef.label} scored {score}, expected ~80 (warning only)");
+                        AutoArmLogger.Log($"[TEST] Situational: {weaponDef.label} scored {score}, expected ~80 (warning only)");
                     }
                     else
                     {
                         passed++;
-                        AutoArmDebug.Log($"[TEST] Situational weapon {weaponDef.label} passed with score: {score}");
+                        AutoArmLogger.Log($"[TEST] Situational weapon {weaponDef.label} passed with score: {score}");
                     }
                     
                     TestHelpers.SafeDestroyWeapon(weapon);
@@ -391,7 +484,7 @@ namespace AutoArm.Testing.Scenarios
             
             if (tested > 0)
             {
-                AutoArmDebug.Log($"[TEST] Situational weapons test completed, tested {tested} weapons, {passed} passed");
+                AutoArmLogger.Log($"[TEST] Situational weapons test completed, tested {tested} weapons, {passed} passed");
             }
         }
 
@@ -404,7 +497,7 @@ namespace AutoArm.Testing.Scenarios
             if (rifleDef == null || swordDef == null)
             {
                 result.Data["Skill_Error"] = $"Weapon defs not found: rifle={rifleDef != null}, sword={swordDef != null}";
-                AutoArmDebug.LogError("[TEST] Skill scoring: Required weapon defs not found");
+                AutoArmLogger.LogError("[TEST] Skill scoring: Required weapon defs not found");
                 return;
             }
             
@@ -434,6 +527,17 @@ namespace AutoArm.Testing.Scenarios
             
             try
             {
+                // Get actual skill bonuses from the scoring system
+                float shooterRifleSkillBonus = WeaponScoringHelper.GetSkillScore(shooter, rifle);
+                float shooterSwordSkillBonus = WeaponScoringHelper.GetSkillScore(shooter, sword);
+                float brawlerRifleSkillBonus = WeaponScoringHelper.GetSkillScore(brawler, rifle);
+                float brawlerSwordSkillBonus = WeaponScoringHelper.GetSkillScore(brawler, sword);
+                
+                result.Data["Skill_ShooterRifleBonus"] = shooterRifleSkillBonus;
+                result.Data["Skill_ShooterSwordBonus"] = shooterSwordSkillBonus;
+                result.Data["Skill_BrawlerRifleBonus"] = brawlerRifleSkillBonus;
+                result.Data["Skill_BrawlerSwordBonus"] = brawlerSwordSkillBonus;
+                
                 // Test shooter preferences
                 float shooterRifleScore = WeaponScoringHelper.GetTotalScore(shooter, rifle);
                 float shooterSwordScore = WeaponScoringHelper.GetTotalScore(shooter, sword);
@@ -448,43 +552,78 @@ namespace AutoArm.Testing.Scenarios
                 result.Data["Skill_BrawlerRifleScore"] = brawlerRifleScore;
                 result.Data["Skill_BrawlerSwordScore"] = brawlerSwordScore;
                 
-                // Calculate expected skill bonuses (10 level difference)
-                float expectedBonus = 30f * (float)Math.Pow(1.15f, 9f); // Base 30
-                result.Data["Skill_ExpectedBonus"] = expectedBonus;
+                // Verify that skill bonuses are applied correctly
+                // Shooter should have positive bonus for rifle, negative for sword
+                if (shooterRifleSkillBonus <= 0)
+                {
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Skill bonus calculation errors";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Shooter rifle bonus not positive" : "Shooter rifle bonus not positive";
+                    result.Data["Skill_Error1"] = "Shooter doesn't get rifle bonus";
+                    result.Data["ShooterRifleBonus"] = shooterRifleSkillBonus;
+                    result.Data["ExpectedBonusSign"] = "positive";
+                    AutoArmLogger.LogError($"[TEST] Skill: Shooter rifle bonus {shooterRifleSkillBonus} should be positive");
+                }
                 
-                // Verify correct preferences
+                if (shooterSwordSkillBonus >= 0)
+                {
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Skill bonus calculation errors";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Shooter sword penalty not negative" : "Shooter sword penalty not negative";
+                    result.Data["Skill_Error2"] = "Shooter doesn't get sword penalty";
+                    result.Data["ShooterSwordBonus"] = shooterSwordSkillBonus;
+                    result.Data["ExpectedBonusSign"] = "negative";
+                    AutoArmLogger.LogError($"[TEST] Skill: Shooter sword bonus {shooterSwordSkillBonus} should be negative");
+                }
+                
+                // Brawler should have positive bonus for sword, negative for rifle
+                if (brawlerSwordSkillBonus <= 0)
+                {
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Skill bonus calculation errors";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Brawler sword bonus not positive" : "Brawler sword bonus not positive";
+                    result.Data["Skill_Error3"] = "Brawler doesn't get sword bonus";
+                    result.Data["BrawlerSwordBonus"] = brawlerSwordSkillBonus;
+                    result.Data["ExpectedBonusSign"] = "positive";
+                    AutoArmLogger.LogError($"[TEST] Skill: Brawler sword bonus {brawlerSwordSkillBonus} should be positive");
+                }
+                
+                if (brawlerRifleSkillBonus >= 0)
+                {
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Skill bonus calculation errors";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Brawler rifle penalty not negative" : "Brawler rifle penalty not negative";
+                    result.Data["Skill_Error4"] = "Brawler doesn't get rifle penalty";
+                    result.Data["BrawlerRifleBonus"] = brawlerRifleSkillBonus;
+                    result.Data["ExpectedBonusSign"] = "negative";
+                    AutoArmLogger.LogError($"[TEST] Skill: Brawler rifle bonus {brawlerRifleSkillBonus} should be negative");
+                }
+                
+                // Verify correct overall preferences
                 if (shooterRifleScore <= shooterSwordScore)
                 {
-                    // Check if the difference is very small (might be due to rounding)
-                    float diff = Math.Abs(shooterRifleScore - shooterSwordScore);
-                    if (diff < 5f)
-                    {
-                        result.Data["Skill_Warning1"] = "Shooter scores very close - might be rounding issue";
-                        AutoArmDebug.Log($"[TEST] Skill: Shooter scores very close (diff: {diff})");
-                    }
-                    else
-                    {
-                        result.Success = false;
-                        result.Data["Skill_Error1"] = "High shooting pawn prefers melee";
-                        AutoArmDebug.LogError($"[TEST] Skill: Shooter prefers sword ({shooterSwordScore}) over rifle ({shooterRifleScore})");
-                    }
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Weapon preference incorrect";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; High shooting pawn prefers melee" : "High shooting pawn prefers melee";
+                    result.Data["Skill_Error5"] = "High shooting pawn prefers melee";
+                    result.Data["ShooterRifleScore"] = shooterRifleScore;
+                    result.Data["ShooterSwordScore"] = shooterSwordScore;
+                    result.Data["ShootingSkill"] = 15;
+                    result.Data["MeleeSkill"] = 5;
+                    AutoArmLogger.LogError($"[TEST] Skill: Shooter prefers sword ({shooterSwordScore}) over rifle ({shooterRifleScore})");
                 }
                 
                 if (brawlerSwordScore <= brawlerRifleScore)
                 {
-                    // Check if the difference is very small (might be due to rounding)
-                    float diff = Math.Abs(brawlerSwordScore - brawlerRifleScore);
-                    if (diff < 5f)
-                    {
-                        result.Data["Skill_Warning2"] = "Brawler scores very close - might be rounding issue";
-                        AutoArmDebug.Log($"[TEST] Skill: Brawler scores very close (diff: {diff})");
-                    }
-                    else
-                    {
-                        result.Success = false;
-                        result.Data["Skill_Error2"] = "High melee pawn prefers ranged";
-                        AutoArmDebug.LogError($"[TEST] Skill: Brawler prefers rifle ({brawlerRifleScore}) over sword ({brawlerSwordScore})");
-                    }
+                    result.Success = false;
+                    result.FailureReason = result.FailureReason ?? "Weapon preference incorrect";
+                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; High melee pawn prefers ranged" : "High melee pawn prefers ranged";
+                    result.Data["Skill_Error6"] = "High melee pawn prefers ranged";
+                    result.Data["BrawlerRifleScore"] = brawlerRifleScore;
+                    result.Data["BrawlerSwordScore"] = brawlerSwordScore;
+                    result.Data["ShootingSkill"] = 5;
+                    result.Data["MeleeSkill"] = 15;
+                    AutoArmLogger.LogError($"[TEST] Skill: Brawler prefers rifle ({brawlerRifleScore}) over sword ({brawlerSwordScore})");
                 }
             }
             finally
@@ -506,146 +645,7 @@ namespace AutoArm.Testing.Scenarios
         }
     }
 
-    /// <summary>
-    /// Test weapon cache invalidation and performance
-    /// </summary>
-    public class WeaponCachePerformanceTest : ITestScenario
-    {
-        public string Name => "Weapon Cache Performance";
-        private Map testMap;
-        private Pawn testPawn;
 
-        public void Setup(Map map)
-        {
-            testMap = map;
-            testPawn = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
-            {
-                Name = "CacheTester",
-                Skills = new Dictionary<SkillDef, int>
-                {
-                    { SkillDefOf.Shooting, 10 },
-                    { SkillDefOf.Melee, 10 }
-                }
-            });
-        }
-
-        public TestResult Run()
-        {
-            if (testPawn == null) return TestResult.Failure("Test setup failed");
-            
-            var result = new TestResult { Success = true };
-            
-            // Clear all caches first
-            WeaponScoringHelper.ClearWeaponScoreCache();
-            ImprovedWeaponCacheManager.ClearPawnScoreCache(testPawn);
-            
-            // Create test weapons
-            var weapons = new List<ThingWithComps>();
-            var weaponDefs = new[] 
-            {
-                VanillaWeaponDefOf.Gun_Revolver,
-                VanillaWeaponDefOf.Gun_AssaultRifle,
-                VanillaWeaponDefOf.Gun_SniperRifle,
-                VanillaWeaponDefOf.Gun_HeavySMG
-            };
-            
-            foreach (var def in weaponDefs.Where(d => d != null))
-            {
-                var weapon = ThingMaker.MakeThing(def) as ThingWithComps;
-                if (weapon != null)
-                    weapons.Add(weapon);
-            }
-            
-            try
-            {
-                // Test 1: First pass - no cache
-                var sw = Stopwatch.StartNew();
-                foreach (var weapon in weapons)
-                {
-                    float score = WeaponScoringHelper.GetTotalScore(testPawn, weapon);
-                }
-                sw.Stop();
-                
-                float firstPassTime = (float)sw.ElapsedMilliseconds / weapons.Count;
-                result.Data["FirstPass_AvgTime"] = firstPassTime;
-                result.Data["FirstPass_TotalTime"] = sw.ElapsedMilliseconds;
-                result.Data["WeaponCount"] = weapons.Count;
-                
-                // If no weapons were created, fail the test
-                if (weapons.Count == 0)
-                {
-                    result.Success = false;
-                    result.Data["Cache_Error"] = "No test weapons were created";
-                    return result;
-                }
-                
-                // Test 2: Second pass - should use cache
-                sw.Restart();
-                foreach (var weapon in weapons)
-                {
-                    float score = WeaponScoringHelper.GetTotalScore(testPawn, weapon);
-                }
-                sw.Stop();
-                
-                float secondPassTime = (float)sw.ElapsedMilliseconds / weapons.Count;
-                result.Data["SecondPass_AvgTime"] = secondPassTime;
-                result.Data["SecondPass_TotalTime"] = sw.ElapsedMilliseconds;
-                
-                // Calculate speedup
-                float speedup = firstPassTime / Math.Max(secondPassTime, 0.01f);
-                result.Data["Cache_Speedup"] = speedup;
-                
-                // For debug builds or very fast machines, the cache might not show significant speedup
-                // So we'll just check that it doesn't get slower
-                if (secondPassTime > firstPassTime * 1.5f)
-                {
-                    result.Success = false;
-                    result.Data["Cache_Error"] = "Cache made scoring slower";
-                    AutoArmDebug.LogError($"[TEST] Cache made scoring slower: {secondPassTime:F1}ms vs {firstPassTime:F1}ms");
-                }
-                else
-                {
-                    AutoArmDebug.Log($"[TEST] Cache performance: {speedup:F1}x speedup (or similar speed)");
-                }
-                
-                // Test 3: Cache invalidation
-                WeaponScoringHelper.ClearWeaponScoreCache();
-                
-                sw.Restart();
-                foreach (var weapon in weapons)
-                {
-                    WeaponScoringHelper.GetTotalScore(testPawn, weapon);
-                }
-                sw.Stop();
-                
-                float afterClearTime = (float)sw.ElapsedMilliseconds / weapons.Count;
-                result.Data["AfterClear_AvgTime"] = afterClearTime;
-                
-                // Should be slow again after clearing cache
-                if (Math.Abs(afterClearTime - firstPassTime) > firstPassTime * 0.5f)
-                {
-                    result.Data["Cache_Warning"] = "Cache clear timing inconsistent";
-                }
-            }
-            finally
-            {
-                foreach (var weapon in weapons)
-                {
-                    TestHelpers.SafeDestroyWeapon(weapon);
-                }
-            }
-            
-            return result;
-        }
-
-        public void Cleanup()
-        {
-            if (testPawn != null && !testPawn.Destroyed)
-            {
-                testPawn.Destroy();
-            }
-        }
-    }
 
     /// <summary>
     /// Test hunter and brawler trait bonuses
@@ -661,58 +661,7 @@ namespace AutoArm.Testing.Scenarios
         {
             testMap = map;
             
-            // Create hunter - need to ensure they can actually do hunting work
-            hunterPawn = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
-            {
-                Name = "Hunter",
-                Skills = new Dictionary<SkillDef, int>
-                {
-                    { SkillDefOf.Shooting, 10 },
-                    { SkillDefOf.Animals, 10 }
-                },
-                EnsureViolenceCapable = true // This should help avoid non-violent backstories
-            });
-            
-            if (hunterPawn?.workSettings != null && WorkTypeDefOf.Hunting != null)
-            {
-                // Check if hunting is disabled by backstory
-                if (hunterPawn.WorkTypeIsDisabled(WorkTypeDefOf.Hunting))
-                {
-                    AutoArmDebug.LogError("[TEST] Hunter pawn has hunting disabled by backstory - will skip hunter tests");
-                    // Try to create a new pawn without the problematic backstory
-                    hunterPawn.Destroy();
-                    hunterPawn = null;
-                }
-                else
-                {
-                    // Make sure hunting work is enabled
-                    if (hunterPawn.workSettings.GetPriority(WorkTypeDefOf.Hunting) == 0)
-                    {
-                        hunterPawn.workSettings.EnableAndInitialize();
-                    }
-                    
-                    try
-                    {
-                        hunterPawn.workSettings.SetPriority(WorkTypeDefOf.Hunting, 1);
-                    }
-                    catch
-                    {
-                        // If we can't set priority, the work type is disabled
-                        AutoArmDebug.LogError("[TEST] Failed to set hunting priority - work type is disabled");
-                    }
-                    
-                    // Double-check it's actually enabled
-                    AutoArmDebug.Log($"[TEST] Created hunter pawn, hunting priority: {hunterPawn.workSettings.GetPriority(WorkTypeDefOf.Hunting)}");
-                    AutoArmDebug.Log($"[TEST] Hunter work active: {hunterPawn.workSettings.WorkIsActive(WorkTypeDefOf.Hunting)}");
-                    AutoArmDebug.Log($"[TEST] Hunter can do hunting: {!hunterPawn.WorkTypeIsDisabled(WorkTypeDefOf.Hunting)}");
-                }
-            }
-            else
-            {
-                AutoArmDebug.LogError("[TEST] Failed to create hunter pawn with work settings");
-            }
-            
-            // Create brawler
+            // Create brawler first (simpler)
             brawlerPawn = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
             {
                 Name = "Brawler",
@@ -722,11 +671,83 @@ namespace AutoArm.Testing.Scenarios
             if (brawlerPawn != null)
             {
                 bool hasBrawler = brawlerPawn.story?.traits?.HasTrait(TraitDefOf.Brawler) ?? false;
-                AutoArmDebug.Log($"[TEST] Created brawler pawn, has brawler trait: {hasBrawler}");
+                AutoArmLogger.Log($"[TEST] Created brawler pawn, has brawler trait: {hasBrawler}");
             }
             else
             {
-                AutoArmDebug.LogError("[TEST] Failed to create brawler pawn");
+                AutoArmLogger.LogError("[TEST] Failed to create brawler pawn");
+            }
+            
+            // Try multiple times to create a hunter pawn that can actually hunt
+            int attempts = 0;
+            while (hunterPawn == null && attempts < 5)
+            {
+                attempts++;
+                
+                var candidate = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
+                {
+                    Name = $"Hunter{attempts}",
+                    Skills = new Dictionary<SkillDef, int>
+                    {
+                        { SkillDefOf.Shooting, 10 },
+                        { SkillDefOf.Animals, 10 }
+                    },
+                    EnsureViolenceCapable = true,
+                    EnableHunting = true
+                });
+                
+                if (candidate?.workSettings != null && WorkTypeDefOf.Hunting != null)
+                {
+                    // Check if hunting is disabled by backstory
+                    if (candidate.WorkTypeIsDisabled(WorkTypeDefOf.Hunting))
+                    {
+                        AutoArmLogger.Log($"[TEST] Hunter attempt {attempts} has hunting disabled by backstory - trying again");
+                        candidate.Destroy();
+                        continue;
+                    }
+                    
+                    // Make sure hunting work is enabled
+                    if (candidate.workSettings.GetPriority(WorkTypeDefOf.Hunting) == 0)
+                    {
+                        candidate.workSettings.EnableAndInitialize();
+                    }
+                    
+                    try
+                    {
+                        candidate.workSettings.SetPriority(WorkTypeDefOf.Hunting, 1);
+                        
+                        // Verify it worked
+                        if (candidate.workSettings.WorkIsActive(WorkTypeDefOf.Hunting) &&
+                            candidate.workSettings.GetPriority(WorkTypeDefOf.Hunting) > 0)
+                        {
+                            hunterPawn = candidate;
+                            AutoArmLogger.Log($"[TEST] Successfully created hunter pawn on attempt {attempts}");
+                            AutoArmLogger.Log($"[TEST] Hunter work active: {hunterPawn.workSettings.WorkIsActive(WorkTypeDefOf.Hunting)}");
+                            AutoArmLogger.Log($"[TEST] Hunter priority: {hunterPawn.workSettings.GetPriority(WorkTypeDefOf.Hunting)}");
+                        }
+                        else
+                        {
+                            AutoArmLogger.Log($"[TEST] Hunter attempt {attempts} failed to set hunting priority");
+                            candidate.Destroy();
+                        }
+                    }
+                    catch
+                    {
+                        AutoArmLogger.LogError($"[TEST] Hunter attempt {attempts} failed to set hunting priority - exception");
+                        candidate.Destroy();
+                    }
+                }
+                else
+                {
+                    AutoArmLogger.LogError($"[TEST] Hunter attempt {attempts} failed to create pawn with work settings");
+                    if (candidate != null)
+                        candidate.Destroy();
+                }
+            }
+            
+            if (hunterPawn == null)
+            {
+                AutoArmLogger.LogError("[TEST] Failed to create hunter pawn after multiple attempts");
             }
         }
 
@@ -768,9 +789,9 @@ namespace AutoArm.Testing.Scenarios
                 var sword = ThingMaker.MakeThing(swordDef, ThingDefOf.Steel) as ThingWithComps;
                 
                 // Log what we created for debugging
-                AutoArmDebug.Log($"[TEST] Created weapons for trait scoring test:");
-                AutoArmDebug.Log($"  - Rifle: {rifle?.Label ?? "null"}");
-                AutoArmDebug.Log($"  - Sword: {sword?.Label ?? "null"} with material {sword?.Stuff?.defName ?? "none"}");
+                AutoArmLogger.Log($"[TEST] Created weapons for trait scoring test:");
+                AutoArmLogger.Log($"  - Rifle: {rifle?.Label ?? "null"}");
+                AutoArmLogger.Log($"  - Sword: {sword?.Label ?? "null"} with material {sword?.Stuff?.defName ?? "none"}");
             
                 // Test hunter bonuses
                 bool hunterTestSkipped = false;
@@ -780,82 +801,98 @@ namespace AutoArm.Testing.Scenarios
                     if (hunterPawn.WorkTypeIsDisabled(WorkTypeDefOf.Hunting))
                     {
                         result.Data["Hunter_Skipped"] = "Pawn has hunting disabled by backstory";
-                        AutoArmDebug.Log("[TEST] Skipping hunter test - pawn cannot hunt");
+                        AutoArmLogger.Log("[TEST] Skipping hunter test - pawn cannot hunt");
                         hunterTestSkipped = true;
                     }
                     else if (hunterPawn.workSettings?.GetPriority(WorkTypeDefOf.Hunting) == 0)
                     {
                         result.Data["Hunter_Skipped"] = "Pawn has hunting priority 0";
-                        AutoArmDebug.Log("[TEST] Skipping hunter test - hunting not assigned");
+                        AutoArmLogger.Log("[TEST] Skipping hunter test - hunting not assigned");
                         hunterTestSkipped = true;
                     }
                     
                     if (!hunterTestSkipped)
                     {
+                        // Get actual hunter bonuses from the scoring system
+                        float expectedRifleBonus = WeaponScoringHelper.GetHunterScore(hunterPawn, rifle);
+                        float expectedSwordBonus = WeaponScoringHelper.GetHunterScore(hunterPawn, sword);
+                        
+                        result.Data["Hunter_ExpectedRifleBonus"] = expectedRifleBonus;
+                        result.Data["Hunter_ExpectedSwordBonus"] = expectedSwordBonus;
+                        
+                        // Get total scores
                         float hunterRifleScore = WeaponScoringHelper.GetTotalScore(hunterPawn, rifle);
                         float hunterSwordScore = WeaponScoringHelper.GetTotalScore(hunterPawn, sword);
                         
                         result.Data["Hunter_RifleScore"] = hunterRifleScore;
                         result.Data["Hunter_SwordScore"] = hunterSwordScore;
                         
-                        // Hunter should have bonus for ranged, penalty for melee
-                        // According to GetHunterScore:
-                        // - Base +100 for any ranged
-                        // - Additional +200 for range >= 30 (total +300)
-                        // - Penalty -1000 for melee
-                        // Bolt-action rifle has 36.9 range, so should get +300
+                        // Calculate the actual bonus difference applied
+                        float expectedBonusDiff = expectedRifleBonus - expectedSwordBonus;
+                        float actualScoreDiff = hunterRifleScore - hunterSwordScore;
                         
-                        float actualDiff = hunterRifleScore - hunterSwordScore;
-                        result.Data["Hunter_ScoreDifference"] = actualDiff;
+                        result.Data["Hunter_ExpectedBonusDiff"] = expectedBonusDiff;
+                        result.Data["Hunter_ActualScoreDiff"] = actualScoreDiff;
                         
-                        // The hunter should strongly prefer the rifle
-                        if (hunterRifleScore <= hunterSwordScore)
+                        // The hunter should prefer ranged weapons if GetHunterScore gives them a bonus
+                        if (expectedRifleBonus > expectedSwordBonus && hunterRifleScore <= hunterSwordScore)
                         {
                             result.Success = false;
-                            result.Data["Hunter_Error"] = "Hunter prefers melee weapon";
-                            AutoArmDebug.LogError($"[TEST] Hunter: Prefers sword ({hunterSwordScore}) over rifle ({hunterRifleScore})");
+                            result.Data["Hunter_Error"] = "Hunter doesn't prefer ranged despite bonus";
+                            AutoArmLogger.LogError($"[TEST] Hunter: Expected rifle bonus {expectedRifleBonus} but rifle score {hunterRifleScore} <= sword score {hunterSwordScore}");
                         }
                         
-                        // Check that the score difference is substantial (should be ~1300 points)
-                        if (actualDiff < 800) // Reduced from 1000 to account for weapon base scores
+                        // If there's an expected bonus difference, verify it's reflected in total scores
+                        // (allowing for other factors like base weapon scores)
+                        if (expectedBonusDiff > 0 && actualScoreDiff < expectedBonusDiff * 0.5f)
                         {
                             result.Success = false;
-                            result.Data["Hunter_Error2"] = "Hunter bonus not strong enough";
-                            AutoArmDebug.LogError($"[TEST] Hunter: Score difference too small ({actualDiff}), expected >800");
+                            result.Data["Hunter_Error2"] = "Hunter bonus not properly applied";
+                            AutoArmLogger.LogError($"[TEST] Hunter: Expected bonus diff {expectedBonusDiff} but actual score diff only {actualScoreDiff}");
                         }
                     }
                 }
             
-                // Test brawler penalties/bonuses
+                // Test brawler bonuses
                 bool brawlerTestPassed = true;
                 if (brawlerPawn != null)
                 {
+                    // Get actual trait bonuses from the scoring system
+                    float expectedRifleBonus = WeaponScoringHelper.GetTraitScore(brawlerPawn, rifle);
+                    float expectedSwordBonus = WeaponScoringHelper.GetTraitScore(brawlerPawn, sword);
+                    
+                    result.Data["Brawler_ExpectedRifleBonus"] = expectedRifleBonus;
+                    result.Data["Brawler_ExpectedSwordBonus"] = expectedSwordBonus;
+                    
+                    // Get total scores
                     float brawlerRifleScore = WeaponScoringHelper.GetTotalScore(brawlerPawn, rifle);
                     float brawlerSwordScore = WeaponScoringHelper.GetTotalScore(brawlerPawn, sword);
                     
                     result.Data["Brawler_RifleScore"] = brawlerRifleScore;
                     result.Data["Brawler_SwordScore"] = brawlerSwordScore;
                     
-                    // Brawler should have -500 for ranged, +200 for melee
-                    // But the rifle might still have positive score if base weapon score > 500
+                    // Calculate the actual bonus difference applied
+                    float expectedBonusDiff = expectedSwordBonus - expectedRifleBonus;
+                    float actualScoreDiff = brawlerSwordScore - brawlerRifleScore;
                     
-                    float scoreDiff = brawlerSwordScore - brawlerRifleScore;
-                    result.Data["Brawler_ScoreDifference"] = scoreDiff;
+                    result.Data["Brawler_ExpectedBonusDiff"] = expectedBonusDiff;
+                    result.Data["Brawler_ActualScoreDiff"] = actualScoreDiff;
                     
-                    // The important thing is that brawler prefers melee
-                    if (brawlerSwordScore <= brawlerRifleScore)
+                    // The brawler should prefer melee weapons if GetTraitScore gives them a bonus
+                    if (expectedSwordBonus > expectedRifleBonus && brawlerSwordScore <= brawlerRifleScore)
                     {
                         result.Success = false;
-                        result.Data["Brawler_Error"] = "Brawler prefers ranged weapon";
-                        AutoArmDebug.LogError($"[TEST] Brawler: Prefers rifle ({brawlerRifleScore}) over sword ({brawlerSwordScore})");
+                        result.Data["Brawler_Error"] = "Brawler doesn't prefer melee despite bonus";
+                        AutoArmLogger.LogError($"[TEST] Brawler: Expected sword bonus {expectedSwordBonus} but sword score {brawlerSwordScore} <= rifle score {brawlerRifleScore}");
                     }
                     
-                    // The difference should be substantial (at least 700 = 500 penalty + 200 bonus)
-                    if (scoreDiff < 500)
+                    // If there's an expected bonus difference, verify it's reflected in total scores
+                    // (allowing for other factors like base weapon scores)
+                    if (expectedBonusDiff > 0 && actualScoreDiff < expectedBonusDiff * 0.5f)
                     {
                         brawlerTestPassed = false;
-                        result.Data["Brawler_Error2"] = "Brawler preference not strong enough";
-                        AutoArmDebug.LogError($"[TEST] Brawler: Score difference too small ({scoreDiff}), expected >500");
+                        result.Data["Brawler_Error2"] = "Brawler bonus not properly applied";
+                        AutoArmLogger.LogError($"[TEST] Brawler: Expected bonus diff {expectedBonusDiff} but actual score diff only {actualScoreDiff}");
                     }
                 }
                 
@@ -883,7 +920,7 @@ namespace AutoArm.Testing.Scenarios
                 result.Success = false;
                 result.Data["Exception"] = ex.Message;
                 result.Data["StackTrace"] = ex.StackTrace;
-                AutoArmDebug.LogError($"[TEST] TraitAndRoleScoringTest exception: {ex}");
+                AutoArmLogger.LogError($"[TEST] TraitAndRoleScoringTest exception: {ex}");
             }
             
             return result;

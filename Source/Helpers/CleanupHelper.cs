@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Centralized memory management and cleanup operations
+// Prevents memory leaks by cleaning up dead pawns, destroyed things, old dictionaries
+// Uses: All major systems register their cleanup needs here
+// Critical: Runs every 2500 ticks to prevent long-game performance degradation
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +43,7 @@ namespace AutoArm
                 AutoEquipTracker.CleanupOldJobs();
 
                 // Clean up dropped item tracker
+                DroppedItemTracker.CleanupOldEntries();
                 DroppedItemTracker.ClearAllPendingUpgrades();
 
                 // Clean up weapon caches
@@ -45,6 +52,9 @@ namespace AutoArm
                 
                 // Clean up our new optimized caches
                 WeaponScoringHelper.ClearWeaponScoreCache();
+                
+                // Clean up validation helper storage type caches
+                ValidationHelper.ClearStorageTypeCaches();
 
                 // Clean up job giver data
                 CleanupJobGiverData();
@@ -57,10 +67,16 @@ namespace AutoArm
 
                 // Clean up weapon blacklist
                 WeaponBlacklist.CleanupOldEntries();
+                
+                // Clean up tick rare patch dictionaries (fixes memory leak)
+                Pawn_TickRare_Unified_Patch.CleanupDeadPawns();
+                
+                // Clean up think node evaluation failures
+                ThinkNode_ConditionalUnarmed.CleanupEvaluationFailures();
             }
             catch (Exception e)
             {
-                AutoArmDebug.LogError("Error in cleanup", e);
+                AutoArmLogger.LogError("Error in cleanup", e);
             }
         }
 

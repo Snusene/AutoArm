@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Weapon categorization diagnostic tool
+// Identifies mods that might break weapon detection
+
 using System.Collections.Generic;
 using System.Linq;
 using Verse;

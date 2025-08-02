@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Tracks player-forced weapon assignments
+// Respects player decisions when manually equipping weapons
+// Uses: AutoArmGameComponent for save/load persistence
+// Critical: Prevents mod from overriding player's manual weapon choices
+
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
@@ -30,7 +36,7 @@ namespace AutoArm
                 forcedWeaponDefs[pawn] = new HashSet<ThingDef>();
             forcedWeaponDefs[pawn].Add(weapon.def);
 
-            AutoArmDebug.LogWeapon(pawn, weapon, "Marked as forced weapon");
+            AutoArmLogger.LogWeapon(pawn, weapon, "Marked as forced weapon");
         }
 
         /// <summary>
@@ -83,11 +89,11 @@ namespace AutoArm
                     {
                         forcedWeaponDefs.Remove(pawn);
                     }
-                    AutoArmDebug.LogPawn(pawn, $"Removed forced weapon def {weaponDefToCheck.defName} - pawn no longer has any weapons of this type");
+                    AutoArmLogger.LogPawn(pawn, $"Removed forced weapon def {weaponDefToCheck.defName} - pawn no longer has any weapons of this type");
                 }
                 else
                 {
-                    AutoArmDebug.LogPawn(pawn, $"Kept forced weapon def {weaponDefToCheck.defName} - pawn still has weapons of this type");
+                    AutoArmLogger.LogPawn(pawn, $"Kept forced weapon def {weaponDefToCheck.defName} - pawn still has weapons of this type");
                 }
             }
         }
@@ -102,7 +108,7 @@ namespace AutoArm
 
             if (forcedWeaponDefs.ContainsKey(pawn))
             {
-                AutoArmDebug.LogPawn(pawn, $"Clearing {forcedWeaponDefs[pawn].Count} forced weapon type(s)");
+                AutoArmLogger.LogPawn(pawn, $"Clearing {forcedWeaponDefs[pawn].Count} forced weapon type(s)");
                 forcedWeaponDefs.Remove(pawn);
             }
 
@@ -190,7 +196,7 @@ namespace AutoArm
 
             forcedWeaponDefs[pawn].Add(weaponDef);
 
-            AutoArmDebug.LogPawn(pawn, $"Added forced weapon def: {weaponDef.defName}");
+            AutoArmLogger.LogPawn(pawn, $"Added forced weapon def: {weaponDef.defName}");
         }
 
         /// <summary>
@@ -207,7 +213,7 @@ namespace AutoArm
                 if (forcedWeaponDefs[pawn].Count == 0)
                     forcedWeaponDefs.Remove(pawn);
 
-                AutoArmDebug.LogPawn(pawn, $"Removed forced weapon def: {weaponDef.defName}");
+                AutoArmLogger.LogPawn(pawn, $"Removed forced weapon def: {weaponDef.defName}");
             }
         }
 
@@ -251,7 +257,7 @@ namespace AutoArm
                     !TimingHelper.IsOnCooldown(pawn, TimingHelper.CooldownType.DroppedWeapon))
                 {
                     forcedPrimaryWeapon.Remove(pawn);
-                    AutoArmDebug.LogPawn(pawn, "Cleared phantom forced weapon (pawn is unarmed)");
+                    AutoArmLogger.LogPawn(pawn, "Cleared phantom forced weapon (pawn is unarmed)");
                 }
             }
         }
@@ -267,7 +273,7 @@ namespace AutoArm
             if (IsForced(pawn, fromWeapon) || IsWeaponDefForced(pawn, fromWeapon.def))
             {
                 SetForced(pawn, toWeapon);
-                AutoArmDebug.LogPawn(pawn, $"Transferred forced status from {fromWeapon.Label} to {toWeapon.Label}");
+                AutoArmLogger.LogPawn(pawn, $"Transferred forced status from {fromWeapon.Label} to {toWeapon.Label}");
             }
         }
 

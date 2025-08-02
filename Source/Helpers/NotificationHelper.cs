@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: User notification system for weapon changes
+// Handles: Blue notification messages when colonists equip/drop weapons
+// Uses: RimWorld's message system with proper colonist filtering
+// Note: Respects user settings and PawnUtility.ShouldSendNotificationAbout
+
 using RimWorld;
 using Verse;
 

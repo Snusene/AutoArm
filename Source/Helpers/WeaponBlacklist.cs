@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Tracks weapons that fail to equip due to mod restrictions
+// Prevents repeated equip attempts on incompatible weapons
+// Uses: Time-based blacklisting with automatic expiry
+// Note: Body-size restricted weapons can be retried if pawn equips power armor
+
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
@@ -53,7 +59,7 @@ namespace AutoArm
             blacklistTimestamps[pawn][weaponDef] = Find.TickManager.TicksGame;
 
             // Log the blacklisting
-            AutoArmDebug.LogPawn(pawn, $"Blacklisted {weaponDef.label} - {reason ?? "mod restriction"}");
+            AutoArmLogger.LogPawn(pawn, $"Blacklisted {weaponDef.label} - {reason ?? "mod restriction"}");
         }
 
         /// <summary>

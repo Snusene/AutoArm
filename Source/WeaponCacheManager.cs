@@ -26,8 +26,7 @@ namespace AutoArm
             public Dictionary<ThingWithComps, IntVec3> WeaponToGrid { get; set; }
             public Dictionary<WeaponCategory, List<ThingWithComps>> CategorizedWeapons { get; set; }
             
-            // Performance optimization: Cache pawn-weapon scores
-            public Dictionary<string, float> PawnWeaponScoreCache { get; set; }
+            // Removed - using WeaponScoreCache instead to avoid duplication
 
             public WeaponCacheEntry()
             {
@@ -35,7 +34,7 @@ namespace AutoArm
                 SpatialIndex = new Dictionary<IntVec3, List<ThingWithComps>>();
                 WeaponToGrid = new Dictionary<ThingWithComps, IntVec3>();
                 CategorizedWeapons = new Dictionary<WeaponCategory, List<ThingWithComps>>();
-                PawnWeaponScoreCache = new Dictionary<string, float>();
+
                 LastChangeDetectedTick = 0;
 
                 // Initialize categories
@@ -49,6 +48,10 @@ namespace AutoArm
         private static Dictionary<Map, WeaponCacheEntry> weaponCache = new Dictionary<Map, WeaponCacheEntry>();
         private const int CacheLifetime = 10000;
         private const int GridCellSize = 20; // Matching backup version
+        
+        // Object pool for HashSets to avoid allocations in hot path
+        private static Stack<HashSet<ThingWithComps>> weaponSetPool = new Stack<HashSet<ThingWithComps>>();
+        private static Stack<List<ThingWithComps>> weaponListPool = new Stack<List<ThingWithComps>>();
 
         private const int MaxWeaponsPerCache = 1500;
         private const int MaxWeaponsPerRebuild = 100;
@@ -73,7 +76,7 @@ namespace AutoArm
 
             if (cache.Weapons.Count >= MaxWeaponsPerCache)
             {
-                AutoArmDebug.Log($"Cache full ({MaxWeaponsPerCache} weapons), skipping {weapon.Label}");
+                AutoArmLogger.Log($"Cache full ({MaxWeaponsPerCache} weapons), skipping {weapon.Label}");
                 return;
             }
 
@@ -84,7 +87,14 @@ namespace AutoArm
 
             // Removed spammy autopistol logging
 
-            var gridPos = new IntVec3(weapon.Position.x / GridCellSize, 0, weapon.Position.z / GridCellSize);
+            // For weapons in containers, use the container's position
+            IntVec3 position = weapon.Position;
+            if (weapon.ParentHolder is Building building && building.Position.IsValid)
+            {
+                position = building.Position;
+            }
+
+            var gridPos = new IntVec3(position.x / GridCellSize, 0, position.z / GridCellSize);
             if (!cache.SpatialIndex.ContainsKey(gridPos))
             {
                 cache.SpatialIndex[gridPos] = new List<ThingWithComps>();
@@ -175,12 +185,16 @@ namespace AutoArm
 
             if (weapon.def.defName == "Gun_AssaultRifle")
             {
-                AutoArmDebug.LogWeapon(null, weapon, $"Updated position from {oldPos} to {newPos}");
+                AutoArmLogger.LogWeapon(null, weapon, $"Updated position from {oldPos} to {newPos}");
             }
         }
 
         public static List<ThingWithComps> GetWeaponsNear(Map map, IntVec3 position, float maxDistance)
         {
+            // Declare variables outside try block for catch block access
+            List<ThingWithComps> result = null;
+            HashSet<ThingWithComps> foundWeapons = null;
+            
             try
             {
                 // Early exit if no cache exists
@@ -190,8 +204,12 @@ namespace AutoArm
                     return new List<ThingWithComps>();
                 }
 
-                var result = new List<ThingWithComps>();
-                var foundWeapons = new HashSet<ThingWithComps>(); // Track found weapons to avoid duplicates
+                // Use pooled collections to avoid allocations
+                result = weaponListPool.Count > 0 ? weaponListPool.Pop() : new List<ThingWithComps>();
+                result.Clear();
+                
+                foundWeapons = weaponSetPool.Count > 0 ? weaponSetPool.Pop() : new HashSet<ThingWithComps>();
+                foundWeapons.Clear();
 
                 // Removed spammy GetWeaponsNear logging - this happens too frequently
 
@@ -234,7 +252,14 @@ namespace AutoArm
                                 {
                                     foreach (var weapon in weapons)
                                     {
-                                        if (weapon.Position.DistanceToSquared(position) <= maxDistSquared)
+                                        // For weapons in containers, use the container's position
+                                        IntVec3 weaponPos = weapon.Position;
+                                        if (weapon.ParentHolder is Building building && building.Position.IsValid)
+                                        {
+                                            weaponPos = building.Position;
+                                        }
+                                        
+                                        if (weaponPos.DistanceToSquared(position) <= maxDistSquared)
                                         {
                                             // Only add if we haven't seen this weapon yet
                                             if (foundWeapons.Add(weapon))
@@ -261,11 +286,30 @@ namespace AutoArm
                     }
                 }
 
-                return result;
+                // Return HashSet to pool
+                if (weaponSetPool.Count < 10) // Keep pool size reasonable
+                {
+                    foundWeapons.Clear();
+                    weaponSetPool.Push(foundWeapons);
+                }
+                
+                return result; // Caller is responsible for returning list to pool
             }
             catch (Exception ex)
             {
-                AutoArmDebug.Log($"ERROR in GetWeaponsNear for map {map?.uniqueID ?? -1}: {ex.Message}\nStack trace: {ex.StackTrace}");
+                AutoArmLogger.Log($"ERROR in GetWeaponsNear for map {map?.uniqueID ?? -1}: {ex.Message}\nStack trace: {ex.StackTrace}");
+                
+                // Return collections to pool on error
+                if (weaponSetPool.Count < 10 && foundWeapons != null)
+                {
+                    foundWeapons.Clear();
+                    weaponSetPool.Push(foundWeapons);
+                }
+                if (result != null && result.Count == 0 && weaponListPool.Count < 10)
+                {
+                    weaponListPool.Push(result);
+                }
+                
                 return new List<ThingWithComps>(); // Return empty list on error
             }
         }
@@ -287,11 +331,75 @@ namespace AutoArm
             // Also clear weapon base score cache when map cache is invalidated
             WeaponScoringHelper.ClearWeaponScoreCache();
 
-            AutoArmDebug.Log($"Invalidated weapon cache for {map}");
+            AutoArmLogger.Log($"Invalidated weapon cache for {map}");
+        }
+
+        /// <summary>
+        /// Clear all weapon caches for all maps
+        /// </summary>
+        public static void ClearCache()
+        {
+            weaponCache.Clear();
+            rebuildStates.Clear();
+            
+            // Also clear pooled collections
+            weaponSetPool.Clear();
+            weaponListPool.Clear();
+            
+            // Clear weapon score cache
+            WeaponScoringHelper.ClearWeaponScoreCache();
+            
+            AutoArmLogger.Log("Cleared all weapon caches");
+        }
+        
+        /// <summary>
+        /// Clear and rebuild all weapon caches for all maps
+        /// </summary>
+        public static void ClearAndRebuildCache()
+        {
+            // First clear everything
+            ClearCache();
+            
+            // Only rebuild if we're in an active game with maps
+            if (Current.Game != null && Find.Maps != null)
+            {
+                // Then trigger rebuild for all active maps
+                foreach (var map in Find.Maps)
+            {
+                if (map != null)
+                {
+                    AutoArmLogger.Log($"Triggering weapon cache rebuild for {map.uniqueID} ({(map.IsPlayerHome ? "player home" : "other map")})");
+                    // This will trigger a rebuild when the cache is accessed
+                    // The rebuild is incremental, so it won't freeze the game
+                    TriggerCacheRebuild(map);
+                }
+            }
+            
+                AutoArmLogger.Log($"Cleared and initiated rebuild of weapon caches for {Find.Maps.Count} maps");
+            }
+            else
+            {
+                AutoArmLogger.Log("Cleared weapon caches (no active game to rebuild)");
+            }
+        }
+        
+        /// <summary>
+        /// Trigger a cache rebuild for a specific map
+        /// </summary>
+        private static void TriggerCacheRebuild(Map map)
+        {
+            if (map == null) return;
+            
+            // Simply accessing the cache will trigger a rebuild if it doesn't exist
+            GetOrCreateCache(map);
         }
 
         public static void CleanupDestroyedMaps()
         {
+            // Only clean up if we're in an active game
+            if (Current.Game == null || Find.Maps == null)
+                return;
+                
             var mapsToRemove = weaponCache.Keys.Where(m => m == null || !Find.Maps.Contains(m)).ToList();
 
             if (mapsToRemove.Any())
@@ -302,7 +410,7 @@ namespace AutoArm
                     rebuildStates.Remove(map);
                 }
 
-                AutoArmDebug.Log($"Cleaned up {mapsToRemove.Count} destroyed map caches");
+                AutoArmLogger.Log($"Cleaned up {mapsToRemove.Count} destroyed map caches");
             }
         }
 
@@ -335,6 +443,37 @@ namespace AutoArm
             try
             {
                 allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).ToList();
+                AutoArmLogger.Log($"Found {allWeapons.Count} weapons via ThingRequestGroup.Weapon");
+                
+                // Debug: Log what weapons are equipped by colonists
+                var equippedWeapons = map.mapPawns.FreeColonists
+                    .Where(p => p.equipment?.Primary != null)
+                    .Select(p => p.equipment.Primary.Label)
+                    .ToList();
+                if (equippedWeapons.Any())
+                {
+                    AutoArmLogger.Log($"Colonists have these weapons equipped: {string.Join(", ", equippedWeapons)}");
+                }
+                
+                // Debug: Log what weapons are in colonist inventories
+                var inventoryWeapons = new List<string>();
+                foreach (var pawn in map.mapPawns.FreeColonists)
+                {
+                    if (pawn.inventory?.innerContainer != null)
+                    {
+                        foreach (var item in pawn.inventory.innerContainer)
+                        {
+                            if (item is ThingWithComps weapon && weapon.def.IsWeapon)
+                            {
+                                inventoryWeapons.Add(weapon.Label);
+                            }
+                        }
+                    }
+                }
+                if (inventoryWeapons.Any())
+                {
+                    AutoArmLogger.Log($"Colonists have these weapons in inventory: {string.Join(", ", inventoryWeapons)}");
+                }
             }
             catch (Exception ex)
             {
@@ -343,39 +482,97 @@ namespace AutoArm
                 allWeapons = new List<Thing>(); // Empty list to prevent crash
             }
 
-            // Check if ThingRequestGroup.Weapon is broken (common mod conflict)
-            if (allWeapons.Count <= 2) // Suspiciously low for any real colony
+
+
+                // CRITICAL: Also check for weapons inside storage containers
+        // The listerThings only tracks items directly on the map, not in containers
+        var weaponsInStorage = new List<Thing>();
+        try
+        {
+            // Get all buildings that might be storage
+            var potentialStorageBuildings = map.listerBuildings.allBuildingsColonist
+                .Where(b => b != null && !b.Destroyed && b.Spawned);
+
+            foreach (var building in potentialStorageBuildings)
             {
-                // Alternative detection method
-                List<Thing> actualWeapons;
                 try
                 {
-                    actualWeapons = map.listerThings.AllThings
-                        .Where(t => t != null &&
-                                   t.def != null &&
-                                   SafeIsWeapon(t) &&
-                                   !SafeIsApparel(t) &&
-                                   t is ThingWithComps &&
-                                   t.Spawned &&
-                                   (t.ParentHolder == null || t.ParentHolder == t.Map))
-                        .ToList();
+                    // Check if this building is likely to be storage
+                    bool isStorage = false;
+                    
+                    // Primary check: Does it have a SlotGroup?
+                    if (building.GetSlotGroup() != null)
+                    {
+                        isStorage = true;
+                    }
+                    // Secondary check: Does it have storage settings?
+                    else if (building.def.building?.fixedStorageSettings != null)
+                    {
+                        isStorage = true;
+                    }
+                    // Check common storage building names
+                    else if (building.def.defName.IndexOf("shelf", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("rack", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("crate", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("box", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("container", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("storage", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("fridge", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             building.def.defName.IndexOf("freezer", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        isStorage = true;
+                    }
+                    
+                    if (isStorage)
+                    {
+                        // Try to get the inner container
+                        var innerContainer = building.TryGetInnerInteractableThingOwner();
+                        if (innerContainer != null)
+                        {
+                            // Check each item in the container
+                            foreach (var item in innerContainer)
+                            {
+                                if (item != null && 
+                                    item is ThingWithComps weapon &&
+                                    item.def?.IsWeapon == true &&
+                                    item.def?.IsApparel != true)
+                                {
+                                    weaponsInStorage.Add(item);
+                                }
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"[AutoArm] Alternative weapon detection also failed: {ex.Message}");
-                    actualWeapons = new List<Thing>();
-                }
-
-                if (actualWeapons.Count > allWeapons.Count)
-                {
-                    Log.Warning($"[AutoArm] ThingRequestGroup.Weapon is broken - found only {allWeapons.Count} weapons, but {actualWeapons.Count} ground weapons exist.");
-                    Log.Warning($"[AutoArm] Using alternative weapon detection. This is likely caused by a mod conflict.");
-                    Log.Warning($"[AutoArm] Consider checking your mod load order or reporting this to the conflicting mod's author.");
-                    allWeapons = actualWeapons;
+                    // Log but continue - don't let one bad building break the whole process
+                    AutoArmLogger.Log($"Error checking storage building {building?.Label ?? "unknown"}: {ex.Message}");
                 }
             }
 
-            AutoArmDebug.Log($"Starting incremental rebuild for {map} - {allWeapons.Count} total weapons");
+            if (weaponsInStorage.Count > 0)
+            {
+                AutoArmLogger.Log($"Found {weaponsInStorage.Count} additional weapons in storage containers");
+                allWeapons.AddRange(weaponsInStorage);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[AutoArm] Error checking weapons in storage: {ex.Message}");
+            // Continue with weapons we already found
+        }
+
+        AutoArmLogger.Log($"[WEAPON CACHE] Starting incremental rebuild for {map} - {allWeapons.Count} total weapons (including {weaponsInStorage.Count} in storage)");
+        
+        // Debug: Log first few weapons found
+        int debugCount = 0;
+        foreach (var weapon in allWeapons.Take(5))
+        {
+            if (weapon is ThingWithComps twc)
+            {
+                AutoArmLogger.Log($"[WEAPON CACHE] Sample weapon {++debugCount}: {twc.Label} at {twc.Position} (in storage: {weaponsInStorage.Contains(weapon)})");
+            }
+        }
 
             var state = new RebuildState
             {
@@ -396,12 +593,12 @@ namespace AutoArm
                 rebuildStates.Remove(map);
 
                 sw.Stop();
-                AutoArmDebug.Log($"Completed rebuild immediately with {state.PartialCache.Weapons.Count} weapons in {sw.ElapsedMilliseconds}ms");
+                AutoArmLogger.Log($"Completed rebuild immediately with {state.PartialCache.Weapons.Count} weapons in {sw.ElapsedMilliseconds}ms");
             }
             else
             {
                 rebuildStates[map] = state;
-                AutoArmDebug.Log($"Processed {state.ProcessedCount} weapons, {state.RemainingWeapons.Count} remaining");
+                AutoArmLogger.Log($"Processed {state.ProcessedCount} weapons, {state.RemainingWeapons.Count} remaining");
             }
         }
 
@@ -415,7 +612,7 @@ namespace AutoArm
                 weaponCache[map] = state.PartialCache;
                 rebuildStates.Remove(map);
 
-                AutoArmDebug.Log($"Completed incremental rebuild with {state.PartialCache.Weapons.Count} weapons");
+                AutoArmLogger.Log($"Completed incremental rebuild with {state.PartialCache.Weapons.Count} weapons");
             }
         }
 
@@ -436,16 +633,14 @@ namespace AutoArm
                     {
                         if (thing != null)
                         {
-                            AutoArmDebug.Log($"Skipping non-ThingWithComps or null def: {thing.Label}");
+                            AutoArmLogger.Log($"Skipping non-ThingWithComps or null def: {thing.Label}");
                         }
                         continue;
                     }
 
                     if (!IsValidWeapon(weapon))
                     {
-                        AutoArmDebug.LogWeapon(null, weapon, $"Skipping invalid weapon ({weapon.def.defName}) - " +
-                                   $"IsWeapon={weapon.def.IsWeapon}, IsApparel={weapon.def.IsApparel}, " +
-                                   $"Destroyed={weapon.Destroyed}, Spawned={weapon.Spawned}");
+                        // Removed spammy debug log - weapon validation happens frequently
                         continue;
                     }
 
@@ -453,7 +648,14 @@ namespace AutoArm
 
                     entry.Weapons.Add(weapon);
 
-                    var gridPos = new IntVec3(weapon.Position.x / GridCellSize, 0, weapon.Position.z / GridCellSize);
+                    // For weapons in containers, use the container's position
+                    IntVec3 position = weapon.Position;
+                    if (weapon.ParentHolder is Building building && building.Position.IsValid)
+                    {
+                        position = building.Position;
+                    }
+
+                    var gridPos = new IntVec3(position.x / GridCellSize, 0, position.z / GridCellSize);
                     if (!entry.SpatialIndex.ContainsKey(gridPos))
                     {
                         entry.SpatialIndex[gridPos] = new List<ThingWithComps>();
@@ -471,7 +673,7 @@ namespace AutoArm
                 catch (Exception ex)
                 {
                     // Catch any exceptions from problematic weapons (like Kiiro Race items)
-                    AutoArmDebug.Log($"ERROR processing weapon during rebuild: {ex.Message}\nWeapon: {thing?.Label ?? "unknown"}");
+                    AutoArmLogger.Log($"ERROR processing weapon during rebuild: {ex.Message}\nWeapon: {thing?.Label ?? "unknown"}");
                     // Continue processing other weapons
                 }
             }
@@ -519,29 +721,7 @@ namespace AutoArm
             return WeaponCategory.MeleeBasic; // Default
         }
 
-        private static bool SafeIsWeapon(Thing thing)
-        {
-            try
-            {
-                return thing?.def?.IsWeapon ?? false;
-            }
-            catch
-            {
-                return false;
-            }
-        }
 
-        private static bool SafeIsApparel(Thing thing)
-        {
-            try
-            {
-                return thing?.def?.IsApparel ?? false;
-            }
-            catch
-            {
-                return false;
-            }
-        }
 
         public static List<ThingWithComps> GetWeaponsByCategory(Map map, WeaponCategory category)
         {
@@ -564,7 +744,14 @@ namespace AutoArm
             {
                 foreach (var weapon in cache.CategorizedWeapons[category])
                 {
-                    if (weapon.Position.DistanceToSquared(position) <= maxDistSquared)
+                    // For weapons in containers, use the container's position
+                    IntVec3 weaponPos = weapon.Position;
+                    if (weapon.ParentHolder is Building building && building.Position.IsValid)
+                    {
+                        weaponPos = building.Position;
+                    }
+                    
+                    if (weaponPos.DistanceToSquared(position) <= maxDistSquared)
                     {
                         result.Add(weapon);
                     }
@@ -575,37 +762,12 @@ namespace AutoArm
         }
 
         /// <summary>
-        /// Get cached pawn-weapon score or calculate and cache it
+        /// Get cached pawn-weapon score using the centralized WeaponScoreCache
         /// </summary>
         public static float GetCachedWeaponScore(Pawn pawn, ThingWithComps weapon)
         {
-            if (pawn?.Map == null || weapon == null)
-                return 0f;
-
-            if (!weaponCache.TryGetValue(pawn.Map, out var cache))
-                return WeaponScoringHelper.GetTotalScore(pawn, weapon);
-
-            // Create cache key with pawn ID and weapon instance ID
-            string cacheKey = $"{pawn.thingIDNumber}_{weapon.thingIDNumber}";
-
-            // Check if score is already cached
-            if (cache.PawnWeaponScoreCache.TryGetValue(cacheKey, out float cachedScore))
-            {
-                return cachedScore;
-            }
-
-            // Calculate score and cache it
-            float score = WeaponScoringHelper.GetTotalScore(pawn, weapon);
-            cache.PawnWeaponScoreCache[cacheKey] = score;
-
-            // Keep cache size reasonable - clear if too large
-            if (cache.PawnWeaponScoreCache.Count > 5000)
-            {
-                cache.PawnWeaponScoreCache.Clear();
-                AutoArmDebug.Log("Cleared pawn-weapon score cache due to size");
-            }
-
-            return score;
+            // Use the centralized WeaponScoreCache which has better invalidation tracking
+            return WeaponScoreCache.GetCachedScore(pawn, weapon);
         }
 
         /// <summary>
@@ -613,25 +775,8 @@ namespace AutoArm
         /// </summary>
         public static void ClearPawnScoreCache(Pawn pawn)
         {
-            if (pawn?.Map == null)
-                return;
-
-            if (!weaponCache.TryGetValue(pawn.Map, out var cache))
-                return;
-
-            var keysToRemove = cache.PawnWeaponScoreCache.Keys
-                .Where(key => key.StartsWith($"{pawn.thingIDNumber}_"))
-                .ToList();
-
-            foreach (var key in keysToRemove)
-            {
-                cache.PawnWeaponScoreCache.Remove(key);
-            }
-
-            if (keysToRemove.Any())
-            {
-                AutoArmDebug.Log($"Cleared {keysToRemove.Count} cached scores for pawn {pawn.Name?.ToStringShort ?? pawn.Label}");
-            }
+            // Delegate to centralized cache which tracks skill changes properly
+            WeaponScoreCache.MarkPawnSkillsChanged(pawn);
         }
     }
 }

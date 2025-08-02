@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Weapon validation and filtering logic for modded content safety
+// Ensures weapons are proper, usable, and safe for auto-equip
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -158,7 +162,7 @@ namespace AutoArm
                 // If IsWeapon property throws, log and assume it's not a standard weapon
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"ERROR checking IsWeapon for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Log($"ERROR checking IsWeapon for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -178,7 +182,7 @@ namespace AutoArm
                 // If IsApparel throws, assume it's not apparel (safer for weapon detection)
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"ERROR checking IsApparel for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Log($"ERROR checking IsApparel for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -199,7 +203,7 @@ namespace AutoArm
                 // If equipmentType throws (custom enum values), reject it
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"ERROR checking equipmentType for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Log($"ERROR checking equipmentType for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -219,7 +223,7 @@ namespace AutoArm
                 // If component check throws (reflection issues), reject it
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmDebug.Log($"ERROR checking CompEquippable for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Log($"ERROR checking CompEquippable for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -258,7 +262,7 @@ namespace AutoArm
                     details.AppendLine($"  Inner: {ex.InnerException.Message}");
                 }
 
-                AutoArmDebug.Log(details.ToString());
+                AutoArmLogger.Log(details.ToString());
             }
         }
 

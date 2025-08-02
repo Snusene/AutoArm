@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Job creation and interruption logic
+// Handles: Safe job interruption decisions, critical job detection
+// Uses: Job categories and work priorities to avoid disrupting important tasks
+// Critical: Prevents mod from interrupting emergency/critical jobs
+
 using RimWorld;
 using System.Collections.Generic;
 using Verse;
@@ -54,8 +60,13 @@ namespace AutoArm
         /// </summary>
         public static Job CreateEquipJob(ThingWithComps weapon, bool isSidearm = false)
         {
+            AutoArmLogger.Log($"[CREATE JOB] CreateEquipJob called - weapon: {weapon?.Label ?? "null"}, isSidearm: {isSidearm}");
+            
             if (weapon == null)
+            {
+                AutoArmLogger.Log("[CREATE JOB] Weapon is null, returning null");
                 return null;
+            }
 
             if (isSidearm && SimpleSidearmsCompat.IsLoaded())
             {
@@ -72,8 +83,10 @@ namespace AutoArm
             }
 
             // Default to vanilla equip job
+            AutoArmLogger.Log($"[CREATE JOB] Creating vanilla equip job for {weapon.Label}");
             var job = JobMaker.MakeJob(JobDefOf.Equip, weapon);
             job.count = 1;
+            AutoArmLogger.Log($"[CREATE JOB] Job created: {job?.def?.defName ?? "null"}");
             return job;
         }
 
@@ -200,14 +213,14 @@ namespace AutoArm
             // Always interrupt for unarmed pawns unless doing critical work
             if (!hasWeapon)
             {
-                AutoArmDebug.LogPawn(pawn, $"UNARMED - will interrupt {pawn.CurJob.def.defName} to get weapon");
+                AutoArmLogger.LogPawn(pawn, $"UNARMED - will interrupt {pawn.CurJob.def.defName} to get weapon");
                 return true;
             }
 
             // Check if job is safe to interrupt
             if (IsSafeToInterrupt(pawn.CurJob))
             {
-                AutoArmDebug.LogPawn(pawn, $"Interrupting safe job {pawn.CurJob.def.defName} for weapon upgrade");
+                AutoArmLogger.LogPawn(pawn, $"Interrupting safe job {pawn.CurJob.def.defName} for weapon upgrade");
                 return true;
             }
 
@@ -217,7 +230,7 @@ namespace AutoArm
                 float upgradePercentage = newScore / currentScore;
                 if (upgradePercentage >= 1.10f)
                 {
-                    AutoArmDebug.LogPawn(pawn, $"{(upgradePercentage - 1f) * 100f:F0}% upgrade available - interrupting {pawn.CurJob.def.defName}");
+                    AutoArmLogger.LogPawn(pawn, $"{(upgradePercentage - 1f) * 100f:F0}% upgrade available - interrupting {pawn.CurJob.def.defName}");
                     return true;
                 }
             }
@@ -225,7 +238,7 @@ namespace AutoArm
             // Check if it's low priority work
             if (IsLowPriorityWork(pawn))
             {
-                AutoArmDebug.LogPawn(pawn, $"Interrupting low priority work {pawn.CurJob.def.defName} for weapon upgrade");
+                AutoArmLogger.LogPawn(pawn, $"Interrupting low priority work {pawn.CurJob.def.defName} for weapon upgrade");
                 return true;
             }
 

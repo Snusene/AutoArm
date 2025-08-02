@@ -1,4 +1,8 @@
-﻿using System.Collections.Generic;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Test interfaces and result classes
+// Defines contracts for test scenarios and result reporting
+
+using System.Collections.Generic;
 using System.Linq;
 using Verse;
 

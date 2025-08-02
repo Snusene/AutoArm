@@ -1,9 +1,14 @@
-﻿using RimWorld;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Test helper utilities
+// Provides helper methods for creating test pawns, weapons, and scenarios
+
+using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
+using AutoArm.Testing.Helpers;
 
 namespace AutoArm.Testing
 {
@@ -19,6 +24,7 @@ namespace AutoArm.Testing
             public bool Conceited = false;
             public int? BiologicalAge = null;
             public bool EnsureViolenceCapable = true; // Default to creating violence-capable pawns for weapon tests
+            public bool EnableHunting = false; // Default to false to prevent the +500 hunter bonus affecting tests
         }
 
         public static Pawn CreateTestPawn(Map map, TestPawnConfig config = null)
@@ -97,8 +103,17 @@ namespace AutoArm.Testing
                     faction,
                     PawnGenerationContext.NonPlayer,
                     -1,  // Use -1 for compatibility with both RimWorld 1.5 and 1.6
-                    forceGenerateNewPawn: true
+                    forceGenerateNewPawn: true,
+                    allowDead: false,
+                    allowDowned: false
                 );
+                
+                // If we want a pacifist, don't force backstories
+                if (!config.EnsureViolenceCapable)
+                {
+                    validChildhood = null;
+                    validAdulthood = null;
+                }
 
                 // Try to set specific backstories (property names vary by version)
                 var requestType = request.GetType();
@@ -137,7 +152,7 @@ namespace AutoArm.Testing
 
                 if (config.EnsureViolenceCapable && pawn.story != null && !pawn.WorkTagIsDisabled(WorkTags.Violent) && validChildhood != null)
                 {
-                    AutoArmDebug.Log($"[TEST] Successfully created violence-capable pawn {pawn.Name} using filtered backstories");
+                    AutoArmLogger.Log($"[TEST] Successfully created violence-capable pawn {pawn.Name} using filtered backstories");
                 }
 
                 // Override backstories to ensure violence capability (fallback if forced backstories didn't work)
@@ -216,6 +231,130 @@ namespace AutoArm.Testing
                         }
                     }
                 }
+                
+                // Special handling for creating violence-incapable pawns
+                if (!config.EnsureViolenceCapable && !pawn.WorkTagIsDisabled(WorkTags.Violent))
+                {
+                    bool madeIncapable = false;
+                    
+                    // Method 1: Try to find and add a trait that disables violence
+                    var pacifistTraits = DefDatabase<TraitDef>.AllDefs
+                        .Where(t => t.disabledWorkTags.HasFlag(WorkTags.Violent))
+                        .ToList();
+                    
+                    // Try multiple traits if needed
+                    foreach (var pacifistTrait in pacifistTraits)
+                    {
+                        if (pacifistTrait != null && !pawn.story.traits.HasTrait(pacifistTrait))
+                        {
+                            // Check for conflicting traits
+                            var conflictingTraits = pawn.story.traits.allTraits
+                                .Where(t => pacifistTrait.ConflictsWith(t))
+                                .ToList();
+                            
+                            foreach (var conflict in conflictingTraits)
+                            {
+                                pawn.story.traits.RemoveTrait(conflict);
+                            }
+                            
+                            // Remove traits if at capacity
+                            while (pawn.story.traits.allTraits.Count >= 3)
+                            {
+                                var traitToRemove = pawn.story.traits.allTraits
+                                    .FirstOrDefault(t => !t.def.disabledWorkTags.HasFlag(WorkTags.Violent));
+                                if (traitToRemove != null)
+                                {
+                                    pawn.story.traits.RemoveTrait(traitToRemove);
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                            
+                            // Add the pacifist trait
+                            pawn.story.traits.GainTrait(new Trait(pacifistTrait));
+                            pawn.Notify_DisabledWorkTypesChanged();
+                            AutoArmLogger.Log($"[TEST] Added pacifist trait {pacifistTrait.defName} to make pawn violence-incapable");
+                            
+                            if (pawn.WorkTagIsDisabled(WorkTags.Violent))
+                            {
+                                madeIncapable = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Method 2: If still not incapable, try to force a pacifist backstory
+                    if (!madeIncapable && !pawn.WorkTagIsDisabled(WorkTags.Violent))
+                    {
+                        // Find backstories that disable violence
+                        var pacifistBackstories = DefDatabase<BackstoryDef>.AllDefs.Where(b =>
+                        {
+                            if (b == null) return false;
+                            
+                            // Check various property names for disabled work tags
+                            var backstoryType = b.GetType();
+                            
+                            var workDisablesField = backstoryType.GetField("workDisables", BindingFlags.Public | BindingFlags.Instance);
+                            if (workDisablesField != null)
+                            {
+                                var workTags = workDisablesField.GetValue(b) as WorkTags?;
+                                if (workTags.HasValue && workTags.Value.HasFlag(WorkTags.Violent))
+                                    return true;
+                            }
+                            
+                            var disabledWorkTagsField = backstoryType.GetField("disabledWorkTags", BindingFlags.Public | BindingFlags.Instance);
+                            if (disabledWorkTagsField != null)
+                            {
+                                var workTags = disabledWorkTagsField.GetValue(b) as WorkTags?;
+                                if (workTags.HasValue && workTags.Value.HasFlag(WorkTags.Violent))
+                                    return true;
+                            }
+                            
+                            return false;
+                        }).ToList();
+                        
+                        if (pacifistBackstories.Any())
+                        {
+                            // Force override the childhood backstory
+                            var pacifistChildhood = pacifistBackstories.FirstOrDefault(b => b.slot == BackstorySlot.Childhood);
+                            if (pacifistChildhood != null)
+                            {
+                                var storyType = pawn.story.GetType();
+                                var childhoodField = storyType.GetField("childhood", BindingFlags.NonPublic | BindingFlags.Instance) ??
+                                                   storyType.GetField("Childhood", BindingFlags.NonPublic | BindingFlags.Instance);
+                                                   
+                                if (childhoodField != null)
+                                {
+                                    childhoodField.SetValue(pawn.story, pacifistChildhood);
+                                    pawn.Notify_DisabledWorkTypesChanged();
+                                    AutoArmLogger.Log($"[TEST] Forced pacifist backstory {pacifistChildhood.defName} to make pawn violence-incapable");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Final verification and forced approach if needed
+                    if (!pawn.WorkTagIsDisabled(WorkTags.Violent))
+                    {
+                        // Last resort: Try the "Wimp" trait which is commonly available
+                        var wimpTrait = DefDatabase<TraitDef>.GetNamedSilentFail("Wimp");
+                        if (wimpTrait != null && wimpTrait.disabledWorkTags.HasFlag(WorkTags.Violent))
+                        {
+                            // Clear all traits and add wimp
+                            pawn.story.traits.allTraits.Clear();
+                            pawn.story.traits.GainTrait(new Trait(wimpTrait));
+                            pawn.Notify_DisabledWorkTypesChanged();
+                            AutoArmLogger.Log("[TEST] Used Wimp trait as last resort for pacifist");
+                        }
+                        
+                        if (!pawn.WorkTagIsDisabled(WorkTags.Violent))
+                        {
+                            Log.Warning("[TEST] Failed to create violence-incapable pawn after all attempts");
+                        }
+                    }
+                }
 
                 if (config.Skills != null && pawn.skills?.skills != null)
                 {
@@ -273,7 +412,154 @@ namespace AutoArm.Testing
                     }
                 }
 
-                GenSpawn.Spawn(pawn, map.Center, map);
+                // Only set faction if it's null or different from PlayerColony
+                // This avoids the "Used SetFaction to change to same faction" warning
+                if (pawn.Faction == null || (pawn.Faction != faction && faction == Faction.OfPlayer))
+                {
+                    pawn.SetFactionDirect(faction);
+                }
+                
+                // Find a valid spawn position
+                IntVec3 spawnPos = map.Center;
+                bool foundSpawnPos = CellFinder.TryFindRandomCellNear(map.Center, map, 20,
+                    c => c.InBounds(map) && c.Standable(map) && !c.Fogged(map) && 
+                         c.GetRoom(map) != null && !c.GetRoom(map).PsychologicallyOutdoors,
+                    out spawnPos);
+                    
+                if (!foundSpawnPos)
+                {
+                    // Fallback to any standable position
+                    foundSpawnPos = CellFinder.TryFindRandomCellNear(map.Center, map, 30,
+                        c => c.InBounds(map) && c.Standable(map) && !c.Fogged(map),
+                        out spawnPos);
+                }
+                
+                if (!foundSpawnPos)
+                {
+                    spawnPos = map.Center; // Last resort
+                }
+                
+                GenSpawn.Spawn(pawn, spawnPos, map);
+                
+                // Ensure outfit system is initialized for weapon tests
+                if (pawn.outfits == null)
+                {
+                    // This shouldn't happen for colonists, but just in case
+                    AutoArmLogger.Log($"[TEST] Warning: Pawn {pawn.Name} has no outfit tracker");
+                }
+                else
+                {
+                    // Create or get a test outfit that allows all weapons
+                    ApparelPolicy testOutfit = null;
+                    
+                    // Try to find existing test outfit
+                    if (Current.Game?.outfitDatabase != null)
+                    {
+                        testOutfit = Current.Game.outfitDatabase.AllOutfits.FirstOrDefault(o => o.label == "Test Outfit - All Weapons");
+                        
+                        if (testOutfit == null)
+                        {
+                            // Create a new outfit that allows all weapons
+                            testOutfit = new ApparelPolicy(Current.Game.outfitDatabase.AllOutfits.Count, "Test Outfit - All Weapons");
+                            
+                            // Configure the filter to allow all weapons
+                            if (testOutfit.filter != null)
+                            {
+                                // Start by allowing everything
+                                testOutfit.filter.SetAllowAll(null);
+                                
+                                // Explicitly ensure all weapons are allowed
+                                foreach (ThingDef weaponDef in DefDatabase<ThingDef>.AllDefs.Where(d => d.IsWeapon))
+                                {
+                                    testOutfit.filter.SetAllow(weaponDef, true);
+                                }
+                                
+                                // Make sure no special disallows are set
+                                if (testOutfit.filter.AllowedQualityLevels != null)
+                                {
+                                    testOutfit.filter.AllowedQualityLevels = QualityRange.All;
+                                }
+                                
+                                if (testOutfit.filter.AllowedHitPointsPercents != null)
+                                {
+                                    testOutfit.filter.AllowedHitPointsPercents = FloatRange.ZeroToOne;
+                                }
+                                
+                                AutoArmLogger.Log($"[TEST] Created test outfit allowing all weapons");
+                            }
+                            
+                            // Add to outfit database
+                            Current.Game.outfitDatabase.AllOutfits.Add(testOutfit);
+                        }
+                    }
+                    
+                    // Apply the test outfit or fall back to default
+                    if (testOutfit != null)
+                    {
+                        pawn.outfits.CurrentApparelPolicy = testOutfit;
+                        AutoArmLogger.Log($"[TEST] Applied test outfit to pawn {pawn.Name}");
+                    }
+                    else if (pawn.outfits.CurrentApparelPolicy == null)
+                    {
+                        // Fallback to default outfit
+                        var defaultOutfit = Current.Game?.outfitDatabase?.DefaultOutfit();
+                        if (defaultOutfit != null)
+                        {
+                            pawn.outfits.CurrentApparelPolicy = defaultOutfit;
+                            AutoArmLogger.Log($"[TEST] Set default outfit for test pawn {pawn.Name} (couldn't create test outfit)");
+                        }
+                        else
+                        {
+                            AutoArmLogger.Log($"[TEST] Warning: No outfit available for test pawn {pawn.Name}");
+                        }
+                    }
+                }
+                
+                // Configure work settings - disable hunting by default to prevent +500 bonus in tests
+                if (pawn.workSettings != null && !config.EnableHunting)
+                {
+                    // Ensure work settings are initialized
+                    if (pawn.workSettings.EverWork)
+                    {
+                        pawn.workSettings.EnableAndInitialize();
+                    }
+                    
+                    // Disable hunting work to prevent the +500 hunter bonus from affecting tests
+                    if (WorkTypeDefOf.Hunting != null && !pawn.WorkTypeIsDisabled(WorkTypeDefOf.Hunting))
+                    {
+                        try
+                        {
+                            pawn.workSettings.SetPriority(WorkTypeDefOf.Hunting, 0);
+                            AutoArmLogger.Log($"[TEST] Disabled hunting work for test pawn {pawn.Name} to prevent +500 bonus");
+                        }
+                        catch (Exception e)
+                        {
+                            Log.Warning($"[TEST] Failed to disable hunting for test pawn {pawn.Name}: {e.Message}");
+                        }
+                    }
+                }
+                else if (pawn.workSettings != null && config.EnableHunting)
+                {
+                    // If hunting is explicitly enabled, make sure it's set
+                    if (pawn.workSettings.EverWork)
+                    {
+                        pawn.workSettings.EnableAndInitialize();
+                    }
+                    
+                    if (WorkTypeDefOf.Hunting != null && !pawn.WorkTypeIsDisabled(WorkTypeDefOf.Hunting))
+                    {
+                        try
+                        {
+                            pawn.workSettings.SetPriority(WorkTypeDefOf.Hunting, 1);
+                            AutoArmLogger.Log($"[TEST] Enabled hunting work for test pawn {pawn.Name} (explicitly requested)");
+                        }
+                        catch (Exception e)
+                        {
+                            Log.Warning($"[TEST] Failed to enable hunting for test pawn {pawn.Name}: {e.Message}");
+                        }
+                    }
+                }
+                
                 return pawn;
             }
             catch (System.Exception e)
@@ -288,103 +574,44 @@ namespace AutoArm.Testing
             if (map == null || weaponDef == null || !position.IsValid)
                 return null;
 
-            try
+            // Ensure the position is reachable
+            IntVec3 spawnPos = position;
+            if (!position.InBounds(map) || !position.Standable(map))
             {
-                ThingWithComps weapon;
-
-                if (weaponDef.MadeFromStuff)
-                {
-                    // Find appropriate stuff
-                    ThingDef stuffDef = null;
-
-                    // For tests, always use Steel for consistency
-                    // This prevents material differences from affecting test results
-                    stuffDef = ThingDefOf.Steel;
-
-                    // Verify the weapon can use this material
-                    if (!CanUseStuff(weaponDef, stuffDef))
-                    {
-                        // For knives and other weapons that might not accept steel, try other materials
-                        if (weaponDef.defName.Contains("Knife") || weaponDef.defName.Contains("Shiv"))
-                        {
-                            // Try common materials for knives
-                            var materials = new[] { ThingDefOf.Steel, ThingDefOf.Plasteel, ThingDefOf.WoodLog };
-                            foreach (var mat in materials.Where(m => m != null))
-                            {
-                                if (CanUseStuff(weaponDef, mat))
-                                {
-                                    stuffDef = mat;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // If still no valid material, find first valid material
-                        if (stuffDef == null || !CanUseStuff(weaponDef, stuffDef))
-                        {
-                            if (weaponDef.stuffCategories != null)
-                            {
-                                foreach (var category in weaponDef.stuffCategories)
-                                {
-                                    var validStuff = DefDatabase<ThingDef>.AllDefs
-                                        .Where(td => td.stuffProps != null &&
-                                                    td.stuffProps.categories != null &&
-                                                    td.stuffProps.categories.Contains(category))
-                                        .FirstOrDefault();
-                                    if (validStuff != null)
-                                    {
-                                        stuffDef = validStuff;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Final safety check - if still null, use wood as last resort
-                    if (stuffDef == null)
-                    {
-                        stuffDef = ThingDefOf.WoodLog;
-                        // If wood doesn't work either, just use the first available material
-                        if (!CanUseStuff(weaponDef, stuffDef))
-                        {
-                            stuffDef = DefDatabase<ThingDef>.AllDefs
-                                .FirstOrDefault(td => td.stuffProps != null && CanUseStuff(weaponDef, td));
-                        }
-                    }
+                // Find a nearby standable position
+                bool found = CellFinder.TryFindRandomCellNear(position, map, 5, 
+                    c => c.InBounds(map) && c.Standable(map) && !c.Fogged(map), out spawnPos);
                     
-                    if (stuffDef == null)
+                if (!found)
+                {
+                    // Try to find any standable position near the map center
+                    found = CellFinder.TryFindRandomCellNear(map.Center, map, 20,
+                        c => c.InBounds(map) && c.Standable(map) && !c.Fogged(map), out spawnPos);
+                        
+                    if (!found)
                     {
-                        AutoArmDebug.LogError($"[TEST] No valid material found for {weaponDef.defName}");
+                        Log.Warning($"[AutoArm] Could not find valid spawn position for weapon {weaponDef?.defName}");
                         return null;
                     }
-
-                    weapon = ThingMaker.MakeThing(weaponDef, stuffDef) as ThingWithComps;
-
-                    if (weapon != null)
-                    {
-                        AutoArmDebug.Log($"[TEST] Created {weaponDef.defName} with material {stuffDef.defName}");
-                    }
                 }
-                else
-                {
-                    weapon = ThingMaker.MakeThing(weaponDef) as ThingWithComps;
-                }
+            }
 
-                if (weapon == null) return null;
-
-                var compQuality = weapon.TryGetComp<CompQuality>();
-                if (compQuality != null)
-                {
-                    compQuality.SetQuality(quality, ArtGenerationContext.Colony);
-                }
-
-                GenSpawn.Spawn(weapon, position, map);
+            // Use the safe creation method
+            var weapon = SafeTestCleanup.SafeCreateWeapon(weaponDef, null, quality);
+            if (weapon == null) return null;
+            
+            // Spawn at the validated position
+            try
+            {
+                GenSpawn.Spawn(weapon, spawnPos, map);
+                weapon.SetForbidden(false, false); // Ensure weapon is not forbidden
                 return weapon;
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
-                Log.Warning($"[AutoArm] Failed to create weapon {weaponDef?.defName}: {e.Message}");
+                Log.Warning($"[AutoArm] Failed to spawn weapon {weaponDef?.defName}: {e.Message}");
+                if (!weapon.Destroyed)
+                    weapon.Destroy();
                 return null;
             }
         }
@@ -414,56 +641,7 @@ namespace AutoArm.Testing
         /// </summary>
         public static void SafeDestroyWeapon(ThingWithComps weapon)
         {
-            if (weapon == null || weapon.Destroyed)
-                return;
-
-            try
-            {
-                // Track that we're destroying this to prevent double-destroy
-                var weaponId = weapon.thingIDNumber;
-                
-                // Remove from equipment if equipped
-                if (weapon.ParentHolder is Pawn_EquipmentTracker equipment)
-                {
-                    var pawn = equipment.pawn;
-                    if (pawn?.equipment?.Primary == weapon)
-                    {
-                        pawn.equipment.Remove(weapon);
-                    }
-                }
-                
-                // Remove from inventory if in inventory
-                else if (weapon.ParentHolder is Pawn_InventoryTracker inventory)
-                {
-                    inventory.innerContainer.Remove(weapon);
-                }
-                
-                // Remove from any other container
-                else if (weapon.holdingOwner != null)
-                {
-                    weapon.holdingOwner.Remove(weapon);
-                }
-
-                // Despawn if spawned
-                if (weapon.Spawned)
-                {
-                    weapon.DeSpawn();
-                }
-
-                // Now destroy - but check again in case it was destroyed during cleanup
-                if (!weapon.Destroyed)
-                {
-                    weapon.Destroy();
-                }
-            }
-            catch (Exception e)
-            {
-                // Don't log errors for already destroyed weapons
-                if (!e.Message.Contains("already-destroyed"))
-                {
-                    AutoArmDebug.LogError($"[TEST] Failed to safely destroy weapon {weapon?.Label}: {e.Message}");
-                }
-            }
+            SafeTestCleanup.SafeDestroyWeapon(weapon);
         }
     }
 }

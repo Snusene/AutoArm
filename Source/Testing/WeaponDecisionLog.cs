@@ -1,4 +1,8 @@
-﻿using System;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Weapon decision logging for debugging
+// Tracks recent weapon evaluation decisions per pawn
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;

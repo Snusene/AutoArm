@@ -1,4 +1,8 @@
-﻿using LudeonTK;
+﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Debug commands for development menu
+// Provides debug actions for testing mod functionality
+
+using LudeonTK;
 using RimWorld;
 using System.Collections;
 using System.Collections.Generic;

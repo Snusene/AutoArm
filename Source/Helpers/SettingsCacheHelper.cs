@@ -1,3 +1,9 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Settings value caching to reduce redundant lookups
+// Prevents excessive reflection calls for SimpleSidearms settings
+// Uses: Timed cache expiration for dynamic setting changes
+// Note: Centralized caching prevents duplicate cache implementations
+
 using System;
 using System.Collections.Generic;
 using Verse;

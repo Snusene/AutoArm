@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Miscellaneous test scenarios (drafted behavior, edge cases, save/load)
+// Validates special cases and error handling
+
 using RimWorld;
 using System.Linq;
 using Verse;
@@ -63,13 +67,13 @@ namespace AutoArm.Testing.Scenarios
         {
             if (draftedPawn == null)
             {
-                AutoArmDebug.LogError("[TEST] DraftedBehaviorTest: Failed to create test pawn");
+                AutoArmLogger.LogError("[TEST] DraftedBehaviorTest: Failed to create test pawn");
                 return TestResult.Failure("Failed to create test pawn");
             }
 
             if (!draftedPawn.Drafted)
             {
-                AutoArmDebug.LogError($"[TEST] DraftedBehaviorTest: Pawn is not drafted - expected: true, got: false");
+                AutoArmLogger.LogError($"[TEST] DraftedBehaviorTest: Pawn is not drafted - expected: true, got: false");
                 return TestResult.Failure("Pawn is not drafted");
             }
 
@@ -84,7 +88,7 @@ namespace AutoArm.Testing.Scenarios
 
             if (job != null)
             {
-                AutoArmDebug.LogError($"[TEST] DraftedBehaviorTest: Drafted pawn tried to switch weapons - expected: no job, got: {job.def.defName} targeting {job.targetA.Thing?.Label}");
+                AutoArmLogger.LogError($"[TEST] DraftedBehaviorTest: Drafted pawn tried to switch weapons - expected: no job, got: {job.def.defName} targeting {job.targetA.Thing?.Label}");
                 return TestResult.Failure($"Drafted pawn tried to switch weapons! Job: {job.def.defName}");
             }
 
@@ -134,14 +138,14 @@ namespace AutoArm.Testing.Scenarios
             var job = jobGiver.TestTryGiveJob(null);
             if (job != null)
             {
-                AutoArmDebug.LogError("[TEST] EdgeCaseTest: Job created for null pawn - expected: null, got: job");
+                AutoArmLogger.LogError("[TEST] EdgeCaseTest: Job created for null pawn - expected: null, got: job");
                 return TestResult.Failure("Job created for null pawn");
             }
 
             float score = jobGiver.GetWeaponScore(null, null);
             if (score != 0f)
             {
-                AutoArmDebug.LogError($"[TEST] EdgeCaseTest: Non-zero score for null inputs - expected: 0, got: {score}");
+                AutoArmLogger.LogError($"[TEST] EdgeCaseTest: Non-zero score for null inputs - expected: 0, got: {score}");
                 return TestResult.Failure("Non-zero score for null inputs");
             }
 
@@ -186,14 +190,14 @@ namespace AutoArm.Testing.Scenarios
         {
             if (testPawn == null || testWeapon == null)
             {
-                AutoArmDebug.LogError($"[TEST] SaveLoadTest: Test setup failed - pawn null: {testPawn == null}, weapon null: {testWeapon == null}");
+                AutoArmLogger.LogError($"[TEST] SaveLoadTest: Test setup failed - pawn null: {testPawn == null}, weapon null: {testWeapon == null}");
                 return TestResult.Failure("Test setup failed");
             }
 
             var saveData = ForcedWeaponHelper.GetSaveData();
             if (!saveData.ContainsKey(testPawn))
             {
-                AutoArmDebug.LogError($"[TEST] SaveLoadTest: Forced weapon not in save data - pawn: {testPawn.Name}, weapon: {testWeapon.Label}");
+                AutoArmLogger.LogError($"[TEST] SaveLoadTest: Forced weapon not in save data - pawn: {testPawn.Name}, weapon: {testWeapon.Label}");
                 return TestResult.Failure("Forced weapon not in save data");
             }
 
@@ -202,7 +206,7 @@ namespace AutoArm.Testing.Scenarios
             var forcedDef = ForcedWeaponHelper.GetForcedWeaponDefs(testPawn).FirstOrDefault();
             if (forcedDef != testWeapon.def)
             {
-                AutoArmDebug.LogError($"[TEST] SaveLoadTest: Forced weapon def not retained after load - expected: {testWeapon.def.defName}, got: {forcedDef?.defName ?? "null"}");
+                AutoArmLogger.LogError($"[TEST] SaveLoadTest: Forced weapon def not retained after load - expected: {testWeapon.def.defName}, got: {forcedDef?.defName ?? "null"}");
                 return TestResult.Failure("Forced weapon def not retained after load");
             }
 

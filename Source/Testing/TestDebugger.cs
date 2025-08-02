@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Test debugging utilities
+// Helper methods for debugging test failures
+
 using RimWorld;
 using System.Linq;
 using Verse;
@@ -16,7 +20,7 @@ namespace AutoArm.Testing
             
             if (rifleDef == null || swordDef == null)
             {
-                AutoArmDebug.LogError("[TEST DEBUG] Weapon defs not found!");
+                AutoArmLogger.LogError("[TEST DEBUG] Weapon defs not found!");
                 return;
             }
             
@@ -33,20 +37,20 @@ namespace AutoArm.Testing
             float rifleScore = WeaponScoringHelper.GetTotalScore(pawn, rifle);
             float swordScore = WeaponScoringHelper.GetTotalScore(pawn, sword);
             
-            AutoArmDebug.Log($"[TEST DEBUG] High-melee pawn weapon scores:");
-            AutoArmDebug.Log($"  Assault Rifle: {rifleScore:F1}");
-            AutoArmDebug.Log($"  Longsword: {swordScore:F1}");
-            AutoArmDebug.Log($"  Should pick: {(swordScore > rifleScore ? "Longsword" : "Assault Rifle")}");
+            AutoArmLogger.Log($"[TEST DEBUG] High-melee pawn weapon scores:");
+            AutoArmLogger.Log($"  Assault Rifle: {rifleScore:F1}");
+            AutoArmLogger.Log($"  Longsword: {swordScore:F1}");
+            AutoArmLogger.Log($"  Should pick: {(swordScore > rifleScore ? "Longsword" : "Assault Rifle")}");
             
             // Calculate skill components separately
             float skillDiff = 12f;
             float skillBonus = 30f * UnityEngine.Mathf.Pow(1.15f, 11f);
             
-            AutoArmDebug.Log($"[TEST DEBUG] Skill calculation:");
-            AutoArmDebug.Log($"  Skill difference: {skillDiff}");
-            AutoArmDebug.Log($"  Base skill bonus: {skillBonus:F1}");
-            AutoArmDebug.Log($"  Ranged penalty: {-skillBonus * 0.5f:F1}");
-            AutoArmDebug.Log($"  Melee bonus: {skillBonus:F1}");
+            AutoArmLogger.Log($"[TEST DEBUG] Skill calculation:");
+            AutoArmLogger.Log($"  Skill difference: {skillDiff}");
+            AutoArmLogger.Log($"  Base skill bonus: {skillBonus:F1}");
+            AutoArmLogger.Log($"  Ranged penalty: {-skillBonus * 0.5f:F1}");
+            AutoArmLogger.Log($"  Melee bonus: {skillBonus:F1}");
             
             // Cleanup
             rifle.Destroy();
@@ -58,7 +62,7 @@ namespace AutoArm.Testing
         {
             if (map == null) return;
             
-            AutoArmDebug.Log($"[TEST DEBUG] Map size: {map.Size.x} x {map.Size.z}");
+            AutoArmLogger.Log($"[TEST DEBUG] Map size: {map.Size.x} x {map.Size.z}");
             
             int validPositions = 0;
             int totalPositions = 0;
@@ -77,7 +81,7 @@ namespace AutoArm.Testing
                 }
             }
             
-            AutoArmDebug.Log($"[TEST DEBUG] Valid positions for weapons: {validPositions}/{totalPositions}");
+            AutoArmLogger.Log($"[TEST DEBUG] Valid positions for weapons: {validPositions}/{totalPositions}");
             
             // Test weapon creation
             var weaponDef = DefDatabase<ThingDef>.GetNamed("Gun_Autopistol", false);
@@ -89,20 +93,20 @@ namespace AutoArm.Testing
                     var weapon = ThingMaker.MakeThing(weaponDef, ThingDefOf.Steel) as ThingWithComps;
                     GenSpawn.Spawn(weapon, testPos, map);
                     
-                    AutoArmDebug.Log($"[TEST DEBUG] Test weapon spawned: {weapon.Spawned}");
-                    AutoArmDebug.Log($"[TEST DEBUG] Weapon position: {weapon.Position}");
+                    AutoArmLogger.Log($"[TEST DEBUG] Test weapon spawned: {weapon.Spawned}");
+                    AutoArmLogger.Log($"[TEST DEBUG] Weapon position: {weapon.Position}");
                     
                     // Test cache
                     ImprovedWeaponCacheManager.AddWeaponToCache(weapon);
                     var cached = ImprovedWeaponCacheManager.GetWeaponsNear(map, testPos, 10f).ToList();
                     
-                    AutoArmDebug.Log($"[TEST DEBUG] Weapons in cache near center: {cached.Count}");
+                    AutoArmLogger.Log($"[TEST DEBUG] Weapons in cache near center: {cached.Count}");
                     
                     weapon.Destroy();
                 }
                 else
                 {
-                    AutoArmDebug.LogError($"[TEST DEBUG] Map center is not standable!");
+                    AutoArmLogger.LogError($"[TEST DEBUG] Map center is not standable!");
                 }
             }
         }

@@ -1,3 +1,7 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Performance-optimized weapon scoring cache with pawn-specific calculations
+// Uses WeaponScoringHelper for base scores, CECompat for ammo modifiers, InfusionCompat for mod bonuses
+
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -170,36 +174,56 @@ namespace AutoArm
         public static void CleanupCache()
         {
             int currentTick = Find.TickManager.TicksGame;
+            int lifetimeThreshold = PawnCacheLifetime * 2;
 
-            // Remove old pawn cache entries
-            var oldPawnEntries = pawnScoreCache
-                .Where(kvp => currentTick - kvp.Value.CachedTick > PawnCacheLifetime * 2)
-                .Select(kvp => kvp.Key)
-                .ToList();
+            // Use a temporary list to avoid modifying collection during iteration
+            var keysToRemove = new List<(int, int)>(32); // Pre-allocate reasonable size
 
-            foreach (var key in oldPawnEntries)
+            // Collect old pawn cache entries
+            foreach (var kvp in pawnScoreCache)
+            {
+                if (currentTick - kvp.Value.CachedTick > lifetimeThreshold)
+                {
+                    keysToRemove.Add(kvp.Key);
+                }
+            }
+
+            // Remove collected keys
+            foreach (var key in keysToRemove)
             {
                 pawnScoreCache.Remove(key);
             }
 
-            // Also cleanup old weapon modification ticks
-            var oldWeaponMods = weaponModifiedTick
-                .Where(kvp => currentTick - kvp.Value > PawnCacheLifetime * 2)
-                .Select(kvp => kvp.Key)
-                .ToList();
+            // Reuse the list for weapon modification ticks (int keys)
+            var intKeysToRemove = new List<int>(32);
+            
+            // Cleanup old weapon modification ticks
+            foreach (var kvp in weaponModifiedTick)
+            {
+                if (currentTick - kvp.Value > lifetimeThreshold)
+                {
+                    intKeysToRemove.Add(kvp.Key);
+                }
+            }
 
-            foreach (var id in oldWeaponMods)
+            foreach (var id in intKeysToRemove)
             {
                 weaponModifiedTick.Remove(id);
             }
 
+            // Clear and reuse for pawn skill ticks
+            intKeysToRemove.Clear();
+            
             // Cleanup old pawn skill ticks
-            var oldPawnSkills = pawnSkillChangedTick
-                .Where(kvp => currentTick - kvp.Value > PawnCacheLifetime * 2)
-                .Select(kvp => kvp.Key)
-                .ToList();
+            foreach (var kvp in pawnSkillChangedTick)
+            {
+                if (currentTick - kvp.Value > lifetimeThreshold)
+                {
+                    intKeysToRemove.Add(kvp.Key);
+                }
+            }
 
-            foreach (var id in oldPawnSkills)
+            foreach (var id in intKeysToRemove)
             {
                 pawnSkillChangedTick.Remove(id);
             }
