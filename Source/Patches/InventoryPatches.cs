@@ -7,6 +7,8 @@ using RimWorld;
 using System;
 using System.Linq;
 using Verse;
+using AutoArm.Helpers; using AutoArm.Logging;
+using AutoArm.Weapons;
 
 namespace AutoArm
 {
@@ -53,7 +55,7 @@ namespace AutoArm
                     if (sameTypeCount == 0)
                     {
                         ForcedWeaponHelper.RemoveForcedDef(___pawn, weapon.def);
-                        AutoArmLogger.LogWeapon(___pawn, weapon, "Last forced weapon removed from inventory - cleared forced status");
+                        // Last forced weapon removed
                     }
                 }
             }
@@ -78,7 +80,7 @@ namespace AutoArm
             if (item is ThingWithComps weapon && DroppedItemTracker.IsPendingSameTypeUpgrade(weapon))
             {
                 // Prevent adding to inventory - let it drop to ground
-                AutoArmLogger.LogWeapon(___pawn, weapon, "Preventing same-type upgrade weapon from going to inventory");
+                // Preventing upgrade weapon in inventory
                 DroppedItemTracker.ClearPendingUpgrade(weapon);
                 return false; // Skip original method
             }
@@ -111,14 +113,20 @@ namespace AutoArm
             {
                 // Automatically mark bonded weapons as forced
                 ForcedWeaponHelper.AddForcedDef(___pawn, weapon.def);
-                AutoArmLogger.LogWeapon(___pawn, weapon, "Bonded weapon added to inventory - automatically marked as forced");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Bonded weapon {weapon.Label} in inventory - auto-forced");
+                }
             }
             // Check if this was a player-forced action (for sidearms added directly to inventory)
             else if (___pawn.jobs?.curDriver?.job?.playerForced == true &&
                 ___pawn.jobs.curDriver.job.def?.defName == "EquipSecondary")
             {
                 ForcedWeaponHelper.AddForcedDef(___pawn, weapon.def);
-                AutoArmLogger.LogWeapon(___pawn, weapon, "Player forced sidearm pickup - marked as forced");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced sidearm pickup - {weapon.Label}");
+                }
             }
 
             if (___pawn.CurJob?.def?.defName == "EquipSecondary" &&

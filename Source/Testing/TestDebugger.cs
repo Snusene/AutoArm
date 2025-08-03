@@ -5,6 +5,7 @@
 using RimWorld;
 using System.Linq;
 using Verse;
+using AutoArm.Caching; using AutoArm.Logging; using AutoArm.Weapons;
 
 namespace AutoArm.Testing
 {

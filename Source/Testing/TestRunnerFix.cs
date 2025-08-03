@@ -5,6 +5,8 @@
 using System;
 using System.Linq;
 using Verse;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Logging;
+using AutoArm.Weapons;
 
 namespace AutoArm.Testing
 {
@@ -61,7 +63,7 @@ namespace AutoArm.Testing
             ClearAllWeaponBlacklists();
             
             // Clear settings cache to ensure fresh state
-            SettingsCacheHelper.ClearAllCaches();
+            CleanupHelper.ClearAllCaches();
 
             // Clear timing systems
             ClearAllGlobalCooldowns();

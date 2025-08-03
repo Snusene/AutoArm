@@ -1,4 +1,4 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Debug commands for development menu
 // Provides debug actions for testing mod functionality
 
@@ -12,6 +12,7 @@ using Verse;
 using Verse.AI;
 using System;
 using System.IO;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.UI; using AutoArm.Weapons;
 
 namespace AutoArm
 {

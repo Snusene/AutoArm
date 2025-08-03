@@ -47,7 +47,9 @@ namespace AutoArm
 
     /// <summary>
     /// Patch equipment tracker to allow children to equip weapons
+    /// NOTE: Disabled - CanEquip method doesn't exist in RimWorld 1.5/1.6
     /// </summary>
+    /*
     [HarmonyPatch(typeof(Pawn_EquipmentTracker))]
     [HarmonyPatch("CanEquip")]
     public static class Patch_EquipmentTracker_CanEquip
@@ -86,4 +88,5 @@ namespace AutoArm
             }
         }
     }
+    */
 }

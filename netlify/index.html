@@ -170,7 +170,7 @@
         <div id="mainContent" style="display: none;">
             <div class="quality-info">
                 <h4>AutoArm Weapon Scoring System</h4>
-                <p>This page lets you visualize how AutoArm evaluates weapons. <strong>The higher the score, the more likely a colonist is to upgrade to that weapon.</strong> Scores are based on:</p>
+                <p>This page lets you visualize how AutoArm evaluates weapons. The higher the score, the more likely a colonist is to upgrade to that weapon. Scores are based on:</p>
                 <ul>
                     <li><strong>DPS (Damage Per Second):</strong> Core weapon effectiveness</li>
                     <li><strong>Range:</strong> Kiting potential and tactical flexibility (includes distance penalties)</li>
@@ -178,7 +178,6 @@
                     <li><strong>Armor Penetration:</strong> Effectiveness against late-game threats</li>
                     <li><strong>Skill Preferences:</strong> Colonist shooting vs melee skills</li>
                     <li><strong>Power Creep Protection:</strong> Extreme DPS (>30) has diminishing returns to prevent modded weapons from breaking balance</li>
-                    <li><strong>Situational Weapons:</strong> Grenades, launchers, and utility weapons are capped at 80 points to ensure they're only chosen for specific tasks</li>
                 </ul>
                 <p style="font-style: italic; color: #8f98a0; margin-top: 10px; font-weight: 500; text-align: center;">Developer note: I use this when fine-tuning AutoArm's weapon scoring balance. I had way too much fun styling this page.</p>
                 <div class="note" style="margin-top: 15px;">
@@ -234,6 +233,9 @@
                     <div class="control-group">
                         <label><input type="checkbox" id="hunterRole" onchange="updateScores()"> Hunting</label>
                     </div>
+                    <div class="control-group">
+                        <label><input type="checkbox" id="personaWeapon" onchange="updateScores()"> Persona Bonded</label>
+                    </div>
                 </div>
                 <div id="balanceInfo" class="balance-info">
                     <!-- Balance information will be inserted here -->
@@ -279,8 +281,6 @@
                 </div>
             </div>
 
-            <!-- Recommendation section removed - content moved to Scoring Configuration -->
-
             <div class="configuration-notes" style="margin-top: 40px; padding: 20px; background-color: #1e2329; border: 1px solid #2a2e35; border-radius: 8px;">
                 <h3 style="color: #66c0f4; margin-bottom: 15px;">Current dev notes</h3>
                 <ul style="list-style-type: disc; padding-left: 20px; line-height: 1.8; color: #c6d4df;">
@@ -293,8 +293,9 @@
                     <li>Quality affects both DPS and armor penetration values</li>
                     <li>Armor penetration thresholds: 100pts (≥0.75), 70pts (≥0.52), 50pts (≥0.40), 30pts (≥0.20), linear scale below</li>
                     <li>Skill scores use gradual exponential growth: Base 30 × 1.15^(skillDifference-1)</li>
-                    <li>Brawler trait: +200 bonus for melee weapons</li>
-                    <li>Hunting work: +100 bonus for all ranged weapons</li>
+                    <li>Brawler trait: +500 bonus for melee weapons</li>
+                    <li>Hunting work: +500 bonus for all ranged weapons</li>
+                    <li>Persona bonded: +25 bonus for melee weapons (simulates persona weapon bonding)</li>
                     <li>Natural weapons (Thrumbo Horn, Alpha Thrumbo Horn, Elephant Tusk, Mastodon Tusk) have fixed stats that don't change with quality</li>
                 </ul>
             </div>
@@ -303,6 +304,8 @@
 
     <!-- Load the external weapon data file -->
     <script src="weapons-data.js" onerror="handleWeaponDataError()"></script>
+    <!-- Load C# constants -->
+    <script src="constants.js"></script>
 
     <script>
         // Initialize weapon arrays
@@ -375,12 +378,24 @@
         // Wait for DOM to be ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function () {
-                // Give the weapons-data.js script a moment to execute
-                setTimeout(initializeApp, 100);
+                // Wait for both weapons-data.js and constants.js to load
+                waitForScriptsAndInit();
             });
         } else {
-            // DOM is already ready, wait a moment for weapons-data.js
-            setTimeout(initializeApp, 100);
+            // DOM is already ready, wait for scripts
+            waitForScriptsAndInit();
+        }
+
+        function waitForScriptsAndInit() {
+            // Check if both required scripts are loaded
+            if (window.weaponData && window.C) {
+                console.log('Both scripts loaded, C object:', window.C);
+                initializeApp();
+            } else {
+                console.log('Waiting for scripts...', 'weaponData:', !!window.weaponData, 'C:', !!window.C);
+                // Keep checking every 50ms
+                setTimeout(waitForScriptsAndInit, 50);
+            }
         }
 
         // Add keyboard shortcuts
@@ -493,7 +508,15 @@
         }
 
         function calculateArmorPenetrationScore(ap) {
-            // Based on the C# implementation thresholds
+            // Use C# values if available
+            if (window.C && window.C.calculateArmorPenetrationScore) {
+                const result = window.C.calculateArmorPenetrationScore(ap);
+                if (typeof result === 'number' && !isNaN(result)) {
+                    return result;
+                }
+                console.error('C.calculateArmorPenetrationScore returned invalid value:', result, 'for AP:', ap);
+            }
+            // Fallback to hardcoded thresholds
             if (ap >= 0.75) // Can penetrate marine armor
                 return 100; // Reduced further
             else if (ap >= 0.52) // Can penetrate flak vest
@@ -505,33 +528,34 @@
             else if (ap < 0.15) // Very low AP weapons get heavily penalized
                 return ap * 20; // Much lower multiplier
             else
-                return ap * 60; // Reduced further - Linear scale for low AP
+                return ap * 90; // Reduced further - Linear scale for low AP
         }
 
         // Updated skill scoring with gradual exponential growth
         function calculateSkillScore(shootingSkill, meleeSkill, isRanged) {
+            const C = window.C || { skillBaseBonus: 30, skillGrowthRate: 1.15, skillCap: 500, skillPenaltyMultiplier: 0.5 };
             const skillDifference = Math.abs(shootingSkill - meleeSkill);
             let baseScore = 0;
 
             if (skillDifference > 0) {
-                // Start with base bonus of 30 for 1 level difference
-                // Increase by 15% for each additional level (exponential growth)
-                const baseBonus = 30;
-                const growthRate = 1.15;
-                const bonus = baseBonus * Math.pow(growthRate, skillDifference - 1);
+                // Use C# formula
+                let bonus = C.skillBaseBonus * Math.pow(C.skillGrowthRate, skillDifference - 1);
+                
+                // Apply C# cap
+                if (bonus > C.skillCap) bonus = C.skillCap;
 
                 // Apply bonus or penalty based on weapon type
                 if (isRanged) {
                     if (shootingSkill > meleeSkill) {
                         baseScore = bonus; // Positive bonus for matching skill
                     } else {
-                        baseScore = -bonus * 0.5; // Half penalty for wrong type
+                        baseScore = -bonus * C.skillPenaltyMultiplier; // Half penalty for wrong type
                     }
                 } else {
                     if (meleeSkill > shootingSkill) {
                         baseScore = bonus; // Positive bonus for matching skill
                     } else {
-                        baseScore = -bonus * 0.5; // Half penalty for wrong type
+                        baseScore = -bonus * C.skillPenaltyMultiplier; // Half penalty for wrong type
                     }
                 }
             }
@@ -540,21 +564,33 @@
         }
 
         function getTraitScore(weapon, isRanged) {
+            const C = window.C || { brawlerBonus: 500 };
             const isBrawler = document.getElementById('brawlerTrait').checked;
             if (isBrawler && !isRanged) {
-                return 200; // Bonus for melee weapons only
+                return C.brawlerBonus; // From C#
             }
             return 0;
         }
 
         function getHunterScore(weapon, isRanged) {
+            const C = window.C || { hunterBonus: 500 };
             const isHunter = document.getElementById('hunterRole').checked;
             if (!isHunter) return 0;
 
             if (isRanged) {
-                return 100; // Flat bonus for any ranged weapon
+                return C.hunterBonus; // From C#
             }
             return 0; // No penalty for melee weapons
+        }
+
+        function getPersonaScore(weapon, isRanged) {
+            const C = window.C || { personaWeaponBonus: 25 };
+            const isPersona = document.getElementById('personaWeapon').checked;
+            // Only apply to weapons that have persona variants
+            if (isPersona && !isRanged && weapon.hasPersona) {
+                return C.personaWeaponBonus;
+            }
+            return 0;
         }
 
         function filterWeapons() {
@@ -573,6 +609,8 @@
         const weaponBaseScoreCache = new Map();
 
         function calculateRangedScore(weapon, multiplier, qualityMult, shootingSkill, meleeSkill) {
+            const C = window.C || { RANGED_MULTIPLIER: 10, POWER_CREEP_THRESHOLD: 30, situationalWeaponCap: 80, burstBonusMultiplier: 5 };
+            
             // Check cache first for base score
             const cacheKey = `${weapon.name}_ranged_${qualityMult}`;
             let baseScore = 0;
@@ -586,26 +624,51 @@
             }
 
             // Add pawn-specific modifiers (these are always calculated fresh)
-            const skillScore = calculateSkillScore(shootingSkill, meleeSkill, true);
+            // Situational weapons don't get skill penalties
+            const skillScore = weapon.situational ? 0 : calculateSkillScore(shootingSkill, meleeSkill, true);
             const traitScore = getTraitScore(weapon, true);
             const hunterScore = getHunterScore(weapon, true);
-            const totalPawnModifiers = skillScore + traitScore + hunterScore;
+            const personaScore = getPersonaScore(weapon, true);
+            const totalPawnModifiers = skillScore + traitScore + hunterScore + personaScore;
 
-            return {
+            const result = {
                 baseDPS: weapon.dps,
                 qualityDPS: weapon.dps * (weapon.noQuality ? 1 : qualityMult),
-                ap: (weapon.ap || (weapon.damage || weapon.dps * 2) * 0.015) * (weapon.noQuality ? 1 : qualityMult),
+                ap: (weapon.ap !== undefined ? weapon.ap : (weapon.damage || 0) * 0.015) * (weapon.noQuality ? 1 : qualityMult),
                 accuracy: '-', // Not used in optimized scoring
                 baseTotal: baseScore,
                 skillScore: totalPawnModifiers,
                 total: baseScore + totalPawnModifiers
             };
+
+            // Debug NaN
+            if (isNaN(result.total)) {
+                console.error('NaN detected for weapon:', weapon.name, {
+                    baseScore,
+                    skillScore,
+                    traitScore,
+                    hunterScore,
+                    personaScore,
+                    totalPawnModifiers,
+                    weapon
+                });
+            }
+
+            return result;
         }
 
         function calculateRangedBaseScore(weapon, multiplier, qualityMult) {
+            const C = window.C || { POWER_CREEP_THRESHOLD: 30, situationalWeaponCap: 80, burstBonusMultiplier: 5 };
+            
+            // Debug multiplier
+            if (typeof multiplier !== 'number' || isNaN(multiplier)) {
+                console.error('Invalid multiplier:', multiplier, 'C object:', C);
+                multiplier = 10; // fallback
+            }
+            
             // Apply situational weapon penalty
             if (weapon.situational) {
-                return 80; // Cap for situational weapons
+                return C.situationalWeaponCap; // From C#
             }
 
             // Apply quality to DPS
@@ -613,41 +676,99 @@
 
             // Power creep protection
             let adjustedDPS = qualityDPS;
-            if (qualityDPS > 30) {
-                const excess = qualityDPS - 30;
-                adjustedDPS = 30 + (excess * 0.5);
+            if (qualityDPS > C.POWER_CREEP_THRESHOLD) {
+                const excess = qualityDPS - C.POWER_CREEP_THRESHOLD;
+                adjustedDPS = C.POWER_CREEP_THRESHOLD + (excess * 0.5);
             }
 
             let baseScore = adjustedDPS * multiplier;
 
+            // Debug at each step
+            if (isNaN(baseScore)) {
+                console.error('NaN after initial calculation:', {
+                    weaponName: weapon.name,
+                    dps: weapon.dps,
+                    qualityMult,
+                    qualityDPS,
+                    adjustedDPS,
+                    multiplier,
+                    baseScore
+                });
+                return NaN;
+            }
+
             // Combined range scoring (optimized)
             const rangeScore = getCombinedRangeScore(weapon.range);
+            if (!rangeScore || typeof rangeScore.multiplier !== 'number' || typeof rangeScore.bonus !== 'number') {
+                console.error('Invalid range score for', weapon.name, 'range:', weapon.range, 'rangeScore:', rangeScore);
+                return NaN;
+            }
             baseScore *= rangeScore.multiplier;
             baseScore += rangeScore.bonus;
+            
+            if (isNaN(baseScore)) {
+                console.error('NaN after range calculation:', weapon.name, 'baseScore:', baseScore, 'rangeScore:', rangeScore);
+                return NaN;
+            }
 
             // Simplified burst bonus (optimized)
             if (weapon.burst > 1) {
-                baseScore += 5 * Math.log(weapon.burst + 1);
+                const burstBonus = C.burstBonusMultiplier * Math.log(weapon.burst + 1);
+                if (isNaN(burstBonus)) {
+                    console.error('NaN burst bonus:', weapon.name, 'burst:', weapon.burst, 'burstBonus:', burstBonus);
+                }
+                baseScore += burstBonus;
+            }
+            
+            if (isNaN(baseScore)) {
+                console.error('NaN after burst calculation:', weapon.name, 'baseScore:', baseScore);
+                return NaN;
             }
 
             // Add AP score
-            let weaponAP = weapon.ap || ((weapon.damage || weapon.dps * 2) * 0.015);
+            let weaponAP = weapon.ap !== undefined ? weapon.ap : ((weapon.damage || 0) * 0.015);
             weaponAP = weaponAP * (weapon.noQuality ? 1 : qualityMult);
-            baseScore += calculateArmorPenetrationScore(weaponAP);
+            const apScore = calculateArmorPenetrationScore(weaponAP);
+            if (isNaN(apScore)) {
+                console.error('NaN AP score:', weapon.name, 'weaponAP:', weaponAP, 'apScore:', apScore);
+            }
+            baseScore += apScore;
+            
+            if (isNaN(baseScore)) {
+                console.error('NaN after AP calculation:', weapon.name, 'final baseScore:', baseScore);
+            }
 
             return baseScore;
         }
 
         // Optimized combined range calculation
         function getCombinedRangeScore(range) {
+            // Debug check
+            if (typeof range !== 'number' || isNaN(range)) {
+                console.error('Invalid range value:', range);
+                return { multiplier: 1, bonus: 0 };
+            }
+            
+            // Use C# values if available
+            if (window.C && window.C.getCombinedRangeScore) {
+                const result = window.C.getCombinedRangeScore(range);
+                // Validate result
+                if (!result || typeof result.multiplier !== 'number' || typeof result.bonus !== 'number') {
+                    console.error('C.getCombinedRangeScore returned invalid result:', result, 'for range:', range);
+                    // Fall back to hardcoded values
+                } else {
+                    return result;
+                }
+            }
+            // Fallback to hardcoded values
             if (range < 10) return { multiplier: 0.30, bonus: 0 };
-            else if (range < 14) return { multiplier: 0.40, bonus: 0 };
-            else if (range < 18) return { multiplier: 0.55, bonus: 0 };
+            else if (range < 14) return { multiplier: 0.55, bonus: 0 };  // Increased from 0.40
+            else if (range < 18) return { multiplier: 0.65, bonus: 0 };  // Reduced from 0.70
             else if (range < 22) return { multiplier: 0.90, bonus: 2 };
             else if (range < 25) return { multiplier: 0.95, bonus: 5 };
             else if (range < 30) return { multiplier: 1.0, bonus: 10 };
-            else if (range < 35) return { multiplier: 1.0, bonus: 15 };
-            else return { multiplier: 1.02, bonus: 20 };
+            else if (range < 35) return { multiplier: 1.0, bonus: 19 };  // Increased from 18
+            else return { multiplier: 1.02, bonus: 22 };
         }
 
         function calculateMeleeScore(weapon, multiplier, qualityMult, shootingSkill, meleeSkill) {
@@ -667,7 +788,8 @@
             const skillScore = calculateSkillScore(shootingSkill, meleeSkill, false);
             const traitScore = getTraitScore(weapon, false);
             const hunterScore = getHunterScore(weapon, false);
-            const totalPawnModifiers = skillScore + traitScore + hunterScore;
+            const personaScore = getPersonaScore(weapon, false);
+            const totalPawnModifiers = skillScore + traitScore + hunterScore + personaScore;
 
             return {
                 baseDPS: weapon.dps,
@@ -680,14 +802,16 @@
         }
 
         function calculateMeleeBaseScore(weapon, multiplier, qualityMult) {
+            const C = window.C || { POWER_CREEP_THRESHOLD: 30 };
+            
             // Apply quality to DPS
             let qualityDPS = weapon.dps * (weapon.noQuality ? 1 : qualityMult);
 
             // Power creep protection
             let adjustedDPS = qualityDPS;
-            if (qualityDPS > 30) {
-                const excess = qualityDPS - 30;
-                adjustedDPS = 30 + (excess * 0.5);
+            if (qualityDPS > C.POWER_CREEP_THRESHOLD) {
+                const excess = qualityDPS - C.POWER_CREEP_THRESHOLD;
+                adjustedDPS = C.POWER_CREEP_THRESHOLD + (excess * 0.5);
             }
 
             let baseScore = adjustedDPS * multiplier;
@@ -700,8 +824,9 @@
         }
 
         function updateScores() {
-            const rangedMult = 10; // Fixed multiplier for ranged weapons
-            const meleeMult = 8; // Fixed multiplier for melee weapons
+            const C = window.C || { RANGED_MULTIPLIER: 10, MELEE_MULTIPLIER: 8 };
+            const rangedMult = C.RANGED_MULTIPLIER;
+            const meleeMult = C.MELEE_MULTIPLIER;
             const qualityMult = parseFloat(document.getElementById('qualityLevel').value);
             const shootingSkill = parseInt(document.getElementById('shootingSkill').value);
             const meleeSkill = parseInt(document.getElementById('meleeSkill').value);
@@ -731,8 +856,11 @@
             // Calculate scores for all weapons first
             const rangedScores = filteredRangedWeapons.map(weapon => {
                 const scores = calculateRangedScore(weapon, rangedMult, qualityMult, shootingSkill, meleeSkill);
-                totalRangedScore += scores.total;
-                rangedCount++;
+                // Defensive check for NaN
+                if (!isNaN(scores.total)) {
+                    totalRangedScore += scores.total;
+                    rangedCount++;
+                }
                 return { weapon, scores };
             });
 
@@ -769,6 +897,8 @@
                     const weaponName = processWeaponNameWithLinks(weapon.name.trim(), searchText);
                     const weaponDisplay = weapon.noQuality ?
                         `${weaponName} <span style="color: #888; font-size: 0.8em;">[Natural]</span>` :
+                        weapon.hasPersona ?
+                        `${weaponName} <span style="color: #9b59b6; font-size: 0.8em;">[Persona]</span>` :
                         weaponName;
 
                     // Display accuracy as "-" since it's not used in scoring
@@ -846,8 +976,11 @@
             // Calculate scores for all weapons first
             const meleeScores = filteredMeleeWeapons.map(weapon => {
                 const scores = calculateMeleeScore(weapon, meleeMult, qualityMult, shootingSkill, meleeSkill);
-                totalMeleeScore += scores.total;
-                meleeCount++;
+                // Defensive check for NaN
+                if (!isNaN(scores.total)) {
+                    totalMeleeScore += scores.total;
+                    meleeCount++;
+                }
                 return { weapon, scores };
             });
 
@@ -875,6 +1008,8 @@
                     const weaponName = processWeaponNameWithLinks(weapon.name.trim(), searchText);
                     const weaponDisplay = weapon.noQuality ?
                         `${weaponName} <span style="color: #888; font-size: 0.8em;">[Natural]</span>` :
+                        weapon.hasPersona ?
+                        `${weaponName} <span style="color: #9b59b6; font-size: 0.8em;">[Persona]</span>` :
                         weaponName;
 
                     // Add tier classification based on dynamic thresholds
@@ -944,16 +1079,16 @@
             const skillBonus = skillDiff > 0 ? (30 * Math.pow(1.15, skillDiff - 1)).toFixed(0) : 0;
             const isBrawler = document.getElementById('brawlerTrait').checked;
             const isHunter = document.getElementById('hunterRole').checked;
+            const isPersona = document.getElementById('personaWeapon').checked;
 
             // Build trait/role description
+            const C = window.C || { brawlerBonus: 500, hunterBonus: 500, personaWeaponBonus: 25 };
             let traitDesc = "";
-            if (isBrawler && isHunter) {
-                traitDesc = " <strong>[Brawler: +200 melee] + [Hunting: +100 ranged]</strong>";
-            } else if (isBrawler) {
-                traitDesc = " <strong style='color: red;'>[Brawler: +200 melee]</strong>";
-            } else if (isHunter) {
-                traitDesc = " <strong style='color: green;'>[Hunting: +100 ranged]</strong>";
-            }
+            let traits = [];
+            if (isBrawler) traits.push(`<strong style='color: red;'>[Brawler: +${C.brawlerBonus} melee]</strong>`);
+            if (isHunter) traits.push(`<strong style='color: green;'>[Hunting: +${C.hunterBonus} ranged]</strong>`);
+            if (isPersona) traits.push(`<strong style='color: purple;'>[Persona: +${C.personaWeaponBonus} melee]</strong>`);
+            if (traits.length > 0) traitDesc = " " + traits.join(" + ");
 
             if (shootingSkill > meleeSkill + 3) {
                 skillPref = `<p><strong>Skill Preference:</strong> Strong ranged preference (Shooting ${shootingSkill} vs Melee ${meleeSkill}). Ranged weapons get +${skillBonus} bonus.${traitDesc}</p>`;

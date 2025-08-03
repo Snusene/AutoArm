@@ -6,8 +6,9 @@
 
 using RimWorld;
 using Verse;
+using AutoArm.Logging;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Centralized notification handling (fixes #25)
@@ -24,6 +25,11 @@ namespace AutoArm
 
             var message = translationKey.Translate(args);
             Messages.Message(message, new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+            
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"Notification sent: {message}");
+            }
         }
 
         /// <summary>
@@ -41,7 +47,13 @@ namespace AutoArm
         public static void NotifyWeaponEquipped(Pawn pawn, ThingWithComps newWeapon, ThingDef previousWeapon = null)
         {
             if (!ShouldSendNotification(pawn))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"Weapon equip notification suppressed for {pawn?.LabelShort ?? "null"}");
+                }
                 return;
+            }
 
             string newWeaponLabel = newWeapon?.Label ?? newWeapon?.def?.label ?? "weapon";
 
@@ -52,12 +64,22 @@ namespace AutoArm
                     pawn.LabelShort.CapitalizeFirst().Named("PAWN"),
                     previousLabel.Named("OLD"),
                     newWeaponLabel.Named("NEW"));
+                    
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{pawn.LabelShort} upgraded weapon: {previousLabel} -> {newWeaponLabel}");
+                }
             }
             else
             {
                 SendNotification("AutoArm_EquippedWeapon", pawn,
                     pawn.LabelShort.CapitalizeFirst().Named("PAWN"),
                     newWeaponLabel.Named("WEAPON"));
+                    
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{pawn.LabelShort} equipped weapon: {newWeaponLabel}");
+                }
             }
         }
 
@@ -67,7 +89,13 @@ namespace AutoArm
         public static void NotifySidearmEquipped(Pawn pawn, ThingWithComps newSidearm, ThingWithComps oldSidearm = null)
         {
             if (!ShouldSendNotification(pawn))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"Sidearm equip notification suppressed for {pawn?.LabelShort ?? "null"}");
+                }
                 return;
+            }
 
             string newLabel = newSidearm?.Label ?? newSidearm?.def?.label ?? "sidearm";
 
@@ -78,22 +106,32 @@ namespace AutoArm
                     pawn.LabelShort.CapitalizeFirst().Named("PAWN"),
                     oldLabel.Named("OLD"),
                     newLabel.Named("NEW"));
+                    
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{pawn.LabelShort} upgraded sidearm: {oldLabel} -> {newLabel}");
+                }
             }
             else
             {
                 SendNotification("AutoArm_EquippedSidearm", pawn,
                     pawn.LabelShort.CapitalizeFirst().Named("PAWN"),
                     newLabel.Named("SIDEARM"));
+                    
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{pawn.LabelShort} equipped sidearm: {newLabel}");
+                }
             }
         }
 
         /// <summary>
-        /// Send weapon dropped notification
+        /// Send weapon dropped notification (deprecated - intentionally does nothing)
         /// </summary>
+        [System.Obsolete("Weapon drop notifications are disabled by design")]
         public static void NotifyWeaponDropped(Pawn pawn, ThingWithComps weapon, string reason = null)
         {
-            // Weapon drop notifications are disabled - we don't show notifications when items are dropped
-            return;
+            // Intentionally empty - AutoArm doesn't notify on drops to avoid spam
         }
 
         /// <summary>

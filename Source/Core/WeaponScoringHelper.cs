@@ -10,8 +10,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Verse;
 using AutoArm.Testing;
+using AutoArm.Helpers;
+using AutoArm.Caching;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 
-namespace AutoArm
+namespace AutoArm.Weapons
 {
     /// <summary>
     /// Consolidated weapon scoring to fix redundancy #5
@@ -176,7 +180,7 @@ namespace AutoArm
             // Simplified burst bonus (optimized)
             if (burstCount > 1)
             {
-                baseScore += 5f * (float)Math.Log(burstCount + 1);
+                baseScore += 2.5f * (float)Math.Log(burstCount + 1);
             }
 
             // Add armor penetration score
@@ -246,9 +250,9 @@ namespace AutoArm
             if (range < 10)
                 return (0.30f, 0f);
             else if (range < 14)
-                return (0.40f, 0f);
-            else if (range < 18)
                 return (0.55f, 0f);
+            else if (range < 18)
+                return (0.65f, 0f);
             else if (range < 22)
                 return (0.90f, 2f);
             else if (range < 25)
@@ -256,9 +260,9 @@ namespace AutoArm
             else if (range < 30)
                 return (1.0f, 10f);
             else if (range < 35)
-                return (1.0f, 15f);
+                return (1.0f, 19f);
             else
-                return (1.02f, 20f);
+                return (1.02f, 22f);
         }
 
         /// <summary>
@@ -316,7 +320,7 @@ namespace AutoArm
             else if (ap < 0.15f) // Very low AP weapons get heavily penalized
                 return ap * 20f; // Much lower multiplier
             else
-                return ap * 60f; // Normal multiplier for low AP
+                return ap * 90f; // Normal multiplier for low AP
         }
 
         /// <summary>

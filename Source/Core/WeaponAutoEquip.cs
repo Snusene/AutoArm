@@ -1,8 +1,9 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Core equipping logic and auto-equip job tracking
-// Handles: Weapon pickup decisions, job creation, forced weapon tracking
-// Uses: ValidationHelper, TimingHelper, WeaponScoringHelper, JobHelper
+// This file: Auto-equip job tracking and think node conditional
+// Handles: Tracking auto-equipped jobs, cleanup, and think tree conditions
+// Uses: TimingHelper for cleanup intervals
 // Critical: Maintains AutoEquipTracker to prevent re-pickup loops
+// Note: Main equipping logic is in JobGiver_PickUpBetterWeapon.cs
 
 using RimWorld;
 using System;
@@ -10,15 +11,14 @@ using System.Collections.Generic;
 using System.Linq;
 using Verse;
 using Verse.AI;
+using AutoArm.Helpers;
+using AutoArm.Caching;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 
-namespace AutoArm
+namespace AutoArm.Weapons
 {
-    public static class WeaponStatDefOf
-    {
-        public static StatDef RangedWeapon_AverageDPS;
-    }
-
-    // Removed AutoArmMapComponent - using AutoArmGameComponent instead for save/load
 
     public static class AutoEquipTracker
     {
@@ -116,9 +116,9 @@ namespace AutoArm
                 previousWeapons.Remove(pawn);
             }
 
-            if (toRemove.Count > 0)
+            if ((toRemove.Count > 0 || deadPawns.Count > 0) && AutoArmMod.settings?.debugLogging == true)
             {
-                AutoArmLogger.Log($"Cleaned up {toRemove.Count} old job IDs and {deadPawns.Count} dead pawn records");
+                AutoArmLogger.Debug($"Cleaned up {toRemove.Count} old job IDs and {deadPawns.Count} dead pawn records");
             }
         }
     }
@@ -131,7 +131,10 @@ namespace AutoArm
             {
                 if (!ValidationHelper.SafeIsColonist(pawn))
                 {
-                    AutoArmLogger.LogPawn(pawn, "Not colonist");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.LogPawn(pawn, "Not colonist");
+                    }
                     return false;
                 }
 
@@ -146,12 +149,18 @@ namespace AutoArm
                 catch
                 {
                     // If we can't check work tags, continue
-                    AutoArmLogger.LogPawn(pawn, "Could not check work tags - continuing");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"Could not check work tags for {pawn?.Name?.ToStringShort ?? "unknown"} - continuing");
+                    }
                 }
 
                 if (pawn.Drafted)
                 {
-                    AutoArmLogger.LogPawn(pawn, "Drafted");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.LogPawn(pawn, "Drafted");
+                    }
                     return false;
                 }
 

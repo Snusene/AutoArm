@@ -8,6 +8,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using Verse;
 using Verse.AI;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging;
+using AutoArm.Definitions;
+using AutoArm.Weapons;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -369,7 +372,7 @@ namespace AutoArm.Testing.Scenarios
                     DroppedItemTracker.MarkAsDropped(dropped);
 
                     // Check if it's tracked
-                    bool isTracked = DroppedItemTracker.WasRecentlyDropped(dropped);
+                    bool isTracked = DroppedItemTracker.IsRecentlyDropped(dropped);
                     result.Data["DroppedItemTracked"] = isTracked;
 
                     if (!isTracked)

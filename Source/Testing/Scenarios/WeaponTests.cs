@@ -4,6 +4,10 @@
 
 using RimWorld;
 using Verse;
+using AutoArm.Caching; using AutoArm.Logging; using AutoArm.UI;
+using AutoArm.Weapons;
+using AutoArm.Jobs;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -49,13 +53,13 @@ namespace AutoArm.Testing.Scenarios
                 }
 
                 // Disallow all ranged weapons
-                foreach (var weaponDef in WeaponThingFilterUtility.RangedWeapons)
+                foreach (var weaponDef in WeaponValidation.RangedWeapons)
                 {
                     restrictivePolicy.filter.SetAllow(weaponDef, false);
                 }
 
                 // Allow melee weapons
-                foreach (var weaponDef in WeaponThingFilterUtility.MeleeWeapons)
+                foreach (var weaponDef in WeaponValidation.MeleeWeapons)
                 {
                     restrictivePolicy.filter.SetAllow(weaponDef, true);
                 }

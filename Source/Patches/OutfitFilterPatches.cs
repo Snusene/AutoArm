@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Verse;
 using Verse.AI;
+using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging; using AutoArm.Patches;
+using AutoArm.Weapons;
 
 namespace AutoArm
 {
@@ -24,18 +26,9 @@ namespace AutoArm
                 return;
 
             // Don't interfere if pawn is hauling something
-            if (___pawn.CurJob?.def == JobDefOf.HaulToCell ||
-                ___pawn.CurJob?.def == JobDefOf.HaulToContainer ||
-                ___pawn.CurJob?.def?.defName?.Contains("Haul") == true ||
-                // Pick Up And Haul specific jobs
-                ___pawn.CurJob?.def?.defName == "HaulToInventory" ||
-                ___pawn.CurJob?.def?.defName == "UnloadYourHauledInventory" ||
-                // Other inventory-related jobs
-                ___pawn.CurJob?.def?.defName?.Contains("Inventory") == true ||
-                ___pawn.CurJob?.def?.defName == "UnloadYourInventory" ||
-                ___pawn.CurJob?.def?.defName == "TakeToInventory")
+            if (JobGiverHelpers.IsHaulingJob(___pawn))
             {
-                AutoArmLogger.LogPawn(___pawn, "Not checking weapons - pawn is hauling");
+                // Pawn is hauling
                 return;
             }
 
@@ -44,16 +37,16 @@ namespace AutoArm
             {
                 // Don't interfere with sidearm upgrades in progress
                 if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
-                    SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(___pawn))
+                    DroppedItemTracker.IsSimpleSidearmsSwapInProgress(___pawn))
                 {
-                    AutoArmLogger.LogPawn(___pawn, "Not dropping weapon due to outfit change - sidearm upgrade in progress");
+                    // Sidearm upgrade in progress
                     return;
                 }
 
                 // Don't force temporary colonists (quest pawns) to drop their weapons
                 if (JobGiverHelpers.IsTemporaryColonist(___pawn))
                 {
-                    AutoArmLogger.LogPawn(___pawn, "Not dropping weapon due to outfit change - temporary colonist");
+                    // Temporary colonist
                     return;
                 }
 
@@ -64,14 +57,12 @@ namespace AutoArm
                     if (!WeaponValidation.IsProperWeapon(___pawn.equipment.Primary))
                     {
                         // Not a proper weapon (wood log, beer, etc.) - don't apply filter rules
-                        AutoArmLogger.LogWeapon(___pawn, ___pawn.equipment.Primary,
-                            "Not a proper weapon - ignoring outfit filter");
+                        // Not a proper weapon
                         return;
                     }
 
                     bool weaponAllowed = filter.Allows(___pawn.equipment.Primary);
-                    AutoArmLogger.LogWeapon(___pawn, ___pawn.equipment.Primary,
-                        $"Outfit filter check - Weapon allowed: {weaponAllowed}, HP: {___pawn.equipment.Primary.HitPoints}/{___pawn.equipment.Primary.MaxHitPoints} ({(float)___pawn.equipment.Primary.HitPoints / ___pawn.equipment.Primary.MaxHitPoints * 100f:F0}%)");
+                    // Removed spammy outfit filter check log
 
                     if (!weaponAllowed)
                     {
@@ -79,7 +70,7 @@ namespace AutoArm
                         if (ForcedWeaponHelper.IsForced(___pawn, ___pawn.equipment.Primary))
                         {
                             // ALWAYS keep forced weapons regardless of outfit filter
-                            AutoArmLogger.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed but keeping forced weapon (forced weapons bypass outfit filters)");
+                            // Keeping forced weapon
                             return; // Don't drop forced weapons
                         }
 
@@ -89,7 +80,7 @@ namespace AutoArm
                         // Check if pawn is in a ritual - don't drop ritual items during ceremonies
                         if (ValidationHelper.IsInRitual(___pawn))
                         {
-                            AutoArmLogger.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed but keeping item - pawn is in ritual");
+                            // Pawn in ritual
                             return; // Don't drop items during rituals
                         }
 
@@ -101,7 +92,10 @@ namespace AutoArm
                         var dropJob = new Job(JobDefOf.DropEquipment, ___pawn.equipment.Primary);
                         ___pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
 
-                        AutoArmLogger.LogWeapon(___pawn, ___pawn.equipment.Primary, "Outfit changed, dropping weapon");
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"{___pawn.LabelShort}: Outfit changed, dropping {___pawn.equipment.Primary.Label}");
+                        }
 
                         if (PawnUtility.ShouldSendNotificationAbout(___pawn) && AutoArmMod.settings?.showNotifications == true)
                         {
@@ -148,16 +142,7 @@ namespace AutoArm
             }
 
             // Don't interfere if pawn is hauling something
-            if (pawn.CurJob?.def == JobDefOf.HaulToCell ||
-                pawn.CurJob?.def == JobDefOf.HaulToContainer ||
-                pawn.CurJob?.def?.defName?.Contains("Haul") == true ||
-                // Pick Up And Haul specific jobs
-                pawn.CurJob?.def?.defName == "HaulToInventory" ||
-                pawn.CurJob?.def?.defName == "UnloadYourHauledInventory" ||
-                // Other inventory-related jobs
-                pawn.CurJob?.def?.defName?.Contains("Inventory") == true ||
-                pawn.CurJob?.def?.defName == "UnloadYourInventory" ||
-                pawn.CurJob?.def?.defName == "TakeToInventory")
+            if (JobGiverHelpers.IsHaulingJob(pawn))
             {
                 return;
             }
@@ -197,11 +182,14 @@ namespace AutoArm
                         if (droppedWeapon != null)
                         {
                             // Mark it as dropped so it won't be immediately picked up again
-                            SimpleSidearmsCompat.MarkWeaponAsRecentlyDropped(droppedWeapon);
+                            SimpleSidearmsCompat.MarkWeaponAsRecentlyDropped(droppedWeapon as ThingWithComps);
                             // Additional marking with longer cooldown to prevent pickup loops
                             DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200); // 20 seconds
 
-                            AutoArmLogger.LogPawn(pawn, $"Dropped disallowed sidearm: {weapon.Label}");
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"{pawn.LabelShort}: Dropped disallowed sidearm - {weapon.Label}");
+                            }
                         }
                     }
                 }
@@ -234,16 +222,7 @@ namespace AutoArm
                         continue;
 
                     // Don't interfere if pawn is hauling something
-                    if (pawn.CurJob?.def == JobDefOf.HaulToCell ||
-                        pawn.CurJob?.def == JobDefOf.HaulToContainer ||
-                        pawn.CurJob?.def?.defName?.Contains("Haul") == true ||
-                        // Pick Up And Haul specific jobs
-                        pawn.CurJob?.def?.defName == "HaulToInventory" ||
-                        pawn.CurJob?.def?.defName == "UnloadYourHauledInventory" ||
-                        // Other inventory-related jobs
-                        pawn.CurJob?.def?.defName?.Contains("Inventory") == true ||
-                        pawn.CurJob?.def?.defName == "UnloadYourInventory" ||
-                        pawn.CurJob?.def?.defName == "TakeToInventory")
+                    if (JobGiverHelpers.IsHaulingJob(pawn))
                     {
                         continue;
                     }
@@ -267,23 +246,23 @@ namespace AutoArm
                         {
                             // Don't interfere with sidearm upgrades in progress
                             if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
-                                SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+                                DroppedItemTracker.IsSimpleSidearmsSwapInProgress(pawn))
                             {
-                                AutoArmLogger.LogPawn(pawn, "Not dropping weapon - sidearm upgrade in progress");
+                                // Sidearm upgrade in progress
                                 continue;
                             }
 
                             // Don't force temporary colonists (quest pawns) to drop their weapons
                             if (JobGiverHelpers.IsTemporaryColonist(pawn))
                             {
-                                AutoArmLogger.LogPawn(pawn, "Not dropping weapon - temporary colonist");
+                                // Temporary colonist
                                 continue;
                             }
 
                             // Check if this weapon is forced - if so, keep it equipped
                             if (ForcedWeaponHelper.IsForced(pawn, weapon))
                             {
-                                AutoArmLogger.LogWeapon(pawn, weapon, "All items disallowed, but keeping forced weapon");
+                                // Keeping forced weapon
                                 continue; // Skip this pawn, don't drop forced weapons
                             }
 
@@ -293,7 +272,7 @@ namespace AutoArm
                             // Check if pawn is in a ritual - don't drop ritual items during ceremonies
                             if (ValidationHelper.IsInRitual(pawn))
                             {
-                                AutoArmLogger.LogWeapon(pawn, weapon, "All items disallowed, but keeping item - pawn is in ritual");
+                                // Pawn in ritual
                                 continue; // Don't drop items during rituals
                             }
 
@@ -302,7 +281,7 @@ namespace AutoArm
                             var dropJob = new Job(JobDefOf.DropEquipment, weapon);
                             pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
 
-                            AutoArmLogger.LogPawn(pawn, "All items disallowed, dropping weapon");
+                            // All items disallowed
                         }
                     }
                 });

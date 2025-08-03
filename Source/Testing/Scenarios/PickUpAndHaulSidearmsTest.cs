@@ -9,6 +9,10 @@ using RimWorld;
 using Verse;
 using Verse.AI;
 using AutoArm.Testing.Helpers;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Logging; using AutoArm.UI;
+using AutoArm.Weapons;
+using AutoArm.Jobs;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -110,7 +114,7 @@ namespace AutoArm.Testing.Scenarios
 
                     // Configure to accept only weapons
                     weaponStockpile.settings.filter.SetDisallowAll();
-                    foreach (var weaponDef in WeaponThingFilterUtility.AllWeapons)
+                    foreach (var weaponDef in WeaponValidation.AllWeapons)
                     {
                         weaponStockpile.settings.filter.SetAllow(weaponDef, true);
                     }
@@ -748,7 +752,7 @@ namespace AutoArm.Testing.Scenarios
                         weaponStockpile.AddCell(cell);
 
                     weaponStockpile.settings.filter.SetDisallowAll();
-                    foreach (var weaponDef in WeaponThingFilterUtility.AllWeapons)
+                    foreach (var weaponDef in WeaponValidation.AllWeapons)
                         weaponStockpile.settings.filter.SetAllow(weaponDef, true);
                     weaponStockpile.settings.Priority = StoragePriority.Critical;
                 }
@@ -1453,7 +1457,7 @@ namespace AutoArm.Testing.Scenarios
             // Set outfit to disallow all weapons to test that hauling still works
             if (pacifistPawn.outfits?.CurrentApparelPolicy?.filter != null)
             {
-                foreach (var weaponDef in WeaponThingFilterUtility.AllWeapons)
+                foreach (var weaponDef in WeaponValidation.AllWeapons)
                 {
                     pacifistPawn.outfits.CurrentApparelPolicy.filter.SetAllow(weaponDef, false);
                 }
@@ -1505,7 +1509,7 @@ namespace AutoArm.Testing.Scenarios
                 }
 
                 weaponStockpile.settings.filter.SetDisallowAll();
-                foreach (var weaponDef in WeaponThingFilterUtility.AllWeapons)
+                foreach (var weaponDef in WeaponValidation.AllWeapons)
                 {
                     weaponStockpile.settings.filter.SetAllow(weaponDef, true);
                 }
@@ -1535,7 +1539,7 @@ namespace AutoArm.Testing.Scenarios
             bool outfitAllowsWeapons = false;
             if (pacifistPawn.outfits?.CurrentApparelPolicy?.filter != null)
             {
-                outfitAllowsWeapons = WeaponThingFilterUtility.AllWeapons
+                outfitAllowsWeapons = WeaponValidation.AllWeapons
                     .Any(wd => pacifistPawn.outfits.CurrentApparelPolicy.filter.Allows(wd));
             }
             result.Data["OutfitAllowsWeapons"] = outfitAllowsWeapons;
@@ -1767,7 +1771,7 @@ namespace AutoArm.Testing.Scenarios
                 }
 
                 weaponStockpile.settings.filter.SetDisallowAll();
-                foreach (var weaponDef in WeaponThingFilterUtility.AllWeapons)
+                foreach (var weaponDef in WeaponValidation.AllWeapons)
                 {
                     weaponStockpile.settings.filter.SetAllow(weaponDef, true);
                 }

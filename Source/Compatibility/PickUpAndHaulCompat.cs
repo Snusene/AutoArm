@@ -6,6 +6,7 @@ using HarmonyLib;
 using RimWorld;
 using Verse;
 using Verse.AI;
+using AutoArm.Helpers; using AutoArm.Logging; using AutoArm.Weapons;
 
 namespace AutoArm
 {
@@ -43,7 +44,7 @@ namespace AutoArm
 
                 if (_isLoaded.Value)
                 {
-                    AutoArmLogger.Log("Pick Up and Haul detected and loaded");
+                    AutoArmLogger.Debug("Pick Up and Haul detected and loaded");
                 }
             }
             return _isLoaded.Value;
@@ -61,11 +62,18 @@ namespace AutoArm
                 unloadInventoryJobDef = DefDatabase<JobDef>.GetNamedSilentFail("UnloadYourHauledInventory");
 
                 _initialized = true;
-                AutoArmLogger.Log("Pick Up and Haul compatibility initialized successfully");
+                if (haulToInventoryJobDef != null && unloadInventoryJobDef != null)
+                {
+                    AutoArmLogger.Debug("Pick Up and Haul compatibility initialized successfully");
+                }
+                else
+                {
+                    AutoArmLogger.Warn($"Pick Up and Haul partial initialization - HaulToInventory: {haulToInventoryJobDef != null}, UnloadInventory: {unloadInventoryJobDef != null}");
+                }
             }
             catch (Exception e)
             {
-                Log.Warning($"[AutoArm] Failed to initialize Pick Up and Haul compatibility: {e.Message}");
+                AutoArmLogger.Error("Failed to initialize Pick Up and Haul compatibility", e);
             }
         }
 
@@ -110,10 +118,17 @@ namespace AutoArm
             // Only check for duplicate weapons and SimpleSidearms limits
             // Do NOT check outfit filters - that would break hauling
 
+            // Track validation statistics
+            int weaponsChecked = 0;
+            int duplicatesDropped = 0;
+            int limitsExceeded = 0;
+
             var weaponsToCheck = pawn.inventory.innerContainer
                 .OfType<ThingWithComps>()
                 .Where(t => t.def.IsWeapon && WeaponValidation.IsProperWeapon(t))
                 .ToList();
+                
+            weaponsChecked = weaponsToCheck.Count;
 
             // Count weapons by type (including primary)
             var weaponCounts = new System.Collections.Generic.Dictionary<ThingDef, int>();
@@ -162,7 +177,9 @@ namespace AutoArm
                                     if (droppedWeapon != null)
                                     {
                                         DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200); // 20 seconds
-                                        AutoArmLogger.LogPawn(pawn, $"[PickUpAndHaul] Dropped duplicate weapon: {weaponToDrop.Label}");
+                                        duplicatesDropped++;
+                                        if (Prefs.DevMode)
+                                            AutoArmLogger.Debug($"[PickUpAndHaul] {pawn.LabelShort} dropped duplicate weapon: {weaponToDrop.Label}");
                                     }
                                 }
                             }
@@ -197,11 +214,19 @@ namespace AutoArm
                             {
                                 DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200); // 20 seconds
                                 SimpleSidearmsCompat.InformOfDroppedSidearm(pawn, weapon);
-                                AutoArmLogger.LogPawn(pawn, $"[PickUpAndHaul] Dropped weapon exceeding limits: {weapon.Label} - {reason}");
+                                limitsExceeded++;
+                                if (Prefs.DevMode)
+                                    AutoArmLogger.Debug($"[PickUpAndHaul] {pawn.LabelShort} dropped weapon exceeding limits: {weapon.Label} - {reason}");
                             }
                         }
                     }
                 }
+            }
+            
+            // Log summary if anything was dropped
+            if ((duplicatesDropped > 0 || limitsExceeded > 0) && AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"[PickUpAndHaul] {pawn.LabelShort} validation complete: {weaponsChecked} weapons checked, {duplicatesDropped} duplicates dropped, {limitsExceeded} exceeded limits");
             }
         }
         
@@ -218,7 +243,6 @@ namespace AutoArm
     /// Patch to validate inventory after Pick Up and Haul jobs complete
     /// Only runs if SimpleSidearms is also loaded
     /// </summary>
-    [HarmonyPatch(typeof(Pawn_JobTracker), "EndCurrentJob")]
     public static class PickUpAndHaul_JobEnd_Patch
     {
         [HarmonyPostfix]
@@ -267,7 +291,6 @@ namespace AutoArm
     /// <summary>
     /// Patch to track when PUAH jobs start
     /// </summary>
-    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
     public static class PickUpAndHaul_JobStart_Patch
     {
         [HarmonyPostfix]
@@ -285,6 +308,8 @@ namespace AutoArm
             if (isPUAHJob)
             {
                 PickUpAndHaulCompat.pawnsCurrentlyHauling.Add(___pawn);
+                if (Prefs.DevMode && AutoArmMod.settings?.debugLogging == true)
+                    AutoArmLogger.Debug($"[PickUpAndHaul] {___pawn.LabelShort} started hauling job");
             }
         }
     }
@@ -293,7 +318,6 @@ namespace AutoArm
     /// Patch to validate immediately when items are added to inventory
     /// This catches weapons as they're hauled
     /// </summary>
-    [HarmonyPatch(typeof(Pawn_InventoryTracker), "TryAddItemNotForSale")]
     public static class InventoryTracker_AddItem_Patch
     {
         [HarmonyPostfix]

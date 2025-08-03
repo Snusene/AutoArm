@@ -6,6 +6,8 @@ using AutoArm.Testing.Scenarios;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Caching;
+using AutoArm.Jobs;
 
 namespace AutoArm.Testing
 {
@@ -23,6 +25,7 @@ namespace AutoArm.Testing
                 new ThinkTreeInjectionTest(),
                 new CooldownSystemTest(),
                 new WeaponSwapChainTest(),
+                new AuthenticRaidTest(),
                 // Additional forced weapon tests
                 new ForcedWeaponBasicTest(),
                 new ForcedWeaponDefTrackingTest(),

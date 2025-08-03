@@ -6,8 +6,13 @@ using HarmonyLib;
 using System;
 using System.Linq;
 using Verse;
+using AutoArm.Helpers;
+using AutoArm.Logging;
+using AutoArm.Definitions;
+using AutoArm.UI;
+using AutoArm.Weapons;
 
-namespace AutoArm
+namespace AutoArm.UI
 {
     [StaticConstructorOnStartup]
     public static class WeaponTabInjector
@@ -42,12 +47,18 @@ namespace AutoArm
             {
                 // Already under apparel, but ensure it's properly set up
                 weapons.parent = apparel;
-                Log.Message("<color=#4287f5>[AutoArm]</color> Weapons already under Apparel category - ensuring proper setup");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug("Weapons already under Apparel category - ensuring proper setup");
+                }
             }
 
-            int rangedCount = WeaponThingFilterUtility.RangedWeapons.Count;
-            int meleeCount = WeaponThingFilterUtility.MeleeWeapons.Count;
-            Log.Message($"<color=#4287f5>[AutoArm]</color> Found {rangedCount} ranged and {meleeCount} melee weapon definitions");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                int rangedCount = WeaponValidation.RangedWeapons.Count;
+                int meleeCount = WeaponValidation.MeleeWeapons.Count;
+                AutoArmLogger.Debug($"Found {rangedCount} ranged and {meleeCount} melee weapon definitions");
+            }
         }
     }
 
@@ -72,7 +83,10 @@ namespace AutoArm
                 else
                 {
                     weapons.treeNode.SetOpen(-1, true);
-                    Log.Message("[AutoArm] Weapons tree node finalized under apparel");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug("Weapons tree node finalized under apparel");
+                    }
                 }
             }
         }
@@ -133,7 +147,10 @@ namespace AutoArm
                         if (shouldHaveWeapons)
                         {
                             outfit.filter.SetAllow(weaponsCat, true);
-                            Log.Message($"[AutoArm] Added default weapons to new outfit: {outfit.label}");
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"Added default weapons to new outfit: {outfit.label}");
+                            }
                         }
                     }
                 }

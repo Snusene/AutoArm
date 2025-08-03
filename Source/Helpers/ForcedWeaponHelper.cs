@@ -7,8 +7,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Logging;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Consolidated forced weapon tracking (fixes #12)
@@ -36,7 +37,10 @@ namespace AutoArm
                 forcedWeaponDefs[pawn] = new HashSet<ThingDef>();
             forcedWeaponDefs[pawn].Add(weapon.def);
 
-            AutoArmLogger.LogWeapon(pawn, weapon, "Marked as forced weapon");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.LogWeapon(pawn, weapon, "Marked as forced weapon");
+            }
         }
 
         /// <summary>
@@ -89,11 +93,10 @@ namespace AutoArm
                     {
                         forcedWeaponDefs.Remove(pawn);
                     }
-                    AutoArmLogger.LogPawn(pawn, $"Removed forced weapon def {weaponDefToCheck.defName} - pawn no longer has any weapons of this type");
-                }
-                else
-                {
-                    AutoArmLogger.LogPawn(pawn, $"Kept forced weapon def {weaponDefToCheck.defName} - pawn still has weapons of this type");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Removed forced weapon def {weaponDefToCheck.defName} - no longer has any");
+                    }
                 }
             }
         }
@@ -108,8 +111,10 @@ namespace AutoArm
 
             if (forcedWeaponDefs.ContainsKey(pawn))
             {
-                AutoArmLogger.LogPawn(pawn, $"Clearing {forcedWeaponDefs[pawn].Count} forced weapon type(s)");
+                int count = forcedWeaponDefs[pawn].Count;
                 forcedWeaponDefs.Remove(pawn);
+                // Always log clearing forced weapons - important state change
+                AutoArmLogger.Info($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared {count} forced weapon type(s)");
             }
 
             forcedPrimaryWeapon.Remove(pawn);
@@ -123,8 +128,9 @@ namespace AutoArm
             if (pawn == null || weapon == null)
                 return false;
 
-            // Don't consider weapons forced during sidearm upgrades
-            if (SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+            // Don't consider weapons forced during SimpleSidearms operations
+            if (SimpleSidearmsCompat.IsLoaded() &&
+                DroppedItemTracker.IsSimpleSidearmsSwapInProgress(pawn))
                 return false;
 
             // Check if the specific weapon instance is forced
@@ -196,7 +202,10 @@ namespace AutoArm
 
             forcedWeaponDefs[pawn].Add(weaponDef);
 
-            AutoArmLogger.LogPawn(pawn, $"Added forced weapon def: {weaponDef.defName}");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Added forced weapon def: {weaponDef.defName}");
+            }
         }
 
         /// <summary>
@@ -213,15 +222,20 @@ namespace AutoArm
                 if (forcedWeaponDefs[pawn].Count == 0)
                     forcedWeaponDefs.Remove(pawn);
 
-                AutoArmLogger.LogPawn(pawn, $"Removed forced weapon def: {weaponDef.defName}");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Removed forced weapon def: {weaponDef.defName}");
+                }
             }
         }
 
         /// <summary>
         /// Cleanup dead/destroyed pawns
         /// </summary>
-        public static void Cleanup()
+        public static int Cleanup()
         {
+            int removed = 0;
+            
             var invalidPawns = forcedWeaponDefs.Keys
                 .Where(p => p == null || p.Destroyed || p.Dead)
                 .ToList();
@@ -230,6 +244,7 @@ namespace AutoArm
             {
                 forcedWeaponDefs.Remove(pawn);
                 forcedPrimaryWeapon.Remove(pawn);
+                removed++;
             }
 
             // Also cleanup invalid weapon references
@@ -241,6 +256,7 @@ namespace AutoArm
             foreach (var pawn in invalidWeaponPawns)
             {
                 forcedPrimaryWeapon.Remove(pawn);
+                removed++;
             }
 
             // NEW: Also check for phantom forced weapons (unarmed pawns with forced weapons)
@@ -257,9 +273,15 @@ namespace AutoArm
                     !TimingHelper.IsOnCooldown(pawn, TimingHelper.CooldownType.DroppedWeapon))
                 {
                     forcedPrimaryWeapon.Remove(pawn);
-                    AutoArmLogger.LogPawn(pawn, "Cleared phantom forced weapon (pawn is unarmed)");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared phantom forced weapon (pawn is unarmed)");
+                    }
+                    removed++;
                 }
             }
+            
+            return removed;
         }
 
         /// <summary>
@@ -273,7 +295,10 @@ namespace AutoArm
             if (IsForced(pawn, fromWeapon) || IsWeaponDefForced(pawn, fromWeapon.def))
             {
                 SetForced(pawn, toWeapon);
-                AutoArmLogger.LogPawn(pawn, $"Transferred forced status from {fromWeapon.Label} to {toWeapon.Label}");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Transferred forced status from {fromWeapon.Label} to {toWeapon.Label}");
+                }
             }
         }
 

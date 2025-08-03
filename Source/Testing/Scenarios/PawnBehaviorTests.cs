@@ -7,7 +7,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging; using AutoArm.Weapons;
 using static AutoArm.Testing.TestHelpers;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -198,7 +200,7 @@ namespace AutoArm.Testing.Scenarios
             }
             
             // Force settings cache to refresh
-            SettingsCacheHelper.ClearAllCaches();
+            CleanupHelper.ClearAllCaches();
 
             if (questLodger != null)
             {

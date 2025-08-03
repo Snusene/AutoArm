@@ -4,6 +4,7 @@
 
 using System;
 using Verse;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Logging;
 
 namespace AutoArm.Testing
 {
@@ -39,7 +40,7 @@ namespace AutoArm.Testing
             AutoArmMod.settings.debugLogging = false; // Reduce log spam during tests
             
             // Clear settings cache to ensure the enabled state is used
-            SettingsCacheHelper.ClearAllCaches();
+            CleanupHelper.ClearAllCaches();
             
             AutoArmLogger.Log($"[TestModEnabler] Mod force-enabled for testing. Settings hash: {AutoArmMod.settings.GetHashCode()}");
             
@@ -49,7 +50,7 @@ namespace AutoArm.Testing
                 Log.Error("[TestModEnabler] CRITICAL: Failed to enable mod!");
                 // Try again with a new instance
                 AutoArmMod.settings = new AutoArmSettings { modEnabled = true };
-                SettingsCacheHelper.ClearAllCaches();
+                CleanupHelper.ClearAllCaches();
             }
             
             return new ModStateRestorer();
@@ -74,7 +75,7 @@ namespace AutoArm.Testing
                 }
                 
                 AutoArmMod.settings.modEnabled = true;
-                SettingsCacheHelper.ClearAllCaches();
+                CleanupHelper.ClearAllCaches();
             }
         }
         

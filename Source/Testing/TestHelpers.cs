@@ -1,4 +1,4 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Test helper utilities
 // Provides helper methods for creating test pawns, weapons, and scenarios
 
@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 using Verse;
 using AutoArm.Testing.Helpers;
+using AutoArm.Logging;
 
 namespace AutoArm.Testing
 {
@@ -191,7 +192,7 @@ namespace AutoArm.Testing
 
                         if (pawn.WorkTagIsDisabled(WorkTags.Violent))
                         {
-                            Log.Warning($"[TEST] Failed to make pawn {pawn.Name} capable of violence");
+                            AutoArmLogger.Warn($"[TEST] Failed to make pawn {pawn.Name} capable of violence");
                         }
                     }
                 }
@@ -351,7 +352,7 @@ namespace AutoArm.Testing
                         
                         if (!pawn.WorkTagIsDisabled(WorkTags.Violent))
                         {
-                            Log.Warning("[TEST] Failed to create violence-incapable pawn after all attempts");
+                            AutoArmLogger.Warn("[TEST] Failed to create violence-incapable pawn after all attempts");
                         }
                     }
                 }
@@ -534,7 +535,7 @@ namespace AutoArm.Testing
                         }
                         catch (Exception e)
                         {
-                            Log.Warning($"[TEST] Failed to disable hunting for test pawn {pawn.Name}: {e.Message}");
+                            AutoArmLogger.Warn($"[TEST] Failed to disable hunting for test pawn {pawn.Name}: {e.Message}");
                         }
                     }
                 }
@@ -555,7 +556,7 @@ namespace AutoArm.Testing
                         }
                         catch (Exception e)
                         {
-                            Log.Warning($"[TEST] Failed to enable hunting for test pawn {pawn.Name}: {e.Message}");
+                            AutoArmLogger.Warn($"[TEST] Failed to enable hunting for test pawn {pawn.Name}: {e.Message}");
                         }
                     }
                 }
@@ -564,7 +565,7 @@ namespace AutoArm.Testing
             }
             catch (System.Exception e)
             {
-                Log.Warning($"[AutoArm] Failed to create test pawn: {e.Message}");
+                AutoArmLogger.Warn($"Failed to create test pawn: {e.Message}");
                 return null;
             }
         }
@@ -590,7 +591,7 @@ namespace AutoArm.Testing
                         
                     if (!found)
                     {
-                        Log.Warning($"[AutoArm] Could not find valid spawn position for weapon {weaponDef?.defName}");
+                        AutoArmLogger.Warn($"Could not find valid spawn position for weapon {weaponDef?.defName}");
                         return null;
                     }
                 }
@@ -609,7 +610,7 @@ namespace AutoArm.Testing
             }
             catch (Exception e)
             {
-                Log.Warning($"[AutoArm] Failed to spawn weapon {weaponDef?.defName}: {e.Message}");
+                AutoArmLogger.Warn($"Failed to spawn weapon {weaponDef?.defName}: {e.Message}");
                 if (!weapon.Destroyed)
                     weapon.Destroy();
                 return null;

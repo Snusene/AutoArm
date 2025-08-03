@@ -10,6 +10,9 @@ using Verse;
 using Verse.AI;
 using Verse.AI.Group;
 using AutoArm.Testing.Helpers;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Logging;
+using AutoArm.Jobs;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -266,8 +269,8 @@ namespace AutoArm.Testing.Scenarios
                 var betterBase = WeaponScoreCache.GetBaseWeaponScore(betterQualityWeapon);
                 if (currentBase != null && betterBase != null)
                 {
-                    AutoArmLogger.Log($"[TEST] Current base scores - Quality: {currentBase.QualityScore}, Damage: {currentBase.DamageScore}, Range: {currentBase.RangeScore}");
-                    AutoArmLogger.Log($"[TEST] Better base scores - Quality: {betterBase.QualityScore}, Damage: {betterBase.DamageScore}, Range: {betterBase.RangeScore}");
+                    AutoArmLogger.Log($"[TEST] Current base scores - WeaponProperty: {currentBase.WeaponPropertyScore}, Mod: {currentBase.ModScore}, Quality: {currentBase.QualityCategory}");
+                    AutoArmLogger.Log($"[TEST] Better base scores - WeaponProperty: {betterBase.WeaponPropertyScore}, Mod: {betterBase.ModScore}, Quality: {betterBase.QualityCategory}");
                 }
             }
             

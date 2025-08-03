@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
+using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -11,11 +13,21 @@ namespace AutoArm
         private static bool? _isLoaded = null;
         private static bool _initialized = false;
         private static bool _initFailed = false;
+        private static readonly object _initLock = new object();
+        
+        // Score bonus per infusion - balanced for typical weapon scoring
+        private const float SCORE_PER_INFUSION = 25f;
 
+// Track logged weapons to avoid spam
+        private static HashSet<string> _loggedWeapons = new HashSet<string>();
+        
         private static Type compInfusionType;
         private static MethodInfo getInfusionsMethod;
         private static PropertyInfo getInfusionsProperty;
 
+        /// <summary>
+        /// Checks if any Infusion mod is loaded and active
+        /// </summary>
         public static bool IsLoaded()
         {
             if (_isLoaded == null)
@@ -34,8 +46,14 @@ namespace AutoArm
             if (_initialized || _initFailed || !IsLoaded())
                 return;
 
-            try
+            lock (_initLock)
             {
+                // Double-check after acquiring lock
+                if (_initialized || _initFailed)
+                    return;
+
+                try
+                {
                 compInfusionType = GenTypes.AllTypes.FirstOrDefault(t =>
                     t.Name == "CompInfusion" &&
                     t.Namespace != "AutoArm");
@@ -44,7 +62,7 @@ namespace AutoArm
                 {
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        Log.Message("[AutoArm] Could not find CompInfusion type");
+                        AutoArmLogger.Debug("InfusionCompat: Could not find CompInfusion type");
                     }
                     _initFailed = true;
                     return;
@@ -75,16 +93,14 @@ namespace AutoArm
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm] Infusion 2 init: Found property: {getInfusionsProperty != null}, Found method: {getInfusionsMethod != null}");
+                    AutoArmLogger.Debug($"InfusionCompat initialized - Property: {getInfusionsProperty != null}, Method: {getInfusionsMethod != null}");
                 }
             }
             catch (Exception e)
             {
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Warning($"[AutoArm] Failed to initialize Infusion 2 compatibility: {e.Message}");
-                }
+                AutoArmLogger.Error("Failed to initialize Infusion 2 compatibility", e);
                 _initFailed = true;
+            }
             }
         }
 
@@ -94,6 +110,11 @@ namespace AutoArm
                    typeof(IEnumerable).IsAssignableFrom(type);
         }
 
+        /// <summary>
+        /// Calculate weapon score bonus based on number of infusions
+        /// </summary>
+        /// <param name="weapon">The weapon to check for infusions</param>
+        /// <returns>Score bonus (25 points per infusion)</returns>
         public static float GetInfusionScoreBonus(ThingWithComps weapon)
         {
             if (!IsLoaded() || weapon == null)
@@ -107,8 +128,7 @@ namespace AutoArm
             try
             {
                 var comp = weapon.AllComps?.FirstOrDefault(c =>
-                    c.GetType() == compInfusionType ||
-                    c.GetType().Name == "CompInfusion");
+                    c.GetType() == compInfusionType);
 
                 if (comp == null)
                     return 0f;
@@ -150,56 +170,79 @@ namespace AutoArm
                         if (inf != null) count++;
                     }
 
-                    if (count > 0 && AutoArmMod.settings?.debugLogging == true)
+                    if (count > 0)
                     {
-                        Log.Message($"[AutoArm] {weapon.Label} has {count} infusions");
+                        // Only log first time we see this weapon to avoid spam
+                        var cacheKey = $"infusion_{weapon.thingIDNumber}";
+                        if (!_loggedWeapons.Contains(cacheKey))
+                        {
+                            _loggedWeapons.Add(cacheKey);
+                            if (_loggedWeapons.Count > 100) _loggedWeapons.Clear(); // Prevent unbounded growth
+                            
+                            if (Prefs.DevMode && AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"InfusionCompat: {weapon.Label} has {count} infusions (+{count * SCORE_PER_INFUSION} score)");
+                            }
+                        }
                     }
 
-                    return count * 25f;
+                    return count * SCORE_PER_INFUSION;
                 }
 
                 return 0f;
             }
             catch (Exception e)
             {
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (Prefs.DevMode && AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Warning($"[AutoArm] Error checking infusions: {e.Message}");
+                    AutoArmLogger.Debug($"InfusionCompat: Error checking infusions for {weapon?.Label}: {e.Message}");
                 }
                 return 0f;
             }
         }
 
+        /// <summary>
+        /// Quick check if a weapon has any infusions
+        /// </summary>
         public static bool HasInfusions(ThingWithComps weapon)
         {
             return GetInfusionScoreBonus(weapon) > 0f;
         }
 
+        /// <summary>
+        /// Get the global infusion multiplier (currently always 1.0)
+        /// </summary>
         public static float GetInfusionMultiplier()
         {
             return 1.0f;
         }
 
+        /// <summary>
+        /// Get a human-readable string describing the weapon's infusions
+        /// </summary>
         public static string GetInfusionDetails(ThingWithComps weapon)
         {
             var bonus = GetInfusionScoreBonus(weapon);
             if (bonus > 0)
             {
-                int count = (int)(bonus / 25f);
+                int count = (int)(bonus / SCORE_PER_INFUSION);
                 return $"{count} infusion(s)";
             }
             return "No infusions";
         }
 
+        /// <summary>
+        /// Debug method to list all Infusion-related types found via reflection
+        /// </summary>
         public static void DebugListInfusionTypes()
         {
             if (!IsLoaded())
             {
-                Log.Message("[AutoArm] Infusion 2 is not loaded");
+                AutoArmLogger.Debug("InfusionCompat: Infusion 2 is not loaded");
                 return;
             }
 
-            Log.Message("\n[AutoArm] === Searching for Infusion Types ===");
+            AutoArmLogger.Debug("\n=== InfusionCompat: Searching for Infusion Types ===");
 
             var infusionTypes = GenTypes.AllTypes
                 .Where(t => t.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -208,11 +251,11 @@ namespace AutoArm
                 .Take(20)
                 .ToList();
 
-            Log.Message($"[AutoArm] Found {infusionTypes.Count} possible Infusion-related types:");
+            AutoArmLogger.Debug($"InfusionCompat: Found {infusionTypes.Count} possible Infusion-related types:");
 
             foreach (var type in infusionTypes)
             {
-                Log.Message($"  - {type.FullName}");
+                AutoArmLogger.Debug($"  - {type.FullName}");
             }
 
             var compType = GenTypes.AllTypes.FirstOrDefault(t =>
@@ -220,19 +263,19 @@ namespace AutoArm
 
             if (compType != null)
             {
-                Log.Message($"\n[AutoArm] Found CompInfusion: {compType.FullName}");
-                Log.Message("[AutoArm] Members that might contain infusions:");
+                AutoArmLogger.Debug($"\nInfusionCompat: Found CompInfusion: {compType.FullName}");
+                AutoArmLogger.Debug("InfusionCompat: Members that might contain infusions:");
 
                 foreach (var member in compType.GetMembers(BindingFlags.Public | BindingFlags.Instance))
                 {
                     if (member.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        Log.Message($"  - {member.MemberType}: {member.Name}");
+                        AutoArmLogger.Debug($"  - {member.MemberType}: {member.Name}");
                     }
                 }
             }
 
-            Log.Message("[AutoArm] === End Types ===\n");
+            AutoArmLogger.Debug("=== InfusionCompat: End Types ===\n");
         }
     }
 }

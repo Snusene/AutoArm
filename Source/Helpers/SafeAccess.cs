@@ -8,8 +8,10 @@ using RimWorld;
 using System.Linq;
 using Verse;
 using Verse.AI.Group;
+using AutoArm.Helpers;
+using AutoArm.Weapons;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Simplified null checking patterns (fixes #10)

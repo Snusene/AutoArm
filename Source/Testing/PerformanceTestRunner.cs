@@ -11,7 +11,12 @@ using System.Text;
 using RimWorld;
 using Verse;
 using Verse.AI;
-
+using AutoArm.Jobs;
+using AutoArm.Caching;
+using AutoArm.Helpers;
+using AutoArm.Weapons;
+using AutoArm.Logging;
+using AutoArm.Definitions;
 namespace AutoArm.Testing
 {
     public static class PerformanceTestRunner
@@ -31,14 +36,14 @@ namespace AutoArm.Testing
             var map = Find.CurrentMap;
             if (map == null)
             {
-                Log.Error("[AutoArm] No map to run performance test on");
+                AutoArmLogger.Error("No map to run performance test on");
                 return;
             }
 
-            Log.Message("[AutoArm] ========== COMPREHENSIVE PERFORMANCE TEST STARTING ==========");
-            Log.Message($"[AutoArm] Map size: {map.Size.x}x{map.Size.z} ({map.Area:N0} cells)");
-            Log.Message($"[AutoArm] Current colonists: {map.mapPawns.FreeColonistsCount}");
-            Log.Message($"[AutoArm] Current weapons on map: {map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count()}");
+            AutoArmLogger.Debug("========== PERFORMANCE TEST STARTING ==========");
+            AutoArmLogger.Debug($"Map size: {map.Size.x}x{map.Size.z} ({map.Area:N0} cells)");
+            AutoArmLogger.Debug($"Current colonists: {map.mapPawns.FreeColonistsCount}");
+            AutoArmLogger.Debug($"Current weapons on map: {map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count()}");
             
             globalTimer.Restart();
             performanceMetrics.Clear();
@@ -71,12 +76,12 @@ namespace AutoArm.Testing
             GeneratePerformanceReport();
             
             globalTimer.Stop();
-            Log.Message($"[AutoArm] ========== PERFORMANCE TEST COMPLETE ({globalTimer.ElapsedMilliseconds:N0}ms total) ==========");
+            AutoArmLogger.Debug($"========== PERFORMANCE TEST COMPLETE ({globalTimer.ElapsedMilliseconds:N0}ms total) ==========");
         }
 
         private static void TestCacheSystemPerformance(Map map)
         {
-            Log.Message("[AutoArm] === Testing Cache System Performance ===");
+            AutoArmLogger.Debug("=== Testing Cache System Performance ===");
             
             // Test 1: Cache rebuild performance
             var sw = new Stopwatch();
@@ -84,13 +89,13 @@ namespace AutoArm.Testing
             // Clear all caches
             ImprovedWeaponCacheManager.InvalidateCache(map);
             WeaponScoreCache.ClearAllCaches();
-            SettingsCacheHelper.ClearAllCaches();
+            CleanupHelper.ClearAllCaches();
             
             sw.Restart();
             var weapons = ImprovedWeaponCacheManager.GetWeaponsNear(map, map.Center, 100f);
             sw.Stop();
             RecordMetric("Cache_InitialBuild", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm] Initial cache build: {sw.ElapsedMilliseconds}ms for {weapons.Count} weapons");
+            AutoArmLogger.Debug($"Initial cache build: {sw.ElapsedMilliseconds}ms for {weapons.Count} weapons");
             
             // Test 2: Cache hit performance
             var hitTests = 1000;
@@ -106,7 +111,7 @@ namespace AutoArm.Testing
             }
             sw.Stop();
             RecordMetric("Cache_HitRate", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm] Cache hit test: {sw.ElapsedMilliseconds}ms for {hitTests} queries ({sw.ElapsedMilliseconds / (float)hitTests:F3}ms avg)");
+            AutoArmLogger.Debug($"Cache hit test: {sw.ElapsedMilliseconds}ms for {hitTests} queries ({sw.ElapsedMilliseconds / (float)hitTests:F3}ms avg)");
             
             // Test 3: Cache invalidation performance
             sw.Restart();
@@ -117,22 +122,22 @@ namespace AutoArm.Testing
             }
             sw.Stop();
             RecordMetric("Cache_InvalidationCycle", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm] Cache invalidation cycle: {sw.ElapsedMilliseconds / 10f:F2}ms average");
+            AutoArmLogger.Debug($"Cache invalidation cycle: {sw.ElapsedMilliseconds / 10f:F2}ms average");
             
             // Test 4: Measure cache memory overhead
             TakeMemorySnapshot("AfterCacheBuild");
             var cacheMemory = GetMemoryDelta("Initial", "AfterCacheBuild");
-            Log.Message($"[AutoArm] Cache memory overhead: {cacheMemory / 1024:N0} KB");
+            AutoArmLogger.Debug($"Cache memory overhead: {cacheMemory / 1024:N0} KB");
         }
 
         private static void TestWeaponSearchPerformance(Map map)
         {
-            Log.Message("[AutoArm] === Testing Weapon Search Performance ===");
+            AutoArmLogger.Debug("=== Testing Weapon Search Performance ===");
             
             var colonists = map.mapPawns.FreeColonists.ToList();
             if (colonists.Count == 0)
             {
-                Log.Warning("[AutoArm] No colonists for weapon search test");
+                AutoArmLogger.Warn("No colonists for weapon search test");
                 return;
             }
             
@@ -154,7 +159,7 @@ namespace AutoArm.Testing
                 RecordMetric($"Search_Radius_{radius}", sw.ElapsedMilliseconds);
                 
                 float avgTime = sw.ElapsedMilliseconds / (float)colonists.Count;
-                Log.Message($"[AutoArm] Search radius {radius}: {avgTime:F2}ms avg, {totalWeaponsFound} total weapons found");
+                AutoArmLogger.Debug($"Search radius {radius}: {avgTime:F2}ms avg, {totalWeaponsFound} total weapons found");
             }
             
             // Test progressive search performance
@@ -176,12 +181,12 @@ namespace AutoArm.Testing
             
             sw.Stop();
             RecordMetric("Search_Progressive", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm] Progressive search: {sw.ElapsedMilliseconds}ms, found {progressiveWeapons.Count} weapons");
+            AutoArmLogger.Debug($"Progressive search: {sw.ElapsedMilliseconds}ms, found {progressiveWeapons.Count} weapons");
         }
 
         private static void TestScoreCalculationPerformance(Map map)
         {
-            Log.Message("[AutoArm] === Testing Score Calculation Performance ===");
+            AutoArmLogger.Debug("=== Testing Score Calculation Performance ===");
             
             var colonists = map.mapPawns.FreeColonists.ToList();
             var weapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
@@ -191,7 +196,7 @@ namespace AutoArm.Testing
                 
             if (colonists.Count == 0 || weapons.Count == 0)
             {
-                Log.Warning("[AutoArm] Insufficient pawns/weapons for score test");
+                AutoArmLogger.Warn("Insufficient pawns/weapons for score test");
                 return;
             }
             
@@ -213,7 +218,7 @@ namespace AutoArm.Testing
             var coldCacheTime = sw.ElapsedMilliseconds;
             var totalCalculations = colonists.Take(5).Count() * weapons.Count;
             RecordMetric("Score_ColdCache", coldCacheTime);
-            Log.Message($"[AutoArm] Cold cache scoring: {coldCacheTime}ms for {totalCalculations} calculations ({coldCacheTime / (float)totalCalculations:F3}ms each)");
+            AutoArmLogger.Debug($"Cold cache scoring: {coldCacheTime}ms for {totalCalculations} calculations ({coldCacheTime / (float)totalCalculations:F3}ms each)");
             
             // Test 2: Warm cache performance
             sw.Restart();
@@ -229,8 +234,8 @@ namespace AutoArm.Testing
             sw.Stop();
             var warmCacheTime = sw.ElapsedMilliseconds;
             RecordMetric("Score_WarmCache", warmCacheTime);
-            Log.Message($"[AutoArm] Warm cache scoring: {warmCacheTime}ms for {totalCalculations} calculations ({warmCacheTime / (float)totalCalculations:F3}ms each)");
-            Log.Message($"[AutoArm] Cache speedup: {coldCacheTime / (float)Math.Max(1, warmCacheTime):F1}x faster");
+            AutoArmLogger.Debug($"Warm cache scoring: {warmCacheTime}ms for {totalCalculations} calculations ({warmCacheTime / (float)totalCalculations:F3}ms each)");
+            AutoArmLogger.Debug($"Cache speedup: {coldCacheTime / (float)Math.Max(1, warmCacheTime):F1}x faster");
             
             // Test 3: Score calculation breakdown
             if (colonists.Any() && weapons.Any())
@@ -241,7 +246,7 @@ namespace AutoArm.Testing
                 // Get base weapon score (simplified)
                 var baseWeaponScore = WeaponScoreCache.GetBaseWeaponScore(testWeapon);
                 float baseScore = baseWeaponScore != null ? 
-                    baseWeaponScore.QualityScore + baseWeaponScore.DamageScore + baseWeaponScore.RangeScore + baseWeaponScore.ModScore : 0f;
+                    baseWeaponScore.WeaponPropertyScore + baseWeaponScore.ModScore : 0f;
                 
                 // For timing, measure the actual scoring method
                 sw.Restart();
@@ -258,18 +263,18 @@ namespace AutoArm.Testing
                 var situationalTime = 0;
                 
                 var totalTime = baseTime + skillTime + situationalTime;
-                Log.Message($"[AutoArm] Score breakdown - Base: {baseTime * 100f / totalTime:F1}%, Skill: {skillTime * 100f / totalTime:F1}%, Situational: {situationalTime * 100f / totalTime:F1}%");
+                AutoArmLogger.Debug($"Score breakdown - Base: {baseTime * 100f / totalTime:F1}%, Skill: {skillTime * 100f / totalTime:F1}%, Situational: {situationalTime * 100f / totalTime:F1}%");
             }
         }
 
         private static void TestJobCreationOverhead(Map map)
         {
-            Log.Message("[AutoArm] === Testing Job Creation Overhead ===");
+            AutoArmLogger.Debug("=== Testing Job Creation Overhead ===");
             
             var colonists = map.mapPawns.FreeColonists.ToList();
             if (colonists.Count == 0)
             {
-                Log.Warning("[AutoArm] No colonists for job creation test");
+                AutoArmLogger.Warn("No colonists for job creation test");
                 return;
             }
             
@@ -297,7 +302,7 @@ namespace AutoArm.Testing
             RecordMetric("Job_CreationTime", sw.ElapsedMilliseconds);
             
             float avgTime = sw.ElapsedMilliseconds / (float)colonists.Count;
-            Log.Message($"[AutoArm] Job creation: {sw.ElapsedMilliseconds}ms total, {avgTime:F2}ms per pawn, {jobsCreated} jobs created");
+            AutoArmLogger.Debug($"Job creation: {sw.ElapsedMilliseconds}ms total, {avgTime:F2}ms per pawn, {jobsCreated} jobs created");
             
             // Test job validation overhead
             if (jobsCreated > 0)
@@ -318,14 +323,14 @@ namespace AutoArm.Testing
                 
                 if (weapons.Count > 0)
                 {
-                    Log.Message($"[AutoArm] Weapon validation: {sw.ElapsedMilliseconds / (float)weapons.Count:F3}ms per weapon");
+                    AutoArmLogger.Debug($"Weapon validation: {sw.ElapsedMilliseconds / (float)weapons.Count:F3}ms per weapon");
                 }
             }
         }
 
         private static void TestThinkTreePerformance(Map map)
         {
-            Log.Message("[AutoArm] === Testing Think Tree Performance ===");
+            AutoArmLogger.Debug("=== Testing Think Tree Performance ===");
             
             // Check if think tree injection is active by looking for emergency job giver in think tree
             bool fallbackMode = false;
@@ -335,7 +340,7 @@ namespace AutoArm.Testing
                 // If we can't find the emergency job giver in the think tree, we're in fallback mode
                 fallbackMode = !ContainsJobGiver(colonistThinkTree.thinkRoot, typeof(JobGiver_PickUpBetterWeapon_Emergency));
             }
-            Log.Message($"[AutoArm] Think tree mode: {(fallbackMode ? "FALLBACK (TickRare)" : "INJECTED")}");
+            AutoArmLogger.Debug($"Think tree mode: {(fallbackMode ? "FALLBACK (TickRare)" : "INJECTED")}");
             
             if (!fallbackMode)
             {
@@ -373,21 +378,21 @@ namespace AutoArm.Testing
                 
                 sw.Stop();
                 RecordMetric("ThinkTree_Traversal", sw.ElapsedMilliseconds);
-                Log.Message($"[AutoArm] Think tree traversal: {sw.ElapsedMilliseconds / (float)colonists.Count:F2}ms per pawn");
+                AutoArmLogger.Debug($"Think tree traversal: {sw.ElapsedMilliseconds / (float)colonists.Count:F2}ms per pawn");
             }
             else
             {
                 // Test TickRare performance impact
                 var tickRarePatches = map.mapPawns.FreeColonists.Count;
                 var estimatedOverhead = tickRarePatches * 0.05f; // Estimated 0.05ms per pawn
-                Log.Message($"[AutoArm] Fallback mode overhead: ~{estimatedOverhead:F2}ms per tick (estimated)");
+                AutoArmLogger.Debug($"Fallback mode overhead: ~{estimatedOverhead:F2}ms per tick (estimated)");
                 RecordMetric("ThinkTree_FallbackOverhead", (long)estimatedOverhead);
             }
         }
 
         private static void TestScalabilityWithColonySize(Map map)
         {
-            Log.Message("[AutoArm] === Testing Scalability with Colony Size ===");
+            AutoArmLogger.Debug("=== Testing Scalability with Colony Size ===");
             
             var sw = new Stopwatch();
             var jobGiver = new JobGiver_PickUpBetterWeapon();
@@ -436,13 +441,13 @@ namespace AutoArm.Testing
                     RecordMetric($"Scale_Colony_{targetSize}", sw.ElapsedMilliseconds);
                     
                     float avgTime = sw.ElapsedMilliseconds / (float)Math.Min(targetSize, testPawns.Count);
-                    Log.Message($"[AutoArm] Colony size {targetSize}: {sw.ElapsedMilliseconds}ms total, {avgTime:F2}ms per pawn, {jobsCreated} jobs");
+                    AutoArmLogger.Debug($"Colony size {targetSize}: {sw.ElapsedMilliseconds}ms total, {avgTime:F2}ms per pawn, {jobsCreated} jobs");
                     
                     // Check if performance mode activated
                     bool perfMode = targetSize >= (AutoArmMod.settings?.performanceModeColonySize ?? 35);
                     if (perfMode)
                     {
-                        Log.Message($"[AutoArm]   - Performance mode: ACTIVE (reduced check frequency)");
+                        AutoArmLogger.Debug($"  - Performance mode: ACTIVE (reduced check frequency)");
                     }
                 }
             }
@@ -459,12 +464,12 @@ namespace AutoArm.Testing
 
         private static void TestScalabilityWithWeaponCount(Map map)
         {
-            Log.Message("[AutoArm] === Testing Scalability with Weapon Count ===");
+            AutoArmLogger.Debug("=== Testing Scalability with Weapon Count ===");
             
             var colonist = map.mapPawns.FreeColonists.FirstOrDefault();
             if (colonist == null)
             {
-                Log.Warning("[AutoArm] No colonist for weapon count test");
+                AutoArmLogger.Warn("No colonist for weapon count test");
                 return;
             }
             
@@ -508,7 +513,7 @@ namespace AutoArm.Testing
                     sw.Stop();
                     
                     RecordMetric($"Scale_Weapons_{targetCount}", sw.ElapsedMilliseconds);
-                    Log.Message($"[AutoArm] {targetCount} weapons: {sw.ElapsedMilliseconds}ms search time, {foundWeapons.Count} found");
+                    AutoArmLogger.Debug($"{targetCount} weapons: {sw.ElapsedMilliseconds}ms search time, {foundWeapons.Count} found");
                     
                     // Test scoring performance with many weapons
                     sw.Restart();
@@ -524,7 +529,7 @@ namespace AutoArm.Testing
                     
                     if (scored > 0)
                     {
-                        Log.Message($"[AutoArm]   - Scoring {scored} weapons: {sw.ElapsedMilliseconds / (float)scored:F3}ms each");
+                        AutoArmLogger.Debug($"  - Scoring {scored} weapons: {sw.ElapsedMilliseconds / (float)scored:F3}ms each");
                     }
                 }
             }
@@ -541,12 +546,12 @@ namespace AutoArm.Testing
 
         private static void TestWorstCaseScenarios(Map map)
         {
-            Log.Message("[AutoArm] === Testing Worst Case Scenarios ===");
+            AutoArmLogger.Debug("=== Testing Worst Case Scenarios ===");
             
             var sw = new Stopwatch();
             
             // Scenario 1: All colonists unarmed, many weapons available
-            Log.Message("[AutoArm] Scenario 1: Mass re-arming after raid");
+            AutoArmLogger.Debug("Scenario 1: Mass re-arming after raid");
             
             var colonists = map.mapPawns.FreeColonists.Take(10).ToList();
             var originalWeapons = new Dictionary<Pawn, ThingWithComps>();
@@ -571,10 +576,10 @@ namespace AutoArm.Testing
             
             sw.Stop();
             RecordMetric("WorstCase_MassRearm", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm]   - Mass re-arming: {sw.ElapsedMilliseconds}ms for {colonists.Count} pawns");
+            AutoArmLogger.Debug($"  - Mass re-arming: {sw.ElapsedMilliseconds}ms for {colonists.Count} pawns");
             
             // Scenario 2: Heavy mod load simulation
-            Log.Message("[AutoArm] Scenario 2: Heavy mod compatibility overhead");
+            AutoArmLogger.Debug("Scenario 2: Heavy mod compatibility overhead");
             
             sw.Restart();
             
@@ -603,7 +608,7 @@ namespace AutoArm.Testing
             
             sw.Stop();
             RecordMetric("WorstCase_ModCompat", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm]   - Mod compatibility overhead: {sw.ElapsedMilliseconds}ms");
+            AutoArmLogger.Debug($"  - Mod compatibility overhead: {sw.ElapsedMilliseconds}ms");
             
             // Restore original weapons
             foreach (var kvp in originalWeapons)
@@ -617,7 +622,7 @@ namespace AutoArm.Testing
 
         private static void TestCacheThrashing(Map map)
         {
-            Log.Message("[AutoArm] === Testing Cache Thrashing ===");
+            AutoArmLogger.Debug("=== Testing Cache Thrashing ===");
             
             var sw = new Stopwatch();
             
@@ -663,7 +668,7 @@ namespace AutoArm.Testing
             
             sw.Stop();
             RecordMetric("Cache_Thrashing", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm] Cache thrashing test: {sw.ElapsedMilliseconds}ms for 10 cycles");
+            AutoArmLogger.Debug($"Cache thrashing test: {sw.ElapsedMilliseconds}ms for 10 cycles");
             
             // Cleanup
             foreach (var weapon in testWeapons)
@@ -675,7 +680,7 @@ namespace AutoArm.Testing
 
         private static void TestMemoryPressure(Map map)
         {
-            Log.Message("[AutoArm] === Testing Memory Pressure ===");
+            AutoArmLogger.Debug("=== Testing Memory Pressure ===");
             
             TakeMemorySnapshot("BeforeMemoryTest");
             
@@ -706,22 +711,22 @@ namespace AutoArm.Testing
                 var memoryGrowth = GetMemoryDelta("BeforeMemoryTest", "AfterCacheFill");
                 var memoryRecovered = GetMemoryDelta("AfterCacheFill", "AfterCleanup");
                 
-                Log.Message($"[AutoArm] Memory growth: {memoryGrowth / 1024:N0} KB");
-                Log.Message($"[AutoArm] Memory recovered by cleanup: {memoryRecovered / 1024:N0} KB");
+                AutoArmLogger.Debug($"Memory growth: {memoryGrowth / 1024:N0} KB");
+                AutoArmLogger.Debug($"Memory recovered by cleanup: {memoryRecovered / 1024:N0} KB");
                 
                 // Calculate cache efficiency
                 var entriesCreated = colonists.Count * Math.Min(100, weapons.Count);
                 if (entriesCreated > 0)
                 {
                     var bytesPerEntry = memoryGrowth / (float)entriesCreated;
-                    Log.Message($"[AutoArm] Average memory per cache entry: {bytesPerEntry:F1} bytes");
+                    AutoArmLogger.Debug($"Average memory per cache entry: {bytesPerEntry:F1} bytes");
                 }
             }
         }
 
         private static void TestModCompatibilityOverhead(Map map)
         {
-            Log.Message("[AutoArm] === Testing Mod Compatibility Overhead ===");
+            AutoArmLogger.Debug("=== Testing Mod Compatibility Overhead ===");
             
             var sw = new Stopwatch();
             var iterations = 1000;
@@ -746,7 +751,7 @@ namespace AutoArm.Testing
                     
                     sw.Stop();
                     RecordMetric("ModCompat_SimpleSidearms", sw.ElapsedMilliseconds);
-                    Log.Message($"[AutoArm] SimpleSidearms validation: {sw.ElapsedMilliseconds / (float)iterations:F3}ms per check");
+                    AutoArmLogger.Debug($"SimpleSidearms validation: {sw.ElapsedMilliseconds / (float)iterations:F3}ms per check");
                 }
             }
             
@@ -770,7 +775,7 @@ namespace AutoArm.Testing
                     
                     sw.Stop();
                     RecordMetric("ModCompat_CombatExtended", sw.ElapsedMilliseconds);
-                    Log.Message($"[AutoArm] Combat Extended ammo check: {sw.ElapsedMilliseconds / (float)iterations:F3}ms per check");
+                    AutoArmLogger.Debug($"Combat Extended ammo check: {sw.ElapsedMilliseconds / (float)iterations:F3}ms per check");
                 }
             }
             
@@ -784,17 +789,17 @@ namespace AutoArm.Testing
             
             sw.Stop();
             RecordMetric("Reflection_Cache", sw.ElapsedMilliseconds);
-            Log.Message($"[AutoArm] Reflection cache: {sw.ElapsedMilliseconds / (float)iterations:F3}ms per lookup");
+            AutoArmLogger.Debug($"Reflection cache: {sw.ElapsedMilliseconds / (float)iterations:F3}ms per lookup");
         }
 
         private static void TestRealWorldScenarios(Map map)
         {
-            Log.Message("[AutoArm] === Testing Real World Scenarios ===");
+            AutoArmLogger.Debug("=== Testing Real World Scenarios ===");
             
             var sw = new Stopwatch();
             
             // Scenario 1: Typical gameplay tick
-            Log.Message("[AutoArm] Simulating typical gameplay performance...");
+            AutoArmLogger.Debug("Simulating typical gameplay performance...");
             
             var colonists = map.mapPawns.FreeColonists.ToList();
             int totalChecks = 0;
@@ -847,18 +852,18 @@ namespace AutoArm.Testing
             var msPerTick = sw.ElapsedMilliseconds / 600f;
             var checksPerSecond = totalChecks / 10f;
             
-            Log.Message($"[AutoArm] 10-second simulation: {sw.ElapsedMilliseconds}ms total");
-            Log.Message($"[AutoArm]   - Average per tick: {msPerTick:F3}ms");
-            Log.Message($"[AutoArm]   - Checks per second: {checksPerSecond:F1}");
-            Log.Message($"[AutoArm]   - Jobs created: {jobsCreated}");
-            Log.Message($"[AutoArm]   - TPS impact: ~{msPerTick * 0.6f:F1}% (at 60 TPS)");
+            AutoArmLogger.Debug($"10-second simulation: {sw.ElapsedMilliseconds}ms total");
+            AutoArmLogger.Debug($"  - Average per tick: {msPerTick:F3}ms");
+            AutoArmLogger.Debug($"  - Checks per second: {checksPerSecond:F1}");
+            AutoArmLogger.Debug($"  - Jobs created: {jobsCreated}");
+            AutoArmLogger.Debug($"  - TPS impact: ~{msPerTick * 0.6f:F1}% (at 60 TPS)");
             
             RecordMetric("RealWorld_TickImpact", (long)(msPerTick * 1000)); // Store in microseconds
         }
 
         private static void GeneratePerformanceReport()
         {
-            Log.Message("\n[AutoArm] ========== PERFORMANCE REPORT ==========");
+            AutoArmLogger.Debug("\n========== PERFORMANCE REPORT ==========");
             
             // Calculate aggregates
             var categories = new Dictionary<string, List<KeyValuePair<string, long>>>();
@@ -876,16 +881,16 @@ namespace AutoArm.Testing
             // Generate summary by category
             foreach (var category in categories.OrderBy(c => c.Key))
             {
-                Log.Message($"\n[AutoArm] {category.Key} Performance:");
+                AutoArmLogger.Debug($"\n{category.Key} Performance:");
                 
                 foreach (var metric in category.Value.OrderBy(m => m.Key))
                 {
-                    Log.Message($"  {metric.Key}: {metric.Value}ms");
+                    AutoArmLogger.Debug($"  {metric.Key}: {metric.Value}ms");
                 }
             }
             
             // Performance recommendations
-            Log.Message("\n[AutoArm] Performance Recommendations:");
+            AutoArmLogger.Debug("\nPerformance Recommendations:");
             
             // Check cache performance
             if (performanceMetrics.ContainsKey("Cache_HitRate"))
@@ -893,7 +898,7 @@ namespace AutoArm.Testing
                 var hitRate = performanceMetrics["Cache_HitRate"].Average();
                 if (hitRate > 10)
                 {
-                    Log.Warning("[AutoArm] - Cache hit rate is slow. Consider increasing cache size.");
+                    AutoArmLogger.Warn(" - Cache hit rate is slow. Consider increasing cache size.");
                 }
             }
             
@@ -906,22 +911,22 @@ namespace AutoArm.Testing
                 
                 if (scaling > 5)
                 {
-                    Log.Warning($"[AutoArm] - Poor scaling detected ({scaling:F1}x slower at 50 colonists)");
-                    Log.Message("[AutoArm]   Consider enabling performance mode at lower colony sizes");
+                    AutoArmLogger.Warn($" - Poor scaling detected ({scaling:F1}x slower at 50 colonists)");
+                    AutoArmLogger.Debug("   Consider enabling performance mode at lower colony sizes");
                 }
                 else
                 {
-                    Log.Message($"[AutoArm] - Good scaling: {scaling:F1}x slower at 5x colony size");
+                    AutoArmLogger.Debug($" - Good scaling: {scaling:F1}x slower at 5x colony size");
                 }
             }
             
             // Memory usage
             var totalMemory = memorySnapshots.Values.Max() - memorySnapshots.Values.Min();
-            Log.Message($"\n[AutoArm] Total memory usage: {totalMemory / 1024:N0} KB");
+            AutoArmLogger.Debug($"\nTotal memory usage: {totalMemory / 1024:N0} KB");
             
             if (totalMemory > 10 * 1024 * 1024) // 10MB
             {
-                Log.Warning("[AutoArm] - High memory usage detected. Consider more aggressive cleanup.");
+                AutoArmLogger.Warn(" - High memory usage detected. Consider more aggressive cleanup.");
             }
             
             // Export detailed metrics
@@ -947,7 +952,7 @@ namespace AutoArm.Testing
                 }
                 
                 // Could write to file if needed
-                AutoArmLogger.Log($"Detailed performance metrics:\n{report}");
+                AutoArmLogger.Debug($"Detailed performance metrics:\n{report}");
             }
         }
 

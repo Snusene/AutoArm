@@ -8,6 +8,8 @@ using System;
 using System.Linq;
 using Verse;
 using Verse.AI;
+using AutoArm.Helpers; using AutoArm.Logging;
+using AutoArm.Weapons;
 
 namespace AutoArm
 {
@@ -40,12 +42,12 @@ namespace AutoArm
                     if (SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
                     {
                         var upgradeInfo = SimpleSidearmsCompat.GetPendingUpgrade(___pawn);
-                        if (upgradeInfo != null && targetWeapon != upgradeInfo.newWeapon && newJob.playerForced)
+                        if (upgradeInfo != null && upgradeInfo.newWeapon != null && targetWeapon != upgradeInfo.newWeapon && newJob.playerForced)
                         {
                             // Player is manually forcing a different weapon during upgrade
                             SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
 
-                            AutoArmLogger.LogPawn(___pawn, "Cancelling sidearm upgrade - player forced different weapon");
+                            // Cancelling sidearm upgrade
                         }
                     }
 
@@ -68,7 +70,7 @@ namespace AutoArm
                             if (upgradeInfo != null && upgradeInfo.newWeapon == targetWeapon)
                             {
                                 isPartOfSidearmUpgrade = true;
-                                AutoArmLogger.LogWeapon(___pawn, targetWeapon, "Detected actual sidearm upgrade job");
+                                // Sidearm upgrade job detected
                             }
                         }
                     }
@@ -77,11 +79,14 @@ namespace AutoArm
                     {
                         ForcedWeaponHelper.SetForced(___pawn, targetWeapon);
 
-                        AutoArmLogger.LogWeapon(___pawn, targetWeapon, "FORCED: Manually equipping");
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced weapon - {targetWeapon.Label}");
+                        }
                     }
                     else if (isPartOfSidearmUpgrade)
                     {
-                        AutoArmLogger.LogWeapon(___pawn, targetWeapon, "Not marking as forced - part of sidearm upgrade");
+                        // Not forced - sidearm upgrade
                     }
                 }
             }
@@ -95,7 +100,10 @@ namespace AutoArm
                 {
                     ForcedWeaponHelper.AddForcedDef(___pawn, sidearmWeapon.def);
 
-                    AutoArmLogger.LogWeapon(___pawn, sidearmWeapon, "FORCED SIDEARM: Manually equipped as sidearm");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced sidearm - {sidearmWeapon.Label}");
+                    }
                 }
             }
         }
@@ -108,7 +116,7 @@ namespace AutoArm
 
             if (newJob.def == JobDefOf.Equip && AutoEquipTracker.IsAutoEquip(newJob))
             {
-                AutoArmLogger.LogPawn(___pawn, $"Starting equip job for {newJob.targetA.Thing?.Label}");
+                // Auto-equip job started
             }
         }
     }
@@ -147,7 +155,7 @@ namespace AutoArm
 
                         if (isSimpleSidearmsSwap)
                         {
-                            AutoArmLogger.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms swap via EquipSecondary job");
+                            // SimpleSidearms job detected
                         }
                     }
 
@@ -155,14 +163,14 @@ namespace AutoArm
                     if (!isSimpleSidearmsSwap && SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
                     {
                         isSimpleSidearmsSwap = true;
-                        AutoArmLogger.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms swap via pending upgrade");
+                        // Pending upgrade detected
                     }
 
                     // ALSO check if SimpleSidearms swap is in progress (covers UI swaps)
                     if (!isSimpleSidearmsSwap && DroppedItemTracker.IsSimpleSidearmsSwapInProgress(___pawn))
                     {
                         isSimpleSidearmsSwap = true;
-                        AutoArmLogger.LogWeapon(___pawn, resultingEq, "Detected SimpleSidearms swap via swap-in-progress flag");
+                        // Swap in progress
                     }
                 }
 
@@ -173,7 +181,7 @@ namespace AutoArm
                     {
                         // Only clear the primary forced weapon reference, don't clear all forced defs
                         ForcedWeaponHelper.ClearForcedPrimary(___pawn);
-                        AutoArmLogger.LogWeapon(___pawn, resultingEq, "Primary weapon dropped - cleared primary forced status");
+                        // Primary dropped - clear forced
                     }
 
                     // If this weapon type is no longer carried, remove it from forced defs
@@ -202,19 +210,19 @@ namespace AutoArm
                         if (!stillHasThisType)
                         {
                             ForcedWeaponHelper.RemoveForcedDef(___pawn, resultingEq.def);
-                            AutoArmLogger.LogWeapon(___pawn, resultingEq, "Last weapon of this type dropped - removed from forced defs");
+                            // Last of type - remove from forced
                         }
                     }
                 }
                 else
                 {
                     // SimpleSidearms swap - weapon stays in inventory, maintain forced status
-                    AutoArmLogger.LogWeapon(___pawn, resultingEq, "SimpleSidearms swap detected - maintaining forced status");
+                    // SimpleSidearms swap - maintain forced
 
                     // Extra check: if this was a forced weapon, ensure it stays forced
                     if (ForcedWeaponHelper.GetForcedPrimary(___pawn) == resultingEq)
                     {
-                        AutoArmLogger.LogWeapon(___pawn, resultingEq, "Confirmed: Forced weapon being swapped via SimpleSidearms");
+                        // Forced weapon swap confirmed
                     }
                 }
 
@@ -222,7 +230,7 @@ namespace AutoArm
                 if (isSameTypeUpgrade)
                 {
                     DroppedItemTracker.ClearPendingUpgrade(resultingEq);
-                    AutoArmLogger.LogWeapon(___pawn, resultingEq, "Same-type weapon upgrade drop");
+                    // Same-type upgrade drop
                     DroppedItemTracker.MarkAsDropped(resultingEq, 1200);
 
                     if (SimpleSidearmsCompat.IsLoaded())
@@ -268,7 +276,7 @@ namespace AutoArm
             if (___pawn.equipment?.Primary != null &&
                 ___pawn.inventory?.innerContainer?.Contains(newEq) == true)
             {
-                AutoArmLogger.LogPawn(___pawn, $"WARNING: Prevented equipping {newEq.Label ?? "item"} from inventory while already equipped");
+                // Inventory equip prevention
                 return false;
             }
 
@@ -289,7 +297,10 @@ namespace AutoArm
             {
                 // Automatically mark bonded weapons as forced
                 ForcedWeaponHelper.SetForced(___pawn, newEq);
-                AutoArmLogger.LogWeapon(___pawn, newEq, "Bonded weapon equipped - automatically marked as forced");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Bonded weapon {newEq.Label} auto-forced");
+                }
             }
             // Check if this weapon type was already forced as a sidearm
             else if (AutoArmMod.settings?.modEnabled == true && 
@@ -297,7 +308,7 @@ namespace AutoArm
             {
                 // Maintain forced status when sidearm becomes primary
                 ForcedWeaponHelper.SetForced(___pawn, newEq);
-                AutoArmLogger.LogWeapon(___pawn, newEq, "Sidearm moved to primary - maintaining forced status");
+                // Sidearm to primary - maintain forced
             }
             // Only mark as forced if this is completing a player-forced equip job
             else if (AutoArmMod.settings?.modEnabled == true &&
@@ -306,13 +317,22 @@ namespace AutoArm
                 // This was a manual equip - mark as forced
                 ForcedWeaponHelper.SetForced(___pawn, newEq);
 
-                AutoArmLogger.LogWeapon(___pawn, newEq, "Manually equipped - marking as forced");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Manually equipped {newEq.Label} - forced");
+                }
             }
 
             // Then handle auto-equip notifications
             if (AutoArmMod.settings?.modEnabled == true &&
                 ___pawn.CurJob?.def == JobDefOf.Equip && AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
             {
+                // Inform SimpleSidearms if it's loaded
+                if (SimpleSidearmsCompat.IsLoaded())
+                {
+                    SimpleSidearmsCompat.InformOfAddedSidearm(___pawn, newEq);
+                }
+                
                 if (PawnUtility.ShouldSendNotificationAbout(___pawn) &&
                     AutoArmMod.settings?.showNotifications == true)
                 {
@@ -382,13 +402,16 @@ namespace AutoArm
                         {
                             // Don't blacklist body size restrictions - pawn might get power armor later
                             errorReason = "probable body size restriction";
-                            AutoArmLogger.LogPawn(___pawn, $"Not blacklisting {weapon.Label} - {errorReason} (pawn size: {___pawn.BodySize:F1})");
+                            // Body size restriction - don't blacklist
                         }
                         else
                         {
                             // Blacklist this weapon for this pawn
                             WeaponBlacklist.AddToBlacklist(weapon.def, ___pawn, errorReason);
-                            AutoArmLogger.LogPawn(___pawn, $"Blacklisted {weapon.Label} due to failed equip job - {errorReason}");
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"{___pawn.LabelShort}: Blacklisted {weapon.Label} - {errorReason}");
+                            }
                         }
                     }
                 }
@@ -403,11 +426,11 @@ namespace AutoArm
                 {
                     AutoEquipTracker.Clear(___curJob);
 
-                    AutoArmLogger.LogPawn(___pawn, $"Cleared completed equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
+                    // Equip job cleared
                 }
                 else
                 {
-                    AutoArmLogger.LogPawn(___pawn, $"Ending equip job for {___curJob.targetA.Thing?.Label} - Reason: {condition}");
+                    // Equip job ending
                 }
             }
 
@@ -424,7 +447,7 @@ namespace AutoArm
                     // Upgrade failed, clean up
                     SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
 
-                    AutoArmLogger.LogPawn(___pawn, $"WARNING: Sidearm upgrade cancelled due to job failure: {condition}");
+                    // Sidearm upgrade failed
                 }
             }
         }

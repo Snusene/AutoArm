@@ -6,6 +6,8 @@ using RimWorld;
 using System.Linq;
 using Verse;
 using Verse.AI;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {

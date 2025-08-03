@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Verse;
+using AutoArm.Logging; using AutoArm.Weapons;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {

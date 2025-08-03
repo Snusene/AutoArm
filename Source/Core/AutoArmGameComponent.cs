@@ -6,7 +6,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Verse;
+using AutoArm.Helpers; using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -15,6 +17,19 @@ namespace AutoArm
     /// </summary>
     public class AutoArmGameComponent : GameComponent
     {
+        // Save key constants
+        private const string PRIMARY_PAWNS_KEY = "forcedPrimaryWeaponPawns";
+        private const string PRIMARY_DEFS_KEY = "forcedPrimaryWeaponDefNames";
+        private const string SIDEARM_PAWNS_KEY = "forcedSidearmPawns";
+        private const string SIDEARM_COUNT_KEY = "forcedSidearmDefListCount";
+        private const string SIDEARM_LIST_PREFIX = "forcedSidearmDefList_";
+        
+        // Legacy save keys for backwards compatibility
+        private const string LEGACY_PRIMARY_KEYS = "forcedPrimaryWeapons/keys";
+        private const string LEGACY_PRIMARY_VALUES = "forcedPrimaryWeapons/values";
+        private const string LEGACY_SIDEARM_KEYS = "forcedSidearmDefs/keys";
+        private const string LEGACY_SIDEARM_VALUES = "forcedSidearmDefs/values";
+        
         // Data to save
         private Dictionary<Pawn, string> forcedPrimaryWeaponDefs = new Dictionary<Pawn, string>();
 
@@ -57,20 +72,27 @@ namespace AutoArm
                 try
                 {
                     // This loads the data from the old dictionary format
-                    Scribe_Collections.Look(ref legacyPrimaryKeys, "forcedPrimaryWeapons/keys", LookMode.Reference);
-                    Scribe_Collections.Look(ref legacyPrimaryValues, "forcedPrimaryWeapons/values", LookMode.Value);
-                    Scribe_Collections.Look(ref legacySidearmKeys, "forcedSidearmDefs/keys", LookMode.Reference);
+                    Scribe_Collections.Look(ref legacyPrimaryKeys, LEGACY_PRIMARY_KEYS, LookMode.Reference);
+                    Scribe_Collections.Look(ref legacyPrimaryValues, LEGACY_PRIMARY_VALUES, LookMode.Value);
+                    Scribe_Collections.Look(ref legacySidearmKeys, LEGACY_SIDEARM_KEYS, LookMode.Reference);
 
                     // Legacy sidearm values were saved incorrectly with Deep mode
                     // Try to skip over them without causing errors
                     try
                     {
-                        Scribe_Collections.Look(ref legacySidearmValues, "forcedSidearmDefs/values", LookMode.Deep);
+                        Scribe_Collections.Look(ref legacySidearmValues, LEGACY_SIDEARM_VALUES, LookMode.Deep);
                     }
-                    catch
+                    catch (Exception)
                     {
                         // If loading with Deep fails, try to skip the node
-                        Log.Warning("[AutoArm] Skipping invalid legacy sidearm data in save file");
+                        try
+                        {
+                            AutoArmLogger.Warn("Skipping invalid legacy sidearm data in save file");
+                        }
+                        catch
+                        {
+                            // Fail silently if even logging fails
+                        }
                     }
 
                     // Convert legacy data to current format if successfully loaded
@@ -84,7 +106,7 @@ namespace AutoArm
                                 forcedPrimaryWeaponDefs[legacyPrimaryKeys[i]] = legacyPrimaryValues[i];
                             }
                         }
-                        Log.Message($"[AutoArm] Loaded {forcedPrimaryWeaponDefs.Count} legacy forced primary weapons");
+                        AutoArmLogger.Debug($"Loaded {forcedPrimaryWeaponDefs.Count} legacy forced primary weapons");
                     }
 
                     if (legacySidearmKeys != null && legacySidearmValues != null)
@@ -97,12 +119,12 @@ namespace AutoArm
                                 forcedSidearmDefs[legacySidearmKeys[i]] = legacySidearmValues[i];
                             }
                         }
-                        Log.Message($"[AutoArm] Loaded {forcedSidearmDefs.Count} legacy forced sidearms");
+                        AutoArmLogger.Debug($"Loaded {forcedSidearmDefs.Count} legacy forced sidearms");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning($"[AutoArm] Failed to load legacy save data: {ex.Message}");
+                    AutoArmLogger.Warn($"Failed to load legacy save data: {ex.Message}");
                 }
             }
 
@@ -126,9 +148,9 @@ namespace AutoArm
                 }
 
                 // Save/Load as parallel lists with new labels
-                Scribe_Collections.Look(ref primaryPawns, "forcedPrimaryWeaponPawns", LookMode.Reference);
-                Scribe_Collections.Look(ref primaryDefs, "forcedPrimaryWeaponDefNames", LookMode.Value);
-                Scribe_Collections.Look(ref sidearmPawns, "forcedSidearmPawns", LookMode.Reference);
+                Scribe_Collections.Look(ref primaryPawns, PRIMARY_PAWNS_KEY, LookMode.Reference);
+                Scribe_Collections.Look(ref primaryDefs, PRIMARY_DEFS_KEY, LookMode.Value);
+                Scribe_Collections.Look(ref sidearmPawns, SIDEARM_PAWNS_KEY, LookMode.Reference);
 
                 // For list of lists of strings, we need to use Value mode, not Deep
                 // Deep mode is only for IExposable objects
@@ -138,25 +160,25 @@ namespace AutoArm
                     if (sidearmDefLists != null)
                     {
                         int sidearmCount = sidearmDefLists.Count;
-                        Scribe_Values.Look(ref sidearmCount, "forcedSidearmDefListCount", 0);
+                        Scribe_Values.Look(ref sidearmCount, SIDEARM_COUNT_KEY, 0);
 
                         for (int i = 0; i < sidearmDefLists.Count; i++)
                         {
                             var defList = sidearmDefLists[i];
-                            Scribe_Collections.Look(ref defList, $"forcedSidearmDefList_{i}", LookMode.Value);
+                            Scribe_Collections.Look(ref defList, $"{SIDEARM_LIST_PREFIX}{i}", LookMode.Value);
                         }
                     }
                     else
                     {
                         int sidearmCount = 0;
-                        Scribe_Values.Look(ref sidearmCount, "forcedSidearmDefListCount", 0);
+                        Scribe_Values.Look(ref sidearmCount, SIDEARM_COUNT_KEY, 0);
                     }
                 }
                 else if (Scribe.mode == LoadSaveMode.LoadingVars)
                 {
                     // Load each list separately
                     int sidearmCount = 0;
-                    Scribe_Values.Look(ref sidearmCount, "forcedSidearmDefListCount", 0);
+                    Scribe_Values.Look(ref sidearmCount, SIDEARM_COUNT_KEY, 0);
 
                     if (sidearmCount > 0)
                     {
@@ -164,7 +186,7 @@ namespace AutoArm
                         for (int i = 0; i < sidearmCount; i++)
                         {
                             List<string> defList = null;
-                            Scribe_Collections.Look(ref defList, $"forcedSidearmDefList_{i}", LookMode.Value);
+                            Scribe_Collections.Look(ref defList, $"{SIDEARM_LIST_PREFIX}{i}", LookMode.Value);
                             if (defList != null)
                             {
                                 sidearmDefLists.Add(defList);
@@ -206,9 +228,9 @@ namespace AutoArm
                     }
                 }
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                Log.Warning($"[AutoArm] Error loading forced weapon data from save. Resetting to defaults. Error: {ex.Message}");
+                AutoArmLogger.Error("Error loading forced weapon data from save", ex);
                 forcedPrimaryWeaponDefs = new Dictionary<Pawn, string>();
                 forcedSidearmDefs = new Dictionary<Pawn, List<string>>();
             }
@@ -260,25 +282,16 @@ namespace AutoArm
             }
 
             // Remove any entries with null or empty values to prevent save errors
-            var keysToRemove = new List<Pawn>();
-            foreach (var kvp in forcedPrimaryWeaponDefs)
-            {
-                if (string.IsNullOrEmpty(kvp.Value))
-                    keysToRemove.Add(kvp.Key);
-            }
-            foreach (var key in keysToRemove)
-                forcedPrimaryWeaponDefs.Remove(key);
+            RemoveInvalidEntries(forcedPrimaryWeaponDefs, 
+                kvp => string.IsNullOrEmpty(kvp.Value));
+                
+            RemoveInvalidEntries(forcedSidearmDefs, 
+                kvp => kvp.Value == null || kvp.Value.Count == 0);
 
-            keysToRemove.Clear();
-            foreach (var kvp in forcedSidearmDefs)
+            if (AutoArmMod.settings?.debugLogging == true)
             {
-                if (kvp.Value == null || kvp.Value.Count == 0)
-                    keysToRemove.Add(kvp.Key);
+                AutoArmLogger.Debug($"Saving forced weapon data: {forcedPrimaryWeaponDefs.Count} primary, {forcedSidearmDefs.Count} sidearm entries");
             }
-            foreach (var key in keysToRemove)
-                forcedSidearmDefs.Remove(key);
-
-            AutoArmLogger.Log($"Saving forced weapon data: {forcedPrimaryWeaponDefs.Count} primary, {forcedSidearmDefs.Count} sidearm entries");
         }
 
         /// <summary>
@@ -304,7 +317,8 @@ namespace AutoArm
                     }
                     else
                     {
-                        Log.Warning($"[AutoArm] Could not find weapon def '{kvp.Value}' when loading save");
+                        if (Prefs.DevMode)
+                            AutoArmLogger.Debug($"Could not find weapon def '{kvp.Value}' when loading save");
                     }
                 }
             }
@@ -334,7 +348,8 @@ namespace AutoArm
                             }
                             else
                             {
-                                Log.Warning($"[AutoArm] Could not find sidearm def '{defName}' when loading save");
+                                if (Prefs.DevMode)
+                                    AutoArmLogger.Debug($"Could not find sidearm def '{defName}' when loading save");
                             }
                         }
                     }
@@ -347,7 +362,10 @@ namespace AutoArm
 
             ForcedWeaponHelper.LoadSidearmSaveData(sidearmDataToRestore);
 
-            AutoArmLogger.Log($"Loaded forced weapon data: {primaryDataToRestore.Count} primary, {sidearmDataToRestore.Count} sidearm entries");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"Loaded forced weapon data: {primaryDataToRestore.Count} primary, {sidearmDataToRestore.Count} sidearm entries");
+            }
 
             // Clear the temporary storage
             forcedPrimaryWeaponDefs?.Clear();
@@ -360,7 +378,8 @@ namespace AutoArm
         public override void StartedNewGame()
         {
             base.StartedNewGame();
-            AutoArmLogger.Log("AutoArm GameComponent initialized for new game");
+            if (AutoArmMod.settings?.debugLogging == true)
+                AutoArmLogger.Debug("AutoArm GameComponent initialized for new game");
         }
 
         /// <summary>
@@ -369,7 +388,21 @@ namespace AutoArm
         public override void LoadedGame()
         {
             base.LoadedGame();
-            AutoArmLogger.Log("AutoArm GameComponent loaded from save");
+            if (AutoArmMod.settings?.debugLogging == true)
+                AutoArmLogger.Debug("AutoArm GameComponent loaded from save");
+        }
+
+        /// <summary>
+        /// Called every game tick - triggers cleanup operations
+        /// </summary>
+        public override void GameComponentTick()
+        {
+            base.GameComponentTick();
+            
+            if (CleanupHelper.ShouldRunCleanup())
+            {
+                CleanupHelper.PerformFullCleanup();
+            }
         }
 
         /// <summary>
@@ -380,54 +413,56 @@ namespace AutoArm
             int totalCleaned = 0;
 
             // Clean up primary weapon defs
-            if (forcedPrimaryWeaponDefs != null)
-            {
-                var keysToRemove = new List<Pawn>();
-                foreach (var kvp in forcedPrimaryWeaponDefs)
-                {
-                    if (kvp.Key == null || string.IsNullOrEmpty(kvp.Value))
-                    {
-                        keysToRemove.Add(kvp.Key);
-                    }
-                }
-                foreach (var key in keysToRemove)
-                {
-                    forcedPrimaryWeaponDefs.Remove(key);
-                }
-                totalCleaned += keysToRemove.Count;
-            }
+            totalCleaned += RemoveInvalidEntries(forcedPrimaryWeaponDefs,
+                kvp => kvp.Key == null || string.IsNullOrEmpty(kvp.Value));
 
             // Clean up sidearm defs
             if (forcedSidearmDefs != null)
             {
-                var sidearmKeysToRemove = new List<Pawn>();
-                foreach (var kvp in forcedSidearmDefs)
+                // First clean up empty strings within the lists
+                foreach (var kvp in forcedSidearmDefs.ToList())
                 {
-                    if (kvp.Key == null || kvp.Value == null || kvp.Value.Count == 0)
+                    if (kvp.Value != null)
                     {
-                        sidearmKeysToRemove.Add(kvp.Key);
-                    }
-                    else
-                    {
-                        // Clean up empty strings within the list
                         kvp.Value.RemoveAll(s => string.IsNullOrEmpty(s));
-                        if (kvp.Value.Count == 0)
-                        {
-                            sidearmKeysToRemove.Add(kvp.Key);
-                        }
                     }
                 }
-                foreach (var key in sidearmKeysToRemove)
-                {
-                    forcedSidearmDefs.Remove(key);
-                }
-                totalCleaned += sidearmKeysToRemove.Count;
+                
+                // Then remove entries with null keys or empty lists
+                totalCleaned += RemoveInvalidEntries(forcedSidearmDefs,
+                    kvp => kvp.Key == null || kvp.Value == null || kvp.Value.Count == 0);
             }
 
-            if (totalCleaned > 0)
+            if (totalCleaned > 0 && Prefs.DevMode)
             {
-                Log.Message($"[AutoArm] Cleaned up {totalCleaned} invalid entries from legacy save data");
+                AutoArmLogger.Debug($"Cleaned up {totalCleaned} invalid entries from legacy save data");
             }
+        }
+        
+        /// <summary>
+        /// Helper method to remove invalid entries from a dictionary
+        /// </summary>
+        private static int RemoveInvalidEntries<TKey, TValue>(Dictionary<TKey, TValue> dictionary, 
+            Func<KeyValuePair<TKey, TValue>, bool> isInvalid)
+        {
+            if (dictionary == null)
+                return 0;
+                
+            var keysToRemove = new List<TKey>();
+            foreach (var kvp in dictionary)
+            {
+                if (isInvalid(kvp))
+                {
+                    keysToRemove.Add(kvp.Key);
+                }
+            }
+            
+            foreach (var key in keysToRemove)
+            {
+                dictionary.Remove(key);
+            }
+            
+            return keysToRemove.Count;
         }
     }
 }

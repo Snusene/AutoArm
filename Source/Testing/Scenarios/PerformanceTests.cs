@@ -10,7 +10,10 @@ using System.Linq;
 using UnityEngine;
 using Verse;
 using Verse.AI;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Logging;
 using static AutoArm.Testing.TestHelpers;
+using AutoArm.Jobs;
+using AutoArm.Definitions;
 
 namespace AutoArm.Testing.Scenarios
 {

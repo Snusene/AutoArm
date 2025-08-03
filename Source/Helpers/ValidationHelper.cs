@@ -9,8 +9,10 @@ using System.Linq;
 using Verse;
 using Verse.AI;
 using AutoArm.Testing;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging;
+using AutoArm.Weapons;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Centralized validation logic to eliminate redundancy
@@ -36,6 +38,10 @@ namespace AutoArm
             if (weapon == null)
             {
                 reason = "Weapon is null";
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"Weapon validation failed for {pawn?.LabelShort ?? "null pawn"}: {reason}");
+                }
                 return false;
             }
 
@@ -193,7 +199,10 @@ namespace AutoArm
             {
                 // Some mods might throw exceptions during validation
                 // Don't blacklist - exceptions are often temporary/random
-                AutoArmLogger.LogPawn(pawn, $"Exception checking CanEquip for {weapon.Label}: {ex.Message}");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"Exception checking CanEquip for {weapon.Label} on {pawn.LabelShort}: {ex.Message}");
+                }
 
                 // Provide specific error messages when possible
                 if (ex.Message?.Contains("BodySize") == true ||
@@ -229,7 +238,10 @@ namespace AutoArm
                         {
                             // Pawn can now equip it! Remove from blacklist
                             WeaponBlacklist.RemoveFromBlacklist(weapon.def, pawn);
-                            AutoArmLogger.LogPawn(pawn, $"Removed {weapon.Label} from blacklist - can now equip (body size: {pawn.BodySize:F1})");
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"Removed {weapon.Label} from blacklist for {pawn.LabelShort} - can now equip (body size: {pawn.BodySize:F1})");
+                            }
                         }
                         else
                         {
@@ -470,6 +482,14 @@ namespace AutoArm
                 return false;
             }
 
+            if (AutoArmMod.settings?.debugLogging == true && !string.IsNullOrEmpty(reason))
+            {
+                AutoArmLogger.Debug($"Weapon validation passed for {weapon.Label} and {pawn.LabelShort}");
+            }
+            if (AutoArmMod.settings?.debugLogging == true && !TestRunner.IsRunningTests)
+            {
+                AutoArmLogger.Debug($"Pawn validation passed for {pawn.LabelShort}");
+            }
             return true;
         }
 
@@ -800,7 +820,10 @@ namespace AutoArm
             knownStorageTypes.Clear();
             knownNonStorageTypes.Clear();
             
-            AutoArmLogger.Log("Cleared storage type caches");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug("Cleared storage type caches");
+            }
         }
 
         /// <summary>
@@ -1091,7 +1114,13 @@ namespace AutoArm
             if (isStorage)
             {
                 if (knownStorageTypes.Count < MaxCacheSize)
+                {
                     knownStorageTypes.Add(holderType);
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"Added storage type to cache: {holderType.Name}");
+                    }
+                }
             }
             else
             {
@@ -1100,6 +1129,23 @@ namespace AutoArm
             }
 
             return isStorage;
+        }
+
+        /// <summary>
+        /// Check if pawn prefers melee weapons based on traits and skills
+        /// </summary>
+        public static bool PrefersMeleeWeapon(Pawn pawn)
+        {
+            if (pawn == null)
+                return false;
+
+            if (pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) == true)
+                return true;
+
+            float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
+            float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
+
+            return meleeSkill > shootingSkill + 3f;
         }
     }
 }

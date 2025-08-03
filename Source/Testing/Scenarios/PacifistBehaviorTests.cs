@@ -9,6 +9,10 @@ using System.Linq;
 using Verse;
 using Verse.AI;
 using AutoArm.Testing.Helpers;
+using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Logging; using AutoArm.UI;
+using AutoArm.Jobs;
+using AutoArm.Definitions;
+using AutoArm.Weapons;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -567,7 +571,7 @@ namespace AutoArm.Testing.Scenarios
                 }
 
                 weaponStockpile.settings.filter.SetDisallowAll();
-                foreach (var weaponDef in WeaponThingFilterUtility.AllWeapons)
+                foreach (var weaponDef in WeaponValidation.AllWeapons)
                 {
                     weaponStockpile.settings.filter.SetAllow(weaponDef, true);
                 }

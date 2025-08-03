@@ -9,8 +9,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
+using AutoArm.Helpers; using AutoArm.Logging;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Centralized reflection caching (fixes #22)
@@ -18,6 +19,7 @@ namespace AutoArm
     /// </summary>
     public static class ReflectionHelper
     {
+        private static readonly object cacheLock = new object();
         private static Dictionary<string, Type> typeCache = new Dictionary<string, Type>();
         private static Dictionary<string, MethodInfo> methodCache = new Dictionary<string, MethodInfo>();
         private static Dictionary<string, FieldInfo> fieldCache = new Dictionary<string, FieldInfo>();
@@ -32,13 +34,15 @@ namespace AutoArm
             if (string.IsNullOrEmpty(fullTypeName))
                 return null;
 
-            if (!typeCache.TryGetValue(fullTypeName, out Type type))
+            lock (cacheLock)
             {
-                type = GenTypes.AllTypes.FirstOrDefault(t => t.FullName == fullTypeName);
-                typeCache[fullTypeName] = type;
+                if (!typeCache.TryGetValue(fullTypeName, out Type type))
+                {
+                    type = GenTypes.AllTypes.FirstOrDefault(t => t.FullName == fullTypeName);
+                    typeCache[fullTypeName] = type;
+                }
+                return type;
             }
-
-            return type;
         }
 
         /// <summary>
@@ -52,23 +56,25 @@ namespace AutoArm
             string key = $"{type.FullName}.{methodName}";
             if (parameterTypes != null)
             {
-                key += $"({string.Join(",", parameterTypes.Select(t => t.Name))})";
+                key += $"({string.Join(",", parameterTypes.Select(t => t.FullName))})";
             }
 
-            if (!methodCache.TryGetValue(key, out MethodInfo method))
+            lock (cacheLock)
             {
-                if (parameterTypes != null)
+                if (!methodCache.TryGetValue(key, out MethodInfo method))
                 {
-                    method = type.GetMethod(methodName, parameterTypes);
+                    if (parameterTypes != null)
+                    {
+                        method = type.GetMethod(methodName, parameterTypes);
+                    }
+                    else
+                    {
+                        method = type.GetMethod(methodName);
+                    }
+                    methodCache[key] = method;
                 }
-                else
-                {
-                    method = type.GetMethod(methodName);
-                }
-                methodCache[key] = method;
+                return method;
             }
-
-            return method;
         }
 
         /// <summary>
@@ -85,20 +91,22 @@ namespace AutoArm
                 key += $".{flags.Value}";
             }
 
-            if (!fieldCache.TryGetValue(key, out FieldInfo field))
+            lock (cacheLock)
             {
-                if (flags.HasValue)
+                if (!fieldCache.TryGetValue(key, out FieldInfo field))
                 {
-                    field = type.GetField(fieldName, flags.Value);
+                    if (flags.HasValue)
+                    {
+                        field = type.GetField(fieldName, flags.Value);
+                    }
+                    else
+                    {
+                        field = type.GetField(fieldName);
+                    }
+                    fieldCache[key] = field;
                 }
-                else
-                {
-                    field = type.GetField(fieldName);
-                }
-                fieldCache[key] = field;
+                return field;
             }
-
-            return field;
         }
 
         /// <summary>
@@ -111,13 +119,15 @@ namespace AutoArm
 
             string key = $"{type.FullName}.{propertyName}";
 
-            if (!propertyCache.TryGetValue(key, out PropertyInfo property))
+            lock (cacheLock)
             {
-                property = type.GetProperty(propertyName);
-                propertyCache[key] = property;
+                if (!propertyCache.TryGetValue(key, out PropertyInfo property))
+                {
+                    property = type.GetProperty(propertyName);
+                    propertyCache[key] = property;
+                }
+                return property;
             }
-
-            return property;
         }
 
         /// <summary>
@@ -194,11 +204,14 @@ namespace AutoArm
         /// </summary>
         public static void ClearAllCaches()
         {
-            typeCache.Clear();
-            methodCache.Clear();
-            fieldCache.Clear();
-            propertyCache.Clear();
-            fieldGetterCache.Clear();
+            lock (cacheLock)
+            {
+                typeCache.Clear();
+                methodCache.Clear();
+                fieldCache.Clear();
+                propertyCache.Clear();
+                fieldGetterCache.Clear();
+            }
         }
 
         /// <summary>
@@ -208,7 +221,10 @@ namespace AutoArm
         {
             if (!string.IsNullOrEmpty(key) && method != null)
             {
-                methodCache[key] = method;
+                lock (cacheLock)
+                {
+                    methodCache[key] = method;
+                }
             }
         }
 
@@ -220,8 +236,11 @@ namespace AutoArm
             if (string.IsNullOrEmpty(key))
                 return null;
 
-            methodCache.TryGetValue(key, out MethodInfo method);
-            return method;
+            lock (cacheLock)
+            {
+                methodCache.TryGetValue(key, out MethodInfo method);
+                return method;
+            }
         }
 
         /// <summary>
@@ -231,7 +250,10 @@ namespace AutoArm
         {
             if (!string.IsNullOrEmpty(key) && getter != null)
             {
-                fieldGetterCache[key] = getter;
+                lock (cacheLock)
+                {
+                    fieldGetterCache[key] = getter;
+                }
             }
         }
 
@@ -240,23 +262,29 @@ namespace AutoArm
         /// </summary>
         public static T GetCachedFieldValue<T>(string key)
         {
-            if (string.IsNullOrEmpty(key) || !fieldGetterCache.TryGetValue(key, out Func<object> getter))
+            if (string.IsNullOrEmpty(key))
                 return default(T);
+                
+            lock (cacheLock)
+            {
+                if (!fieldGetterCache.TryGetValue(key, out Func<object> getter))
+                    return default(T);
 
-            try
-            {
-                var value = getter();
-                if (value is T typedValue)
-                    return typedValue;
-                return default(T);
-            }
-            catch (Exception ex)
-            {
-                if (AutoArmMod.settings?.debugLogging == true)
+                try
                 {
-                    AutoArmLogger.LogError($"Failed to get cached field value for key {key}", ex);
+                    var value = getter();
+                    if (value is T typedValue)
+                        return typedValue;
+                    return default(T);
                 }
-                return default(T);
+                catch (Exception ex)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.LogError($"Failed to get cached field value for key {key}", ex);
+                    }
+                    return default(T);
+                }
             }
         }
     }

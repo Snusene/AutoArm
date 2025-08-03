@@ -6,11 +6,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-
-namespace AutoArm
+using RimWorld;
+using AutoArm.Logging;
+namespace AutoArm.Weapons
 {
     public static class WeaponValidation
     {
+        // Cached weapon lists
+        private static List<ThingDef> _rangedWeapons;
+        private static List<ThingDef> _meleeWeapons;
+        private static List<ThingDef> _allWeapons;
         // Comprehensive list of items that might return IsWeapon = true but shouldn't be auto-equipped
         private static readonly HashSet<string> ExcludedDefNames = new HashSet<string>
         {
@@ -113,7 +118,14 @@ namespace AutoArm
 
                 // Quick exclude check (safe - just string comparison)
                 if (ExcludedDefNames.Contains(def.defName))
+                {
+                    // Track excluded items for debugging
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        ExcludedItemTracker.TrackExcludedItem(def);
+                    }
                     return false;
+                }
 
                 // Layer 2: Defensive property checks with individual exception handling
                 // Each check is isolated to prevent one failure from breaking everything
@@ -160,10 +172,8 @@ namespace AutoArm
             catch (Exception ex)
             {
                 // If IsWeapon property throws, log and assume it's not a standard weapon
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Log($"ERROR checking IsWeapon for {def?.defName ?? "unknown"}: {ex.Message}");
-                }
+                // This is critical - always log when a weapon crashes the game
+                AutoArmLogger.Error($"Weapon def '{def?.defName ?? "unknown"}' from mod '{def?.modContentPack?.Name ?? "unknown"}' threw exception on IsWeapon check", ex);
                 return false;
             }
         }
@@ -182,7 +192,7 @@ namespace AutoArm
                 // If IsApparel throws, assume it's not apparel (safer for weapon detection)
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmLogger.Log($"ERROR checking IsApparel for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Debug($"IsApparel check failed for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -203,7 +213,7 @@ namespace AutoArm
                 // If equipmentType throws (custom enum values), reject it
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmLogger.Log($"ERROR checking equipmentType for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Debug($"EquipmentType check failed for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -223,7 +233,7 @@ namespace AutoArm
                 // If component check throws (reflection issues), reject it
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmLogger.Log($"ERROR checking CompEquippable for {def?.defName ?? "unknown"}: {ex.Message}");
+                    AutoArmLogger.Debug($"CompEquippable check failed for {def?.defName ?? "unknown"}: {ex.Message}");
                 }
                 return false;
             }
@@ -249,10 +259,11 @@ namespace AutoArm
         /// </summary>
         private static void LogWeaponValidationFailure(ThingDef def, Exception ex)
         {
+            // Only log detailed validation failures in debug mode
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 var details = new System.Text.StringBuilder();
-                details.AppendLine($"ERROR validating weapon: {ex.GetType().Name}");
+                details.AppendLine($"Weapon validation error: {ex.GetType().Name}");
                 details.AppendLine($"  DefName: {def?.defName ?? "null"}");
                 details.AppendLine($"  Label: {def?.label ?? "null"}");
                 details.AppendLine($"  Mod: {def?.modContentPack?.Name ?? "unknown"}");
@@ -262,7 +273,7 @@ namespace AutoArm
                     details.AppendLine($"  Inner: {ex.InnerException.Message}");
                 }
 
-                AutoArmLogger.Log(details.ToString());
+                AutoArmLogger.Debug(details.ToString());
             }
         }
 
@@ -300,6 +311,171 @@ namespace AutoArm
                 reasons.Add("No CompEquippable");
 
             return reasons.Any() ? string.Join(", ", reasons) : "Valid weapon";
+        }
+
+        // ===== Cached weapon lists (from WeaponThingFilterUtility) =====
+
+        /// <summary>
+        /// All valid ranged weapons
+        /// </summary>
+        public static List<ThingDef> RangedWeapons
+        {
+            get
+            {
+                if (_rangedWeapons == null)
+                {
+                    try
+                    {
+                        _rangedWeapons = DefDatabase<ThingDef>.AllDefsListForReading
+                            .Where(td => td.IsRangedWeapon && IsProperWeapon(td))
+                            .OrderBy(td => td.techLevel)
+                            .ThenBy(td => td.label)
+                            .ToList();
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error($"[AutoArm] Failed to load ranged weapons cache: {e.Message}");
+                        AutoArmLogger.Error("Critical error building ranged weapons cache", e);
+                        _rangedWeapons = new List<ThingDef>();
+                    }
+                }
+                return _rangedWeapons;
+            }
+        }
+
+        /// <summary>
+        /// All valid melee weapons
+        /// </summary>
+        public static List<ThingDef> MeleeWeapons
+        {
+            get
+            {
+                if (_meleeWeapons == null)
+                {
+                    try
+                    {
+                        _meleeWeapons = DefDatabase<ThingDef>.AllDefsListForReading
+                            .Where(td => td.IsMeleeWeapon && IsProperWeapon(td))
+                            .OrderBy(td => td.techLevel)
+                            .ThenBy(td => td.label)
+                            .ToList();
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error($"[AutoArm] Failed to load melee weapons cache: {e.Message}");
+                        AutoArmLogger.Error("Critical error building melee weapons cache", e);
+                        _meleeWeapons = new List<ThingDef>();
+                    }
+                }
+                return _meleeWeapons;
+            }
+        }
+
+        /// <summary>
+        /// All valid weapons (ranged and melee)
+        /// </summary>
+        public static List<ThingDef> AllWeapons
+        {
+            get
+            {
+                if (_allWeapons == null)
+                {
+                    try
+                    {
+                        _allWeapons = DefDatabase<ThingDef>.AllDefsListForReading
+                            .Where(td => IsProperWeapon(td))
+                            .OrderBy(td => td.techLevel)
+                            .ThenBy(td => td.label)
+                            .ToList();
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error($"[AutoArm] Failed to load all weapons cache: {e.Message}");
+                        AutoArmLogger.Error("Critical error building all weapons cache", e);
+                        _allWeapons = new List<ThingDef>();
+                    }
+                }
+                return _allWeapons;
+            }
+        }
+
+        /// <summary>
+        /// Check if a weapon is allowed by pawn's outfit filter
+        /// </summary>
+        public static bool IsWeaponAllowedByOutfit(ThingDef weaponDef, Pawn pawn)
+        {
+            if (weaponDef == null || pawn?.outfits == null)
+                return true;
+
+            var policy = pawn.outfits.CurrentApparelPolicy;
+            if (policy?.filter == null)
+                return true;
+
+            return policy.filter.Allows(weaponDef);
+        }
+
+        /// <summary>
+        /// Check if a specific weapon instance is allowed (includes quality checks)
+        /// </summary>
+        public static bool IsWeaponAllowed(ThingWithComps weapon, Pawn pawn)
+        {
+            if (weapon?.def == null || pawn == null)
+                return false;
+
+            var policy = pawn.outfits?.CurrentApparelPolicy;
+            if (policy?.filter == null)
+                return true;
+
+            // Check the actual weapon instance (includes quality checks)
+            return policy.filter.Allows(weapon);
+        }
+
+        /// <summary>
+        /// Clear cached weapon lists
+        /// </summary>
+        public static void ClearCaches()
+        {
+            _rangedWeapons = null;
+            _meleeWeapons = null;
+            _allWeapons = null;
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug("Weapon validation caches cleared");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tracks excluded items for debugging purposes
+    /// </summary>
+    internal static class ExcludedItemTracker
+    {
+        private static Dictionary<string, int> excludedCounts = new Dictionary<string, int>();
+        private static int lastReportTick = 0;
+        private const int REPORT_INTERVAL = 3600; // Report every minute
+
+        public static void TrackExcludedItem(ThingDef def)
+        {
+            if (def?.defName == null) return;
+            
+            if (!excludedCounts.ContainsKey(def.defName))
+                excludedCounts[def.defName] = 0;
+            excludedCounts[def.defName]++;
+            
+            // Report summary periodically
+            int currentTick = Find.TickManager?.TicksGame ?? 0;
+            if (currentTick - lastReportTick > REPORT_INTERVAL && excludedCounts.Count > 0)
+            {
+                var topExcluded = excludedCounts
+                    .OrderByDescending(kvp => kvp.Value)
+                    .Take(5)
+                    .Select(kvp => $"{kvp.Key}: {kvp.Value}")
+                    .ToList();
+                    
+                AutoArmLogger.Debug($"Top excluded items (last minute): {string.Join(", ", topExcluded)}");
+                excludedCounts.Clear();
+                lastReportTick = currentTick;
+            }
         }
     }
 }

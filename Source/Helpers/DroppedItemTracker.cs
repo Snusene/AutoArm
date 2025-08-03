@@ -7,8 +7,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Logging;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Centralized dropped item tracking (fixes #18)
@@ -20,6 +21,11 @@ namespace AutoArm
         private static HashSet<Thing> pendingUpgradeDrops = new HashSet<Thing>();
         private static HashSet<Pawn> pawnsWithSimpleSidearmsSwapInProgress = new HashSet<Pawn>();
         private const int DefaultIgnoreTicks = 300; // 5 seconds
+        
+        // Tracking for summary logging
+        private static int itemsMarkedThisSession = 0;
+        private static int lastSummaryTick = 0;
+        private const int SummaryInterval = 6000; // Report every 100 seconds
 
         /// <summary>
         /// Mark an item as recently dropped
@@ -30,10 +36,20 @@ namespace AutoArm
                 return;
 
             recentlyDroppedItems[item] = Find.TickManager.TicksGame + ignoreTicks;
+            itemsMarkedThisSession++;
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
-                AutoArmLogger.Log($"Marked {item.Label} as recently dropped - will ignore for {ignoreTicks} ticks");
+                AutoArmLogger.Debug($"Marked {item.Label} as recently dropped - will ignore for {ignoreTicks} ticks");
+            }
+            
+            // Report summary periodically
+            int currentTick = Find.TickManager.TicksGame;
+            if (currentTick - lastSummaryTick > SummaryInterval && itemsMarkedThisSession > 0)
+            {
+                AutoArmLogger.Debug($"Dropped item tracking: {itemsMarkedThisSession} items marked in last {SummaryInterval} ticks");
+                itemsMarkedThisSession = 0;
+                lastSummaryTick = currentTick;
             }
         }
 
@@ -46,6 +62,8 @@ namespace AutoArm
                 return false;
 
             CleanupOldEntries();
+            
+            // Clean up periodically without logging
 
             if (recentlyDroppedItems.TryGetValue(item, out int expireTick))
             {
@@ -69,8 +87,9 @@ namespace AutoArm
         /// <summary>
         /// Clean up old entries
         /// </summary>
-        public static void CleanupOldEntries()
+        public static int CleanupOldEntries()
         {
+            int removed = 0;
             int currentTick = Find.TickManager.TicksGame;
 
             var toRemove = recentlyDroppedItems
@@ -81,6 +100,7 @@ namespace AutoArm
             foreach (var item in toRemove)
             {
                 recentlyDroppedItems.Remove(item);
+                removed++;
             }
 
             // Also clean up destroyed pending upgrades
@@ -91,6 +111,7 @@ namespace AutoArm
             foreach (var weapon in destroyedUpgrades)
             {
                 pendingUpgradeDrops.Remove(weapon);
+                removed++;
             }
 
             // Clean up dead/destroyed pawns from swap tracking
@@ -101,7 +122,10 @@ namespace AutoArm
             foreach (var pawn in deadPawns)
             {
                 pawnsWithSimpleSidearmsSwapInProgress.Remove(pawn);
+                removed++;
             }
+            
+            return removed;
         }
 
         /// <summary>
@@ -119,13 +143,7 @@ namespace AutoArm
         /// </summary>
         public static int TrackedItemCount => recentlyDroppedItems.Count;
 
-        /// <summary>
-        /// Check if an item was recently dropped (alias for IsRecentlyDropped)
-        /// </summary>
-        public static bool WasRecentlyDropped(Thing item)
-        {
-            return IsRecentlyDropped(item);
-        }
+
 
         /// <summary>
         /// Mark a weapon as pending drop for same-type upgrade
@@ -138,7 +156,7 @@ namespace AutoArm
                 pendingUpgradeDrops.Add(weapon);
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmLogger.Log($"Marked {weapon.Label} as pending same-type upgrade drop");
+                    AutoArmLogger.Debug($"Marked {weapon.Label} as pending same-type upgrade drop");
                 }
             }
         }
@@ -197,11 +215,7 @@ namespace AutoArm
             {
                 // Mark it as dropped with a longer cooldown to ensure it's ignored during the job sequence
                 MarkAsDropped(weapon, 600); // 10 seconds
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Log($"Marked {weapon.Label} as pending drop for weapon replacement");
-                }
+                // Debug log already handled by MarkAsDropped
             }
         }
 
@@ -213,6 +227,10 @@ namespace AutoArm
             if (pawn != null)
             {
                 pawnsWithSimpleSidearmsSwapInProgress.Add(pawn);
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"SimpleSidearms swap in progress for {pawn.LabelShort}");
+                }
             }
         }
 
@@ -223,7 +241,10 @@ namespace AutoArm
         {
             if (pawn != null)
             {
-                pawnsWithSimpleSidearmsSwapInProgress.Remove(pawn);
+                if (pawnsWithSimpleSidearmsSwapInProgress.Remove(pawn) && AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"SimpleSidearms swap completed for {pawn.LabelShort}");
+                }
             }
         }
 

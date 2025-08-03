@@ -6,6 +6,8 @@ using RimWorld;
 using System;
 using System.Linq;
 using Verse;
+using AutoArm.Helpers;
+using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -56,7 +58,7 @@ namespace AutoArm
                 if (testWeapon != null)
                 {
                     string reason;
-                    bool canPickup = ValidationHelper.IsValidWeapon(testWeapon, pawn, out reason);
+                    bool canPickup = ValidationHelper.CanPawnUseWeapon(pawn, testWeapon, out reason);
                     Log.Message($"[AutoArm Test] Unarmed pawn can pickup {testWeapon.Label}: {canPickup} (reason: {reason})");
                     if (!canPickup && pawn.equipment?.Primary == null)
                     {
@@ -76,7 +78,7 @@ namespace AutoArm
                     if (testWeapon != null)
                     {
                         string reason;
-                        bool canPickup = ValidationHelper.IsValidWeapon(testWeapon, pawn, out reason);
+                        bool canPickup = ValidationHelper.CanPawnUseWeapon(pawn, testWeapon, out reason);
                         Log.Message($"[AutoArm Test] With primary, can pickup {testWeapon.Label}: {canPickup} (reason: {reason})");
                         // Log if SimpleSidearms is incorrectly blocking weapon pickup
                         if (!canPickup && reason != null && reason.Contains("sidearm") && !SimpleSidearmsCompat.IsRememberedSidearm(pawn, originalPrimary))
@@ -121,8 +123,9 @@ namespace AutoArm
                     }
                 }
 
-                // Also log SimpleSidearms settings
-                SimpleSidearmsCompat.LogSimpleSidearmsSettings();
+                // Log SimpleSidearms status
+                Log.Message($"[AutoArm Test] SimpleSidearms loaded: {SimpleSidearmsCompat.IsLoaded()}");
+                Log.Message($"[AutoArm Test] Allow duplicate types: {SimpleSidearmsCompat.ALLOW_DUPLICATE_WEAPON_TYPES}");
 
                 // Log current inventory weight status
                 if (pawn.inventory?.innerContainer != null)
@@ -159,7 +162,7 @@ namespace AutoArm
             Log.Message($"[AutoArm Test] Testing validation for {pawn.Label} with {weapon.Label}");
 
             string reason;
-            bool isValid = ValidationHelper.IsValidWeapon(weapon, pawn, out reason);
+            bool isValid = ValidationHelper.CanPawnUseWeapon(pawn, weapon, out reason);
 
             Log.Message($"[AutoArm Test] Weapon valid: {isValid}");
             if (!isValid)

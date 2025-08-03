@@ -3,11 +3,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Helpers;
+using AutoArm.Logging;
+using AutoArm.Caching; using AutoArm.Weapons;
 
-namespace AutoArm
+namespace AutoArm.Caching
 {
     public static class ImprovedWeaponCacheManager
     {
+        // Cache statistics for monitoring performance
+        private static int cacheHits = 0;
+        private static int cacheMisses = 0;
+        private static int lastStatsLogTick = 0;
+        
         public enum WeaponCategory
         {
             MeleeBasic,      // Low quality melee
@@ -46,8 +54,22 @@ namespace AutoArm
         }
 
         private static Dictionary<Map, WeaponCacheEntry> weaponCache = new Dictionary<Map, WeaponCacheEntry>();
-        private const int CacheLifetime = 10000;
+        private const int BaseCacheLifetime = 10000; // ~167 seconds base
         private const int GridCellSize = 20; // Matching backup version
+        
+        private static int GetCacheLifetime(Map map)
+        {
+            // Scale cache lifetime with colony size for performance
+            int colonySize = map?.mapPawns?.FreeColonists?.Count() ?? 0;
+            if (colonySize >= AutoArmMod.settings.performanceModeColonySize)
+            {
+                // At 35 pawns: 20000 ticks (~333 seconds)
+                // At 50 pawns: 30000 ticks (~500 seconds)
+                int extraLifetime = (colonySize - 30) * 600;
+                return BaseCacheLifetime + extraLifetime;
+            }
+            return BaseCacheLifetime;
+        }
         
         // Object pool for HashSets to avoid allocations in hot path
         private static Stack<HashSet<ThingWithComps>> weaponSetPool = new Stack<HashSet<ThingWithComps>>();
@@ -76,7 +98,7 @@ namespace AutoArm
 
             if (cache.Weapons.Count >= MaxWeaponsPerCache)
             {
-                AutoArmLogger.Log($"Cache full ({MaxWeaponsPerCache} weapons), skipping {weapon.Label}");
+                AutoArmLogger.Warn($"Weapon cache full ({MaxWeaponsPerCache} weapons) for map {weapon.Map.uniqueID}, skipping {weapon.Label}");
                 return;
             }
 
@@ -189,6 +211,25 @@ namespace AutoArm
             }
         }
 
+        private static void LogCacheStats()
+        {
+            if (!Prefs.DevMode) return;
+            
+            int currentTick = Find.TickManager.TicksGame;
+            if (currentTick - lastStatsLogTick > 6000) // Log every 100 seconds
+            {
+                int total = cacheHits + cacheMisses;
+                if (total > 0)
+                {
+                    float hitRate = (float)cacheHits / total * 100f;
+                    AutoArmLogger.Debug($"WeaponCacheManager stats - Hit rate: {hitRate:F1}% ({cacheHits} hits, {cacheMisses} misses)");
+                }
+                lastStatsLogTick = currentTick;
+                cacheHits = 0;
+                cacheMisses = 0;
+            }
+        }
+        
         public static List<ThingWithComps> GetWeaponsNear(Map map, IntVec3 position, float maxDistance)
         {
             // Declare variables outside try block for catch block access
@@ -297,7 +338,7 @@ namespace AutoArm
             }
             catch (Exception ex)
             {
-                AutoArmLogger.Log($"ERROR in GetWeaponsNear for map {map?.uniqueID ?? -1}: {ex.Message}\nStack trace: {ex.StackTrace}");
+                AutoArmLogger.Error($"GetWeaponsNear failed for map {map?.uniqueID ?? -1} at {position}", ex);
                 
                 // Return collections to pool on error
                 if (weaponSetPool.Count < 10 && foundWeapons != null)
@@ -318,6 +359,9 @@ namespace AutoArm
         {
             if (map == null) return;
 
+            bool hadCache = weaponCache.ContainsKey(map);
+            int weaponCount = hadCache ? weaponCache[map].Weapons.Count : 0;
+            
             if (weaponCache.ContainsKey(map))
             {
                 weaponCache.Remove(map);
@@ -331,7 +375,8 @@ namespace AutoArm
             // Also clear weapon base score cache when map cache is invalidated
             WeaponScoringHelper.ClearWeaponScoreCache();
 
-            AutoArmLogger.Log($"Invalidated weapon cache for {map}");
+            if (hadCache)
+                AutoArmLogger.Debug($"Invalidated weapon cache for map {map.uniqueID} ({weaponCount} weapons)");
         }
 
         /// <summary>
@@ -418,6 +463,9 @@ namespace AutoArm
         {
             if (!weaponCache.TryGetValue(map, out var cache))
             {
+                cacheMisses++;
+                LogCacheStats();
+                
                 if (rebuildStates.TryGetValue(map, out var rebuildState))
                 {
                     if (Find.TickManager.TicksGame - rebuildState.LastProcessTick >= RebuildDelayTicks)
@@ -432,6 +480,10 @@ namespace AutoArm
                     return weaponCache.TryGetValue(map, out cache) ? cache : new WeaponCacheEntry();
                 }
             }
+            else
+            {
+                cacheHits++;
+            }
             return cache;
         }
 
@@ -443,7 +495,8 @@ namespace AutoArm
             try
             {
                 allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).ToList();
-                AutoArmLogger.Log($"Found {allWeapons.Count} weapons via ThingRequestGroup.Weapon");
+                if (Prefs.DevMode)
+                    AutoArmLogger.Debug($"StartRebuild: Found {allWeapons.Count} weapons via ThingRequestGroup.Weapon for map {map.uniqueID}");
                 
                 // Debug: Log what weapons are equipped by colonists
                 var equippedWeapons = map.mapPawns.FreeColonists
@@ -477,8 +530,8 @@ namespace AutoArm
             }
             catch (Exception ex)
             {
-                Log.Error($"[AutoArm] Critical error getting weapon list from listerThings: {ex.Message}");
-                Log.Error($"[AutoArm] This might be caused by Kiiro Race or other mods interfering with ThingRequestGroup");
+                AutoArmLogger.Error($"Critical error getting weapon list from listerThings for map {map.uniqueID}", ex);
+                AutoArmLogger.Error($"This might be caused by mods interfering with ThingRequestGroup");
                 allWeapons = new List<Thing>(); // Empty list to prevent crash
             }
 
@@ -545,24 +598,26 @@ namespace AutoArm
                 }
                 catch (Exception ex)
                 {
-                    // Log but continue - don't let one bad building break the whole process
-                    AutoArmLogger.Log($"Error checking storage building {building?.Label ?? "unknown"}: {ex.Message}");
-                }
+                // Log but continue - don't let one bad building break the whole process
+                if (Prefs.DevMode)
+                        AutoArmLogger.Debug($"Error checking storage building {building?.Label ?? "unknown"}: {ex.Message}");
+            }
             }
 
             if (weaponsInStorage.Count > 0)
             {
-                AutoArmLogger.Log($"Found {weaponsInStorage.Count} additional weapons in storage containers");
+                if (Prefs.DevMode)
+                    AutoArmLogger.Debug($"Found {weaponsInStorage.Count} additional weapons in storage containers");
                 allWeapons.AddRange(weaponsInStorage);
             }
         }
         catch (Exception ex)
         {
-            Log.Error($"[AutoArm] Error checking weapons in storage: {ex.Message}");
+            AutoArmLogger.Error($"Error checking weapons in storage for map {map.uniqueID}", ex);
             // Continue with weapons we already found
         }
 
-        AutoArmLogger.Log($"[WEAPON CACHE] Starting incremental rebuild for {map} - {allWeapons.Count} total weapons (including {weaponsInStorage.Count} in storage)");
+        AutoArmLogger.Debug($"Starting incremental rebuild for map {map.uniqueID}: {allWeapons.Count} total weapons ({weaponsInStorage.Count} in storage)");
         
         // Debug: Log first few weapons found
         int debugCount = 0;
@@ -593,7 +648,7 @@ namespace AutoArm
                 rebuildStates.Remove(map);
 
                 sw.Stop();
-                AutoArmLogger.Log($"Completed rebuild immediately with {state.PartialCache.Weapons.Count} weapons in {sw.ElapsedMilliseconds}ms");
+                AutoArmLogger.Debug($"Completed weapon cache rebuild for map {map.uniqueID}: {state.PartialCache.Weapons.Count} weapons cached in {sw.ElapsedMilliseconds}ms");
             }
             else
             {
@@ -612,7 +667,7 @@ namespace AutoArm
                 weaponCache[map] = state.PartialCache;
                 rebuildStates.Remove(map);
 
-                AutoArmLogger.Log($"Completed incremental rebuild with {state.PartialCache.Weapons.Count} weapons");
+                AutoArmLogger.Debug($"Completed incremental rebuild for map {map.uniqueID}: {state.PartialCache.Weapons.Count} weapons cached");
             }
         }
 
@@ -672,8 +727,8 @@ namespace AutoArm
                 }
                 catch (Exception ex)
                 {
-                    // Catch any exceptions from problematic weapons (like Kiiro Race items)
-                    AutoArmLogger.Log($"ERROR processing weapon during rebuild: {ex.Message}\nWeapon: {thing?.Label ?? "unknown"}");
+                    // Catch any exceptions from problematic modded weapons
+                    AutoArmLogger.Error($"Failed to process weapon '{thing?.Label ?? "unknown"}' during rebuild", ex);
                     // Continue processing other weapons
                 }
             }

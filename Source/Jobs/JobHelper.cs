@@ -8,8 +8,11 @@ using RimWorld;
 using System.Collections.Generic;
 using Verse;
 using Verse.AI;
+using AutoArm.Helpers;
+using AutoArm.Logging;
+using AutoArm.Jobs;
 
-namespace AutoArm
+namespace AutoArm.Jobs
 {
     /// <summary>
     /// Centralized job handling (fixes #17, #27)
@@ -54,39 +57,59 @@ namespace AutoArm
         };
 
         private static JobDef equipSecondaryJobDef;
+        private static bool equipSecondaryJobDefChecked = false;
+        
+        // String prefix sets for performance
+        private static readonly HashSet<string> CriticalJobPatterns = new HashSet<string>
+        {
+            "Ritual", "Surgery", "Operate", "Prisoner", "Mental", "PrepareCaravan"
+        };
+        
+        private static readonly HashSet<string> SafeJobPrefixes = new HashSet<string>
+        {
+            "Joy", "Play", "Social", "Relax", "Clean", "Wander", "Wait", 
+            "IdleJob", "Skygaze", "Meditate", "ViewArt", "VisitGrave", 
+            "BuildSnowman", "CloudWatch", "StandAndBeSociallyActive"
+        };
 
         /// <summary>
         /// Create an equip job (fixes #27)
         /// </summary>
         public static Job CreateEquipJob(ThingWithComps weapon, bool isSidearm = false)
         {
-            AutoArmLogger.Log($"[CREATE JOB] CreateEquipJob called - weapon: {weapon?.Label ?? "null"}, isSidearm: {isSidearm}");
+            // Weapon null check
             
             if (weapon == null)
             {
-                AutoArmLogger.Log("[CREATE JOB] Weapon is null, returning null");
+                // Weapon is null
                 return null;
             }
 
             if (isSidearm && SimpleSidearmsCompat.IsLoaded())
             {
-                // Lazy load the secondary job def
-                if (equipSecondaryJobDef == null)
+                // Lazy load the secondary job def with caching
+                if (!equipSecondaryJobDefChecked)
                 {
                     equipSecondaryJobDef = DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary");
+                    equipSecondaryJobDefChecked = true;
+                    if (equipSecondaryJobDef == null)
+                    {
+                        // EquipSecondary job def not found
+                    }
                 }
 
                 if (equipSecondaryJobDef != null)
                 {
+                    // Creating SimpleSidearms job
                     return JobMaker.MakeJob(equipSecondaryJobDef, weapon);
                 }
             }
 
             // Default to vanilla equip job
-            AutoArmLogger.Log($"[CREATE JOB] Creating vanilla equip job for {weapon.Label}");
+            // Creating vanilla equip job
             var job = JobMaker.MakeJob(JobDefOf.Equip, weapon);
             job.count = 1;
-            AutoArmLogger.Log($"[CREATE JOB] Job created: {job?.def?.defName ?? "null"}");
+            // Job created
             return job;
         }
 
@@ -109,17 +132,21 @@ namespace AutoArm
 
             // Check always critical jobs
             if (AlwaysCriticalJobs.Contains(jobDef))
+            {
+                // Always critical job
                 return true;
+            }
 
             // Check job name patterns
             var defName = jobDef.defName;
-            if (defName.Contains("Ritual") ||
-                defName.Contains("Surgery") ||
-                defName.Contains("Operate") ||
-                defName.Contains("Prisoner") ||
-                defName.Contains("Mental") ||
-                defName.Contains("PrepareCaravan"))
-                return true;
+            foreach (var pattern in CriticalJobPatterns)
+            {
+                if (defName.Contains(pattern))
+                {
+                    // Critical pattern found
+                    return true;
+                }
+            }
 
             return false;
         }
@@ -138,28 +165,26 @@ namespace AutoArm
             if (AlwaysSafeToInterrupt.Contains(jobDef))
                 return true;
 
-            // Check if it's interruptible for major upgrade
-            if (upgradePercentage >= 1.15f && InterruptibleForMajorUpgrade.Contains(jobDef))
+            // Check if it's interruptible for major upgrade (15% better by default)
+            float majorUpgradeThreshold = 1f + (AutoArmMod.settings.weaponUpgradeThreshold - 1f) * 3f; // Triple the threshold for interrupting work
+            if (upgradePercentage >= majorUpgradeThreshold && InterruptibleForMajorUpgrade.Contains(jobDef))
                 return true;
 
             // Check job name patterns
             var defName = jobDef.defName;
-            return defName.StartsWith("Joy") ||
-                   defName.StartsWith("Play") ||
-                   defName.Contains("Social") ||
-                   defName.Contains("Relax") ||
-                   defName.Contains("Clean") ||
-                   defName.Contains("Haul") && !defName.Contains("Urgent") && !defName.Contains("Critical") ||
-                   defName.Contains("Wander") ||
-                   defName.Contains("Wait") ||
-                   defName.Contains("IdleJob") ||
-                   defName.Contains("Skygaze") ||
-                   defName.Contains("Meditate") ||
-                   defName.Contains("ViewArt") ||
-                   defName.Contains("VisitGrave") ||
-                   defName.Contains("BuildSnowman") ||
-                   defName.Contains("CloudWatch") ||
-                   defName.Contains("StandAndBeSociallyActive");
+            
+            // Special handling for haul jobs
+            if (defName.Contains("Haul"))
+                return !defName.Contains("Urgent") && !defName.Contains("Critical");
+            
+            // Check safe job prefixes
+            foreach (var prefix in SafeJobPrefixes)
+            {
+                if (defName.Contains(prefix))
+                    return true;
+            }
+            
+            return false;
         }
 
         /// <summary>
@@ -196,72 +221,6 @@ namespace AutoArm
             return false;
         }
 
-        /// <summary>
-        /// Check if pawn should interrupt current job for weapon pickup
-        /// </summary>
-        public static bool ShouldInterruptForWeapon(Pawn pawn, ThingWithComps newWeapon, float currentScore = 0f, float newScore = 0f)
-        {
-            if (pawn?.CurJob == null)
-                return true;
 
-            // Never interrupt critical jobs
-            if (IsCriticalJob(pawn))
-                return false;
-
-            bool hasWeapon = pawn.equipment?.Primary != null;
-
-            // Always interrupt for unarmed pawns unless doing critical work
-            if (!hasWeapon)
-            {
-                AutoArmLogger.LogPawn(pawn, $"UNARMED - will interrupt {pawn.CurJob.def.defName} to get weapon");
-                return true;
-            }
-
-            // Check if job is safe to interrupt
-            if (IsSafeToInterrupt(pawn.CurJob))
-            {
-                AutoArmLogger.LogPawn(pawn, $"Interrupting safe job {pawn.CurJob.def.defName} for weapon upgrade");
-                return true;
-            }
-
-            // Check upgrade percentage for non-safe jobs
-            if (currentScore > 0 && newScore > 0)
-            {
-                float upgradePercentage = newScore / currentScore;
-                if (upgradePercentage >= 1.10f)
-                {
-                    AutoArmLogger.LogPawn(pawn, $"{(upgradePercentage - 1f) * 100f:F0}% upgrade available - interrupting {pawn.CurJob.def.defName}");
-                    return true;
-                }
-            }
-
-            // Check if it's low priority work
-            if (IsLowPriorityWork(pawn))
-            {
-                AutoArmLogger.LogPawn(pawn, $"Interrupting low priority work {pawn.CurJob.def.defName} for weapon upgrade");
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Try to start a job with appropriate interruption
-        /// </summary>
-        public static bool TryStartJob(Pawn pawn, Job job, bool forceInterrupt = false)
-        {
-            if (pawn?.jobs == null || job == null)
-                return false;
-
-            if (forceInterrupt || pawn.CurJob == null)
-            {
-                pawn.jobs.StartJob(job, JobCondition.InterruptForced);
-                return true;
-            }
-            else
-            {
-                return pawn.jobs.TryTakeOrderedJob(job, JobTag.Misc);
-            }
-        }
     }
 }

@@ -73,42 +73,50 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Source\AutoArmGameComponent.cs" />
-    <Compile Include="Source\AutoArmMod.cs" />
-    <Compile Include="Source\AutoArmSettings.cs" />
-    <Compile Include="Source\compatibility\CECompat.cs" />
-    <Compile Include="Source\compatibility\InfusionCompat.cs" />
-    <Compile Include="Source\compatibility\PickUpAndHaulCompat.cs" />
-    <Compile Include="Source\compatibility\SimpleSidearmsCompat.cs" />
-    <Compile Include="Source\ConflictDetection.cs" />
+    <Compile Include="Source\Core\AutoArmGameComponent.cs" />
+    <Compile Include="Source\Core\AutoArmMod.cs" />
+    <Compile Include="Source\Core\AutoArmSettings.cs" />
+    <Compile Include="Source\Core\ModInit.cs" />
+    <Compile Include="Source\Caching\MemoryCleanupManager.cs" />
+    <Compile Include="Source\Caching\WeaponCacheManager.cs" />
+    <Compile Include="Source\Caching\WeaponScoreCache.cs" />
+    <Compile Include="Source\Compatibility\CECompat.cs" />
+    <Compile Include="Source\Compatibility\InfusionCompat.cs" />
+    <Compile Include="Source\Compatibility\PickUpAndHaulCompat.cs" />
+    <Compile Include="Source\Compatibility\SimpleSidearmsCompat.cs" />
+    <Compile Include="Source\Definitions\VanillaWeaponDefOf.cs" />
     <Compile Include="Source\Helpers\CleanupHelper.cs" />
     <Compile Include="Source\Helpers\DistanceHelper.cs" />
     <Compile Include="Source\Helpers\DroppedItemTracker.cs" />
     <Compile Include="Source\Helpers\ForcedWeaponHelper.cs" />
-    <Compile Include="Source\Helpers\JobGiver_PickUpBetterWeapon.cs" />
-    <Compile Include="Source\Helpers\JobHelper.cs" />
     <Compile Include="Source\Helpers\NotificationHelper.cs" />
     <Compile Include="Source\Helpers\ReflectionHelper.cs" />
     <Compile Include="Source\Helpers\SafeAccess.cs" />
-    <Compile Include="Source\Helpers\SettingsCacheHelper.cs" />
     <Compile Include="Source\Helpers\TimingHelper.cs" />
     <Compile Include="Source\Helpers\ValidationHelper.cs" />
-    <Compile Include="Source\Helpers\WeaponBlacklist.cs" />
-    <Compile Include="Source\Helpers\WeaponScoringHelper.cs" />
-    <Compile Include="Source\JobGiverHelpers.cs" />
+    <Compile Include="Source\Jobs\JobGiverHelpers.cs" />
+    <Compile Include="Source\Jobs\JobGiver_PickUpBetterWeapon.cs" />
+    <Compile Include="Source\Jobs\JobHelper.cs" />
     <Compile Include="Source\Logging\AutoArmLogger.cs" />
-    <Compile Include="Source\MemoryCleanupManager.cs" />
-    <Compile Include="Source\ModInit.cs" />
     <Compile Include="Source\Patches\ChildWeaponPatches.cs" />
     <Compile Include="Source\Patches\EquipmentPatches.cs" />
     <Compile Include="Source\Patches\InventoryPatches.cs" />
     <Compile Include="Source\Patches\OutfitFilterPatches.cs" />
     <Compile Include="Source\Patches\UIPatches.cs" />
+    <Compile Include="Source\Patches\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\Patches\WeaponCachePatches.cs" />
+    <Compile Include="Source\UI\ConflictDetection.cs" />
+    <Compile Include="Source\UI\WeaponTabInjector.cs" />
+    <Compile Include="Source\Core\WeaponAutoEquip.cs" />
+    <Compile Include="Source\Core\WeaponBlacklist.cs" />
+    <Compile Include="Source\Core\WeaponScoringHelper.cs" />
+    <Compile Include="Source\Core\WeaponValidation.cs" />
     <Compile Include="Source\Testing\Helpers\SafeTestCleanup.cs" />
     <Compile Include="Source\Testing\Helpers\TestLogFilter.cs" />
     <Compile Include="Source\Testing\Helpers\TestResultBuilder.cs" />
+    <Compile Include="Source\Testing\Helpers\TestWeaponProvider.cs" />
     <Compile Include="Source\Testing\PerformanceTestRunner.cs" />
+    <Compile Include="Source\Testing\Scenarios\AuthenticRaidTest.cs" />
     <Compile Include="Source\Testing\Scenarios\BasicTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CompatibilityTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CoreTests.cs" />
@@ -133,23 +141,17 @@
     <Compile Include="Source\Testing\TestSimpleSidearmsValidation.cs" />
     <Compile Include="Source\Testing\TestSuites.cs" />
     <Compile Include="Source\Testing\WeaponCategorizationDiagnostic.cs" />
-    <Compile Include="Source\UnifiedTickRarePatch.cs" />
-    <Compile Include="Source\VanillaWeaponDefOf.cs" />
-    <Compile Include="Source\WeaponAutoEquip.cs" />
-    <Compile Include="Source\WeaponCacheManager.cs" />
-    <Compile Include="Source\WeaponScoreCache.cs" />
-    <Compile Include="Source\WeaponValidation.cs" />
     <Compile Include="Source\Testing\WeaponDecisionLog.cs" />
-    <Compile Include="Source\WeaponTabInjector.cs" />
-    <Compile Include="Source\WeaponThingFilterUtility.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".gitignore" />
     <Content Include="About\About.xml" />
     <Content Include="bin\Debug\AutoArm.dll" />
     <Content Include="bin\Debug\AutoArm.pdb" />
+    <Content Include="netlify\constants.js" />
     <Content Include="netlify\index.html" />
     <Content Include="Languages\English\Keyed\AutoArm.xml" />
+    <Content Include="netlify\styles.css" />
     <Content Include="netlify\weapons-data.js" />
     <Content Include="obj\Debug\AutoArm.csproj.FileListAbsolute.txt" />
     <Content Include="obj\Debug\AutoArm.dll" />
@@ -287,5 +289,8 @@ if exist "%25DST%25\Assemblies\AutoArm.dll" (
 echo.
 pause
 exit /b 0</PostBuildEvent>
+  </PropertyGroup>
+  <PropertyGroup>
+    <PreBuildEvent>cd "$(SolutionDir)" &amp;&amp; powershell -ExecutionPolicy Bypass -File "extract-constants.ps1"</PreBuildEvent>
   </PropertyGroup>
 </Project>

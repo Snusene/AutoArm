@@ -6,6 +6,9 @@ using HarmonyLib;
 using RimWorld;
 using Verse;
 using Verse.AI;
+using AutoArm.Caching; using AutoArm.Logging;
+using AutoArm.Weapons;
+using AutoArm.Jobs;
 
 namespace AutoArm
 {

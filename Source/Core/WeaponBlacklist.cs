@@ -7,8 +7,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-
-namespace AutoArm
+using AutoArm.Logging;
+namespace AutoArm.Weapons
 {
     /// <summary>
     /// Tracks weapons that have failed to equip due to mod restrictions
@@ -23,7 +23,7 @@ namespace AutoArm
         private static Dictionary<Pawn, Dictionary<ThingDef, int>> blacklistTimestamps = new Dictionary<Pawn, Dictionary<ThingDef, int>>();
 
         // How long to keep weapons blacklisted (1 minute in-game)
-        private const int BLACKLIST_DURATION = 60;
+        private const int BLACKLIST_DURATION = 3600; // 60 seconds * 60 ticks/second
 
         /// <summary>
         /// Check if a weapon def is blacklisted for a pawn
@@ -59,7 +59,10 @@ namespace AutoArm
             blacklistTimestamps[pawn][weaponDef] = Find.TickManager.TicksGame;
 
             // Log the blacklisting
-            AutoArmLogger.LogPawn(pawn, $"Blacklisted {weaponDef.label} - {reason ?? "mod restriction"}");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.LogPawn(pawn, $"Blacklisted {weaponDef.label} - {reason ?? "mod restriction"}");
+            }
         }
 
         /// <summary>
@@ -72,7 +75,14 @@ namespace AutoArm
 
             if (blacklistedWeapons.ContainsKey(pawn))
             {
-                blacklistedWeapons[pawn].Remove(weaponDef);
+                if (blacklistedWeapons[pawn].Remove(weaponDef))
+                {
+                    // Log removal of important blacklist entries
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Removed {weaponDef.label} from blacklist");
+                    }
+                }
 
                 if (blacklistTimestamps.ContainsKey(pawn))
                 {
@@ -89,6 +99,13 @@ namespace AutoArm
             if (pawn == null)
                 return;
 
+            // Log when clearing blacklist (important state change)
+            if (blacklistedWeapons.ContainsKey(pawn) && blacklistedWeapons[pawn].Any())
+            {
+                int count = blacklistedWeapons[pawn].Count;
+                AutoArmLogger.Info($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared weapon blacklist ({count} weapons)");
+            }
+
             blacklistedWeapons.Remove(pawn);
             blacklistTimestamps.Remove(pawn);
         }
@@ -99,6 +116,8 @@ namespace AutoArm
         public static void CleanupOldEntries()
         {
             int currentTick = Find.TickManager.TicksGame;
+            int deadPawnCount = 0;
+            int expiredCount = 0;
 
             // Clean up dead pawns
             var deadPawns = blacklistedWeapons.Keys.Where(p => p.Destroyed || p.Dead).ToList();
@@ -106,6 +125,7 @@ namespace AutoArm
             {
                 blacklistedWeapons.Remove(pawn);
                 blacklistTimestamps.Remove(pawn);
+                deadPawnCount++;
             }
 
             // Clean up expired blacklist entries
@@ -122,6 +142,7 @@ namespace AutoArm
                 foreach (var weaponDef in expiredWeapons)
                 {
                     RemoveFromBlacklist(weaponDef, pawn);
+                    expiredCount++;
                 }
 
                 // Remove pawn if no blacklisted weapons remain
@@ -130,6 +151,12 @@ namespace AutoArm
                     blacklistedWeapons.Remove(pawn);
                     blacklistTimestamps.Remove(pawn);
                 }
+            }
+
+            // Log cleanup summary if anything was cleaned
+            if ((deadPawnCount > 0 || expiredCount > 0) && AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"Blacklist cleanup: {deadPawnCount} dead pawns, {expiredCount} expired weapons");
             }
         }
 

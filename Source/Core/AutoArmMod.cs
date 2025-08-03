@@ -1,4 +1,4 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Main mod class with settings UI and mod initialization  
 // Uses AutoArmSettings for configuration, AutoArmLoggerWindow for debug tools, ConflictDetection for compatibility checks
 
@@ -9,7 +9,11 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 using AutoArm.Testing;
-
+using AutoArm.Caching;
+using AutoArm.Helpers;
+using AutoArm.Jobs;
+using AutoArm.Weapons;
+using AutoArm.Logging;
 namespace AutoArm
 {
     public class AutoArmMod : Mod
@@ -51,7 +55,7 @@ namespace AutoArm
             {
                 settings = new AutoArmSettings();
                 settings.modEnabled = true;
-                AutoArmLogger.Log("[AutoArmMod] Static constructor - created default enabled settings");
+                AutoArmLogger.Debug("[AutoArmMod] Static constructor - created default enabled settings");
             }
         }
 
@@ -70,7 +74,7 @@ namespace AutoArm
                     // Create test-enabled settings rather than loading from disk
                     settings = new AutoArmSettings();
                     settings.modEnabled = true;
-                    AutoArmLogger.Log("[AutoArmMod] Constructor during test - created new enabled settings");
+                    AutoArmLogger.Debug("[AutoArmMod] Constructor during test - created new enabled settings");
                 }
                 else
                 {
@@ -79,10 +83,10 @@ namespace AutoArm
                     settings.modEnabled = true;
                     if (!wasEnabled)
                     {
-                        AutoArmLogger.Log("[AutoArmMod] Constructor during test - force enabled mod");
+                        AutoArmLogger.Debug("[AutoArmMod] Constructor during test - force enabled mod");
                     }
                 }
-                AutoArmLogger.Log($"[AutoArmMod] Constructor during test - modEnabled: {settings?.modEnabled}");
+                AutoArmLogger.Debug($"[AutoArmMod] Constructor during test - modEnabled: {settings?.modEnabled}");
             }
         }
 
@@ -281,9 +285,9 @@ namespace AutoArm
                 TooltipHandler.TipRegion(fullRect, tooltip);
             }
 
-            if (oldValue != value)
+            if (oldValue != value && settings.debugLogging)
             {
-                AutoArmLogger.Log($"Setting changed: {label} = {value}");
+                AutoArmLogger.Debug($"Setting changed: {label} = {value}");
             }
         }
 
@@ -388,15 +392,15 @@ namespace AutoArm
                 TooltipHandler.TipRegion(labelRect, tooltip);
             }
 
-            if (Math.Abs(oldValue - value) > 0.01f)
+            if (Math.Abs(oldValue - value) > 0.01f && settings.debugLogging)
             {
                 if (isWeaponPreference)
                 {
-                    AutoArmLogger.Log($"Weapon preference changed to: {displayValue} (value: {value:F2})");
+                    AutoArmLogger.Debug($"Weapon preference changed to: {displayValue} (value: {value:F2})");
                 }
                 else
                 {
-                    AutoArmLogger.Log($"Setting changed: {label} = {value:F2}");
+                    AutoArmLogger.Debug($"Setting changed: {label} = {value:F2}");
                 }
             }
         }
@@ -408,16 +412,21 @@ namespace AutoArm
             DrawCheckbox(listing, "Enable mod", ref settings.modEnabled,
                 "Master toggle for all mod functionality.");
             
-            // Debug log when mod enabled state changes
+            // Log when mod enabled state changes (always log this important change)
             if (oldModEnabled != settings.modEnabled)
             {
-                AutoArmLogger.Log($"[SETTINGS] Mod enabled changed from {oldModEnabled} to {settings.modEnabled}");
+                AutoArmLogger.Info($"AutoArm mod {(settings.modEnabled ? "enabled" : "disabled")}");
             }
 
             // If mod was just re-enabled, clear all caches and cooldowns
             if (!oldModEnabled && settings.modEnabled)
             {
-                AutoArmLogger.Log("[SETTINGS] Mod was just re-enabled, clearing caches...");
+                // Only log cache clearing details if debug logging is on
+                if (settings.debugLogging)
+                {
+                    AutoArmLogger.Debug("[SETTINGS] Mod was just re-enabled, clearing caches...");
+                }
+                
                 // Only clear caches if we're in an active game
                 if (Current.Game != null)
                 {
@@ -433,19 +442,25 @@ namespace AutoArm
                     // Clear any SimpleSidearms state
                     if (SimpleSidearmsCompat.IsLoaded())
                     {
-                        SimpleSidearmsCompat.ClearFailedSearchTracking();
+                        // SimpleSidearms cache clearing is handled automatically
                     }
 
-                    // Clear settings cache to ensure fresh values
-                    SettingsCacheHelper.ClearAllCaches();
+                    // Clear generic cache to ensure fresh values
+                    CleanupHelper.ClearAllCaches();
 
-                    AutoArmLogger.Log("Mod re-enabled - cleared all caches and cooldowns, rebuilding weapon cache");
+                    if (settings.debugLogging)
+                    {
+                        AutoArmLogger.Debug("Mod re-enabled - cleared all caches and cooldowns, rebuilding weapon cache");
+                    }
                 }
                 else
                 {
-                    // Just clear the settings cache when not in game
-                    SettingsCacheHelper.ClearAllCaches();
-                    AutoArmLogger.Log("Mod re-enabled in main menu - cleared settings cache only");
+                    // Just clear the generic cache when not in game
+                    CleanupHelper.ClearAllCaches();
+                    if (settings.debugLogging)
+                    {
+                        AutoArmLogger.Debug("Mod re-enabled in main menu - cleared settings cache only");
+                    }
                 }
             }
 
@@ -487,7 +502,7 @@ namespace AutoArm
             listing.Gap(SMALL_GAP);
 
             DrawCheckbox(listing, "Allow quality upgrades for forced weapons", ref settings.allowForcedWeaponUpgrades,
-                "When enabled, colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver → masterwork revolver).");
+                "When enabled, colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver ? masterwork revolver).");
 
             listing.Gap(SMALL_GAP);
 
@@ -524,7 +539,7 @@ namespace AutoArm
             Color oldColor = GUI.color;
             GUI.color = isLoaded ? Color.green : Color.gray;
             var rect = listing.GetRect(Text.LineHeight);
-            Widgets.Label(rect, $"{modName}: {(isLoaded ? "✓ Loaded" : "✗ Not found")}");
+            Widgets.Label(rect, $"{modName}: {(isLoaded ? "? Loaded" : "? Not found")}");
             GUI.color = oldColor;
         }
 
@@ -575,13 +590,16 @@ namespace AutoArm
             if (!ceAmmoSystemEnabled && settings.checkCEAmmo)
             {
                 settings.checkCEAmmo = false;
-                AutoArmLogger.Log("CE ammo system is disabled - forcing ammo checks off");
+                if (settings.debugLogging)
+                {
+                    AutoArmLogger.Debug("CE ammo system is disabled - forcing ammo checks off");
+                }
             }
             // Auto-enable only when CE ammo system is turned on (state change from off to on)
             else if (ceAmmoSystemEnabled && !settings.lastKnownCEAmmoState && stateChanged)
             {
                 settings.checkCEAmmo = true;
-                AutoArmLogger.Log("CE ammo system was enabled - auto-enabling ammo checks");
+                AutoArmLogger.Info("Combat Extended ammo system detected - enabling ammo checks");
             }
 
             // Update the tracked state
@@ -612,7 +630,7 @@ namespace AutoArm
                 oldColor = GUI.color;
                 GUI.color = new Color(1f, 0.8f, 0.4f); // Orange warning
                 var warningRect = listing.GetRect(Text.LineHeight);
-                Widgets.Label(warningRect, "⚠ CE ammo system is disabled");
+                Widgets.Label(warningRect, "? CE ammo system is disabled");
                 GUI.color = oldColor;
             }
         }
@@ -636,7 +654,7 @@ namespace AutoArm
                 Color oldColor = GUI.color;
                 GUI.color = new Color(1f, 0.8f, 0.4f);
                 var warningRect = listing.GetRect(Text.LineHeight);
-                Widgets.Label(warningRect, "⚠ Risk of weapon swap loops");
+                Widgets.Label(warningRect, "? Risk of weapon swap loops");
                 GUI.color = oldColor;
             }
 
@@ -707,7 +725,7 @@ namespace AutoArm
                     Color oldColor = GUI.color;
                     GUI.color = new Color(1f, 0.8f, 0.4f);
                     var warningRect = listing.GetRect(Text.LineHeight);
-                    Widgets.Label(warningRect, "⚠ What could go wrong?");
+                    Widgets.Label(warningRect, "? What could go wrong?");
                     GUI.color = oldColor;
                 }
             }
@@ -743,7 +761,10 @@ namespace AutoArm
             settings.childrenMinAge = Mathf.Clamp(settings.childrenMinAge, CHILD_AGE_MIN, CHILD_AGE_MAX);
             settings.weaponTypePreference = Mathf.Clamp(settings.weaponTypePreference, -1f, 1f);
 
-            AutoArmLogger.Log($"Settings validated - Threshold: {settings.weaponUpgradeThreshold:F2}, Child Age: {settings.childrenMinAge}, Weapon Preference: {settings.weaponTypePreference:F2}");
+            if (settings.debugLogging)
+            {
+                AutoArmLogger.Debug($"Settings validated - Threshold: {settings.weaponUpgradeThreshold:F2}, Child Age: {settings.childrenMinAge}, Weapon Preference: {settings.weaponTypePreference:F2}");
+            }
         }
 
         public override string SettingsCategory()
@@ -773,7 +794,10 @@ namespace AutoArm
                     {
                         ForcedWeaponHelper.SetForced(pawn, pawn.equipment.Primary);
                         count++;
-                        AutoArmLogger.LogWeapon(pawn, pawn.equipment.Primary, "Bonded weapon marked as forced (setting enabled)");
+                        if (settings.debugLogging)
+                        {
+                            AutoArmLogger.LogWeapon(pawn, pawn.equipment.Primary, "Bonded weapon marked as forced (setting enabled)");
+                        }
                     }
 
                     // Check inventory weapons
@@ -787,7 +811,10 @@ namespace AutoArm
                             {
                                 ForcedWeaponHelper.AddForcedDef(pawn, weapon.def);
                                 count++;
-                                AutoArmLogger.LogWeapon(pawn, weapon, "Bonded weapon in inventory marked as forced (setting enabled)");
+                                if (settings.debugLogging)
+                                {
+                                    AutoArmLogger.LogWeapon(pawn, weapon, "Bonded weapon in inventory marked as forced (setting enabled)");
+                                }
                             }
                         }
                     }
@@ -832,8 +859,8 @@ namespace AutoArm
         {
             // Center the window on screen
             Vector2 size = InitialSize;
-            float x = (UI.screenWidth - size.x) / 2f;
-            float y = (UI.screenHeight - size.y) / 2f;
+            float x = (Verse.UI.screenWidth - size.x) / 2f;
+            float y = (Verse.UI.screenHeight - size.y) / 2f;
             windowRect = new Rect(x, y, size.x, size.y);
         }
 
@@ -876,7 +903,14 @@ namespace AutoArm
             Widgets.Label(checkboxLabelRect, "Debug logging");
             if (oldDebugLogging != AutoArmMod.settings.debugLogging)
             {
-                AutoArmLogger.Log($"Debug logging changed to: {AutoArmMod.settings.debugLogging}");
+                // Always log this important change
+                AutoArmLogger.Info($"Debug logging {(AutoArmMod.settings.debugLogging ? "enabled" : "disabled")}");
+                
+                // Announce when verbose logging is enabled
+                if (AutoArmMod.settings.debugLogging)
+                {
+                    AutoArmLogger.AnnounceVerboseLogging();
+                }
             }
             Text.Font = GameFont.Small;
 
@@ -889,7 +923,7 @@ namespace AutoArm
             Color oldColor = GUI.color;
             GUI.color = new Color(1f, 0.6f, 0.6f);
             var warningRect = new Rect(infoRect.x, infoRect.y, infoRect.width * 0.5f, infoRect.height);
-            Widgets.Label(warningRect, "⚠ Save before touching anything");
+            Widgets.Label(warningRect, "? Save before touching anything");
             GUI.color = oldColor;
             
             // Shortcuts on the right
@@ -966,7 +1000,7 @@ namespace AutoArm
             {
                 textColor = new Color(1f, 0.8f, 0.8f);  // Red
             }
-            else if (testResultsText.Contains("✓"))
+            else if (testResultsText.Contains("?"))
             {
                 textColor = new Color(0.8f, 1f, 0.8f);  // Green
             }
@@ -1013,20 +1047,20 @@ namespace AutoArm
                 // Show all test results
                 var allResults = results.GetAllResults();
                 testResultsText += "Test Details:\n";
-                testResultsText += "──────────────\n";
+                testResultsText += "--------------\n";
 
                 foreach (var kvp in allResults.OrderBy(x => x.Key))
                 {
                     if (kvp.Value.Success)
                     {
-                        testResultsText += $"✓ {kvp.Key}\n";
+                        testResultsText += $"? {kvp.Key}\n";
                     }
                     else
                     {
-                        testResultsText += $"✗ {kvp.Key}\n";
+                        testResultsText += $"? {kvp.Key}\n";
                         if (!string.IsNullOrEmpty(kvp.Value.FailureReason))
                         {
-                            testResultsText += $"   └─ {kvp.Value.FailureReason}\n";
+                            testResultsText += $"   +- {kvp.Value.FailureReason}\n";
                         }
                     }
 
@@ -1040,11 +1074,11 @@ namespace AutoArm
                             // Check if value is "Note:" to add special formatting
                             if (data.Key.StartsWith("Note"))
                             {
-                                testResultsText += $"   └─ Note: {data.Value}\n";
+                                testResultsText += $"   +- Note: {data.Value}\n";
                             }
                             else
                             {
-                                testResultsText += $"   └─ {data.Key}: {data.Value}\n";
+                                testResultsText += $"   +- {data.Key}: {data.Value}\n";
                             }
                         }
                     }
@@ -1114,7 +1148,7 @@ namespace AutoArm
                 string forbidden = weapon.IsForbidden(Faction.OfPlayer) ? " [FORBIDDEN]" : "";
                 string dropped = DroppedItemTracker.IsRecentlyDropped(weapon) ? " [RECENTLY DROPPED]" : "";
                 string reserved = map.reservationManager.IsReservedByAnyoneOf(weapon, null) ? " [RESERVED]" : "";
-                testResultsText += $"  • {weapon.Label} ({quality}) at {weapon.Position}{forbidden}{dropped}{reserved}\n";
+                testResultsText += $"  � {weapon.Label} ({quality}) at {weapon.Position}{forbidden}{dropped}{reserved}\n";
             }
             
             // COLONIST STATUS
@@ -1159,7 +1193,7 @@ namespace AutoArm
                 // Basic info
                 string name = pawn.Name?.ToStringShort ?? "Unknown";
                 string draftStatus = pawn.Drafted ? " [DRAFTED]" : "";
-                string validStatus = isValid ? "✓" : "✗";
+                string validStatus = isValid ? "?" : "?";
                 
                 testResultsText += $"\n{validStatus} {name}{draftStatus}";
                 if (!isValid)
@@ -1334,78 +1368,78 @@ namespace AutoArm
                     
                     // Build results summary for the window
                     var results = new System.Text.StringBuilder();
-                    results.AppendLine("═══ PERFORMANCE TEST COMPLETE ═══\n");
+                    results.AppendLine("--- PERFORMANCE TEST COMPLETE ---\n");
                     results.AppendLine($"Total test duration: {sw.ElapsedMilliseconds:N0}ms\n");
                     
                     // Add key metrics summary
                     results.AppendLine("KEY METRICS:");
-                    results.AppendLine("────────────");
+                    results.AppendLine("------------");
                     
                     var colonists = map.mapPawns.FreeColonistsCount;
                     var weapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count();
-                    results.AppendLine($"• Colony size: {colonists} colonists");
-                    results.AppendLine($"• Weapons on map: {weapons}");
-                    results.AppendLine($"• Map size: {map.Size.x}x{map.Size.z} ({map.Area:N0} cells)\n");
+                    results.AppendLine($"� Colony size: {colonists} colonists");
+                    results.AppendLine($"� Weapons on map: {weapons}");
+                    results.AppendLine($"� Map size: {map.Size.x}x{map.Size.z} ({map.Area:N0} cells)\n");
                     
                     // Performance mode status
                     bool perfMode = colonists >= (AutoArmMod.settings?.performanceModeColonySize ?? 35);
                     results.AppendLine("PERFORMANCE STATUS:");
-                    results.AppendLine("─────────────────");
-                    results.AppendLine($"• Performance mode: {(perfMode ? "ACTIVE" : "Inactive")}");
-                    results.AppendLine($"• Think tree mode: {(ModInit.IsFallbackModeActive ? "FALLBACK (TickRare)" : "INJECTED")}");
+                    results.AppendLine("-----------------");
+                    results.AppendLine($"� Performance mode: {(perfMode ? "ACTIVE" : "Inactive")}");
+                    results.AppendLine($"� Think tree mode: {(ModInit.IsFallbackModeActive ? "FALLBACK (TickRare)" : "INJECTED")}");
                     
                     // Cache status
-                    results.AppendLine($"• Weapon cache: Valid\n");
+                    results.AppendLine($"� Weapon cache: Valid\n");
                     
                     results.AppendLine("TEST CATEGORIES COMPLETED:");
-                    results.AppendLine("────────────────────────");
-                    results.AppendLine("✓ Cache System Performance");
-                    results.AppendLine("✓ Weapon Search Performance");
-                    results.AppendLine("✓ Score Calculation Performance");
-                    results.AppendLine("✓ Job Creation Overhead");
-                    results.AppendLine("✓ Think Tree Performance");
-                    results.AppendLine("✓ Scalability Tests (Colony Size)");
-                    results.AppendLine("✓ Scalability Tests (Weapon Count)");
-                    results.AppendLine("✓ Worst Case Scenarios");
-                    results.AppendLine("✓ Cache Thrashing");
-                    results.AppendLine("✓ Memory Pressure");
-                    results.AppendLine("✓ Mod Compatibility Overhead");
-                    results.AppendLine("✓ Real World Scenarios\n");
+                    results.AppendLine("------------------------");
+                    results.AppendLine("? Cache System Performance");
+                    results.AppendLine("? Weapon Search Performance");
+                    results.AppendLine("? Score Calculation Performance");
+                    results.AppendLine("? Job Creation Overhead");
+                    results.AppendLine("? Think Tree Performance");
+                    results.AppendLine("? Scalability Tests (Colony Size)");
+                    results.AppendLine("? Scalability Tests (Weapon Count)");
+                    results.AppendLine("? Worst Case Scenarios");
+                    results.AppendLine("? Cache Thrashing");
+                    results.AppendLine("? Memory Pressure");
+                    results.AppendLine("? Mod Compatibility Overhead");
+                    results.AppendLine("? Real World Scenarios\n");
                     
                     // Performance recommendations summary
                     results.AppendLine("PERFORMANCE SUMMARY:");
-                    results.AppendLine("─────────────────");
+                    results.AppendLine("-----------------");
                     
                     if (colonists > 50)
                     {
-                        results.AppendLine("⚠ Large colony detected - consider:");
-                        results.AppendLine("  • Reducing weapon search radius");
-                        results.AppendLine("  • Increasing cooldown durations");
+                        results.AppendLine("? Large colony detected - consider:");
+                        results.AppendLine("  � Reducing weapon search radius");
+                        results.AppendLine("  � Increasing cooldown durations");
                     }
                     
                     if (weapons > 500)
                     {
-                        results.AppendLine("⚠ Many weapons on map - consider:");
-                        results.AppendLine("  • More aggressive cleanup policies");
-                        results.AppendLine("  • Limiting weapon checks per tick");
+                        results.AppendLine("? Many weapons on map - consider:");
+                        results.AppendLine("  � More aggressive cleanup policies");
+                        results.AppendLine("  � Limiting weapon checks per tick");
                     }
                     
                     if (ModInit.IsFallbackModeActive)
                     {
-                        results.AppendLine("⚠ Running in fallback mode:");
-                        results.AppendLine("  • Think tree injection failed");
-                        results.AppendLine("  • Higher performance impact expected");
+                        results.AppendLine("? Running in fallback mode:");
+                        results.AppendLine("  � Think tree injection failed");
+                        results.AppendLine("  � Higher performance impact expected");
                     }
                     
-                    results.AppendLine("\n═══ DETAILED RESULTS ═══\n");
+                    results.AppendLine("\n--- DETAILED RESULTS ---\n");
                     results.AppendLine("Full performance metrics have been written to the debug log.");
                     results.AppendLine("Look for [AutoArm] PERFORMANCE REPORT in:");
                     results.AppendLine($"{Application.dataPath}/../Player.log");
                     results.AppendLine("\nThe log contains:");
-                    results.AppendLine("• Detailed timing for each operation");
-                    results.AppendLine("• Memory usage analysis");
-                    results.AppendLine("• Scaling characteristics");
-                    results.AppendLine("• Specific performance recommendations");
+                    results.AppendLine("� Detailed timing for each operation");
+                    results.AppendLine("� Memory usage analysis");
+                    results.AppendLine("� Scaling characteristics");
+                    results.AppendLine("� Specific performance recommendations");
                     
                     testResultsText = results.ToString();
                 }
@@ -1418,3 +1452,5 @@ namespace AutoArm
         }
     }
 }
+
+

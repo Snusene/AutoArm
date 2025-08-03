@@ -5,6 +5,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -15,14 +16,14 @@ namespace AutoArm
     {
         public static void RunDiagnostic(Map map)
         {
-            Log.Message("\n[AutoArm] === WEAPON CATEGORIZATION DIAGNOSTIC ===");
+            AutoArmLogger.Debug("\n=== WEAPON CATEGORIZATION DIAGNOSTIC ===");
 
             // Check weapon defs
             var allWeaponDefs = DefDatabase<ThingDef>.AllDefs
                 .Where(d => d.IsWeapon && !d.IsApparel)
                 .ToList();
 
-            Log.Message($"[AutoArm] Total weapon defs in game: {allWeaponDefs.Count}");
+            AutoArmLogger.Debug($"Total weapon defs in game: {allWeaponDefs.Count}");
 
             // Group by mod
             var weaponsByMod = allWeaponDefs
@@ -30,10 +31,10 @@ namespace AutoArm
                 .OrderByDescending(g => g.Count())
                 .ToList();
 
-            Log.Message("[AutoArm] Weapons by mod:");
+            AutoArmLogger.Debug("Weapons by mod:");
             foreach (var modGroup in weaponsByMod.Take(10))
             {
-                Log.Message($"  - {modGroup.Key}: {modGroup.Count()} weapons");
+                AutoArmLogger.Debug($"  - {modGroup.Key}: {modGroup.Count()} weapons");
             }
 
             // Check for suspicious patterns
@@ -46,13 +47,13 @@ namespace AutoArm
 
             if (suspiciousWeapons.Any())
             {
-                Log.Warning($"[AutoArm] Found {suspiciousWeapons.Count} weapons with missing/incorrect configuration:");
+                AutoArmLogger.Warn($"Found {suspiciousWeapons.Count} weapons with missing/incorrect configuration:");
                 foreach (var weapon in suspiciousWeapons.Take(5))
                 {
-                    Log.Warning($"  - {weapon.defName} from {weapon.modContentPack?.Name ?? "Unknown"}:");
-                    Log.Warning($"    Categories: {weapon.thingCategories?.Count ?? 0}");
-                    Log.Warning($"    EquipmentType: {weapon.equipmentType}");
-                    Log.Warning($"    HasCompEquippable: {weapon.HasComp(typeof(CompEquippable))}");
+                    AutoArmLogger.Warn($"  - {weapon.defName} from {weapon.modContentPack?.Name ?? "Unknown"}:");
+                    AutoArmLogger.Warn($"    Categories: {weapon.thingCategories?.Count ?? 0}");
+                    AutoArmLogger.Warn($"    EquipmentType: {weapon.equipmentType}");
+                    AutoArmLogger.Warn($"    HasCompEquippable: {weapon.HasComp(typeof(CompEquippable))}");
                 }
             }
 
@@ -62,21 +63,21 @@ namespace AutoArm
                 var weaponGroup = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).ToList();
                 var allWeapons = map.listerThings.AllThings.Where(t => t.def.IsWeapon).ToList();
 
-                Log.Message($"\n[AutoArm] Map weapon detection:");
-                Log.Message($"  - ThingRequestGroup.Weapon: {weaponGroup.Count}");
-                Log.Message($"  - All IsWeapon items: {allWeapons.Count}");
+                AutoArmLogger.Debug($"\nMap weapon detection:");
+                AutoArmLogger.Debug($"  - ThingRequestGroup.Weapon: {weaponGroup.Count}");
+                AutoArmLogger.Debug($"  - All IsWeapon items: {allWeapons.Count}");
 
                 if (weaponGroup.Count < allWeapons.Count / 2)
                 {
-                    Log.Error($"[AutoArm] CRITICAL: ThingRequestGroup.Weapon is severely broken!");
-                    Log.Error($"[AutoArm] Only {weaponGroup.Count} of {allWeapons.Count} weapons are properly categorized.");
+                    AutoArmLogger.Error($"CRITICAL: ThingRequestGroup.Weapon is severely broken!");
+                    AutoArmLogger.Error($"Only {weaponGroup.Count} of {allWeapons.Count} weapons are properly categorized.");
 
                     // Find which weapons are missing
                     var missingWeapons = allWeapons.Except(weaponGroup).ToList();
-                    Log.Error($"[AutoArm] Examples of uncategorized weapons:");
+                    AutoArmLogger.Error($"Examples of uncategorized weapons:");
                     foreach (var weapon in missingWeapons.Take(5))
                     {
-                        Log.Error($"  - {weapon.Label} ({weapon.def.defName}) from {weapon.def.modContentPack?.Name ?? "Unknown"}");
+                        AutoArmLogger.Error($"  - {weapon.Label} ({weapon.def.defName}) from {weapon.def.modContentPack?.Name ?? "Unknown"}");
                     }
                 }
             }
@@ -84,7 +85,7 @@ namespace AutoArm
             // Check for known problematic mods
             CheckForKnownIssues();
 
-            Log.Message("[AutoArm] === END DIAGNOSTIC ===\n");
+            AutoArmLogger.Debug("=== END DIAGNOSTIC ===\n");
         }
 
         private static void CheckForKnownIssues()
@@ -107,17 +108,17 @@ namespace AutoArm
                 {
                     if (!foundIssues)
                     {
-                        Log.Warning("\n[AutoArm] Potentially conflicting mods detected:");
+                        AutoArmLogger.Warn("\nPotentially conflicting mods detected:");
                         foundIssues = true;
                     }
-                    Log.Warning($"  - {mod.Value}");
+                    AutoArmLogger.Warn($"  - {mod.Value}");
                 }
             }
 
             if (foundIssues)
             {
-                Log.Warning("[AutoArm] These mods may interfere with weapon categorization.");
-                Log.Warning("[AutoArm] Try adjusting your mod load order or check for updates.");
+                AutoArmLogger.Warn("These mods may interfere with weapon categorization.");
+                AutoArmLogger.Warn("Try adjusting your mod load order or check for updates.");
             }
         }
     }

@@ -7,8 +7,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Helpers; using AutoArm.Logging;
 
-namespace AutoArm
+namespace AutoArm.Helpers
 {
     /// <summary>
     /// Centralized timing and cooldown management (fixes #8, #13, #19, #20, #21)
@@ -35,6 +36,7 @@ namespace AutoArm
 
         // Unified cooldown tracking (fixes #13)
         private static readonly Dictionary<CooldownType, Dictionary<object, int>> cooldowns = new Dictionary<CooldownType, Dictionary<object, int>>();
+        private static readonly object cooldownLock = new object();
 
         // Cooldown durations
         private static readonly Dictionary<CooldownType, int> cooldownDurations = new Dictionary<CooldownType, int>
@@ -50,7 +52,7 @@ namespace AutoArm
             { CooldownType.UpgradeCheck, 2500 },
             { CooldownType.PrimarySidearmCache, 120 },
             { CooldownType.FailedUpgradeSearch, 1800 },  // 30 seconds for non-emergency searches
-            { CooldownType.OnlySidearmsLog, 3000 },      // 5 minutes to prevent spam
+            { CooldownType.OnlySidearmsLog, 3000 },      // 50 seconds to prevent spam
             { CooldownType.UnarmedPrimaryLog, 1800 },    // 30 seconds for unarmed pickup messages
             { CooldownType.ReplacePrimaryLog, 1800 }     // 30 seconds for primary replacement messages
         };
@@ -68,18 +70,24 @@ namespace AutoArm
         /// </summary>
         public static bool IsOnCooldown(object key, CooldownType type)
         {
-            if (!cooldowns.ContainsKey(type) || key == null)
+            if (key == null)
                 return false;
 
-            var dict = cooldowns[type];
-            if (dict.TryGetValue(key, out int lastTick))
+            lock (cooldownLock)
             {
-                int currentTick = Find.TickManager.TicksGame;
-                int cooldownDuration = cooldownDurations.ContainsKey(type) ? cooldownDurations[type] : 300;
-                return currentTick - lastTick < cooldownDuration;
-            }
+                if (!cooldowns.ContainsKey(type))
+                    return false;
 
-            return false;
+                var dict = cooldowns[type];
+                if (dict.TryGetValue(key, out int lastTick))
+                {
+                    int currentTick = Find.TickManager.TicksGame;
+                    int cooldownDuration = cooldownDurations.ContainsKey(type) ? cooldownDurations[type] : 300;
+                    return currentTick - lastTick < cooldownDuration;
+                }
+
+                return false;
+            }
         }
 
         /// <summary>
@@ -87,10 +95,16 @@ namespace AutoArm
         /// </summary>
         public static void SetCooldown(object key, CooldownType type)
         {
-            if (!cooldowns.ContainsKey(type) || key == null)
+            if (key == null)
                 return;
 
-            cooldowns[type][key] = Find.TickManager.TicksGame;
+            lock (cooldownLock)
+            {
+                if (!cooldowns.ContainsKey(type))
+                    return;
+
+                cooldowns[type][key] = Find.TickManager.TicksGame;
+            }
         }
 
         /// <summary>
@@ -98,19 +112,25 @@ namespace AutoArm
         /// </summary>
         public static int GetRemainingCooldown(object key, CooldownType type)
         {
-            if (!cooldowns.ContainsKey(type) || key == null)
+            if (key == null)
                 return 0;
 
-            var dict = cooldowns[type];
-            if (dict.TryGetValue(key, out int lastTick))
+            lock (cooldownLock)
             {
-                int currentTick = Find.TickManager.TicksGame;
-                int cooldownDuration = cooldownDurations.ContainsKey(type) ? cooldownDurations[type] : 300;
-                int remaining = cooldownDuration - (currentTick - lastTick);
-                return remaining > 0 ? remaining : 0;
-            }
+                if (!cooldowns.ContainsKey(type))
+                    return 0;
 
-            return 0;
+                var dict = cooldowns[type];
+                if (dict.TryGetValue(key, out int lastTick))
+                {
+                    int currentTick = Find.TickManager.TicksGame;
+                    int cooldownDuration = cooldownDurations.ContainsKey(type) ? cooldownDurations[type] : 300;
+                    int remaining = cooldownDuration - (currentTick - lastTick);
+                    return remaining > 0 ? remaining : 0;
+                }
+
+                return 0;
+            }
         }
 
         /// <summary>
@@ -118,10 +138,16 @@ namespace AutoArm
         /// </summary>
         public static void ClearCooldown(object key, CooldownType type)
         {
-            if (!cooldowns.ContainsKey(type) || key == null)
+            if (key == null)
                 return;
 
-            cooldowns[type].Remove(key);
+            lock (cooldownLock)
+            {
+                if (!cooldowns.ContainsKey(type))
+                    return;
+
+                cooldowns[type].Remove(key);
+            }
         }
 
         /// <summary>
@@ -157,12 +183,18 @@ namespace AutoArm
         /// </summary>
         public static void ClearAllCooldowns()
         {
-            foreach (var cooldownType in cooldowns.Keys)
+            lock (cooldownLock)
             {
-                cooldowns[cooldownType].Clear();
+                foreach (var cooldownType in cooldowns.Keys)
+                {
+                    cooldowns[cooldownType].Clear();
+                }
             }
             
-            AutoArmLogger.Log("Cleared all cooldowns");
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug("Cleared all cooldowns");
+            }
         }
 
         /// <summary>
@@ -172,33 +204,41 @@ namespace AutoArm
         {
             int currentTick = Find.TickManager.TicksGame;
 
-            foreach (var cooldownType in cooldowns.Keys.ToList())
+            lock (cooldownLock)
             {
-                var dict = cooldowns[cooldownType];
-                var maxAge = (cooldownDurations.ContainsKey(cooldownType) ? cooldownDurations[cooldownType] : 300) * 5; // Keep for 5x the cooldown duration
-
-                // Remove entries for destroyed pawns
-                var toRemove = new List<object>();
-
-                foreach (var kvp in dict)
+                foreach (var cooldownType in cooldowns.Keys.ToList())
                 {
-                    if (kvp.Key is Pawn pawn && (pawn.Destroyed || pawn.Dead || !pawn.Spawned))
-                    {
-                        toRemove.Add(kvp.Key);
-                    }
-                    else if (kvp.Key is Thing thing && (thing.Destroyed || !thing.Spawned))
-                    {
-                        toRemove.Add(kvp.Key);
-                    }
-                    else if (currentTick - kvp.Value > maxAge)
-                    {
-                        toRemove.Add(kvp.Key);
-                    }
-                }
+                    var dict = cooldowns[cooldownType];
+                    var maxAge = (cooldownDurations.ContainsKey(cooldownType) ? cooldownDurations[cooldownType] : 300) * 5; // Keep for 5x the cooldown duration
 
-                foreach (var key in toRemove)
-                {
-                    dict.Remove(key);
+                    // Remove entries for destroyed pawns
+                    var toRemove = new List<object>();
+
+                    foreach (var kvp in dict)
+                    {
+                        if (kvp.Key is Pawn pawn && (pawn.Destroyed || pawn.Dead || !pawn.Spawned))
+                        {
+                            toRemove.Add(kvp.Key);
+                        }
+                        else if (kvp.Key is Thing thing && (thing.Destroyed || !thing.Spawned))
+                        {
+                            toRemove.Add(kvp.Key);
+                        }
+                        else if (currentTick - kvp.Value > maxAge)
+                        {
+                            toRemove.Add(kvp.Key);
+                        }
+                    }
+
+                    foreach (var key in toRemove)
+                    {
+                        dict.Remove(key);
+                    }
+                    
+                    if (toRemove.Count > 0 && AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"Cleaned up {toRemove.Count} old cooldown entries for {cooldownType}");
+                    }
                 }
             }
         }

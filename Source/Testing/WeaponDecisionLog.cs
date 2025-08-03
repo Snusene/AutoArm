@@ -1,4 +1,4 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Weapon decision logging for debugging
 // Tracks recent weapon evaluation decisions per pawn
 
@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -45,18 +46,18 @@ namespace AutoArm
         {
             if (!recentDecisions.TryGetValue(pawn, out var decisions))
             {
-                Log.Message($"[AutoArm] No recent weapon decisions for {pawn.Name}");
+                AutoArmLogger.Debug($"No recent weapon decisions for {pawn.Name}");
                 return;
             }
 
-            Log.Message($"\n[AutoArm] Recent weapon decisions for {pawn.Name}:");
+            AutoArmLogger.Debug($"\nRecent weapon decisions for {pawn.Name}:");
 
             int startIndex = Math.Max(0, decisions.Count - 10);
             for (int i = startIndex; i < decisions.Count; i++)
             {
                 var decision = decisions[i];
                 var ticksAgo = Find.TickManager.TicksGame - decision.tick;
-                Log.Message($"  {decision.weaponName}: Score={decision.score:F1}, Reason={decision.reason}, {ticksAgo} ticks ago");
+                AutoArmLogger.Debug($"  {decision.weaponName}: Score={decision.score:F1}, Reason={decision.reason}, {ticksAgo} ticks ago");
             }
         }
 

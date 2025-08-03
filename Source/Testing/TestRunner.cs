@@ -1,4 +1,4 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Main test runner and test suite coordinator
 // Runs all tests and manages test execution
 
@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
+using AutoArm.Caching; using AutoArm.Logging;
+using AutoArm.Jobs;
 
 namespace AutoArm.Testing
 {
@@ -22,7 +24,7 @@ namespace AutoArm.Testing
         {
             if (isRunningTests)
             {
-                Log.Message($"[AutoArm TEST] {message}");
+                AutoArmLogger.Debug($"[TEST] {message}");
             }
         }
 
@@ -61,7 +63,7 @@ namespace AutoArm.Testing
                         catch (Exception e)
                         {
                             results.AddResult(test.Name, TestResult.Failure($"Exception: {e.Message}"));
-                            Log.Error($"[AutoArm] Test {test.Name} threw exception: {e}");
+                            AutoArmLogger.Error($"Test {test.Name} threw exception: {e.Message}", e);
 
                             // Try to cleanup even if test failed
                             try
@@ -106,7 +108,7 @@ namespace AutoArm.Testing
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"[AutoArm] Test {test.Name} threw exception: {e}");
+                        AutoArmLogger.Error($"Test {test.Name} threw exception: {e.Message}", e);
                         return TestResult.Failure($"Exception: {e.Message}");
                     }
                     finally
@@ -216,7 +218,7 @@ namespace AutoArm.Testing
             }
             catch (Exception e)
             {
-                Log.Error($"[AutoArm] Error creating test list: {e}");
+                AutoArmLogger.Error($"Error creating test list: {e.Message}", e);
             }
 
             return tests;
@@ -224,19 +226,19 @@ namespace AutoArm.Testing
 
         public static void LogTestResults(TestResults results)
         {
-            Log.Message($"[AutoArm] === Test Results ===");
-            Log.Message($"[AutoArm] Total: {results.TotalTests}");
-            Log.Message($"[AutoArm] Passed: {results.PassedTests}");
-            Log.Message($"[AutoArm] Failed: {results.FailedTests}");
-            Log.Message($"[AutoArm] Success Rate: {results.SuccessRate:P0}");
+            AutoArmLogger.Debug($"=== Test Results ===");
+            AutoArmLogger.Debug($"Total: {results.TotalTests}");
+            AutoArmLogger.Debug($"Passed: {results.PassedTests}");
+            AutoArmLogger.Debug($"Failed: {results.FailedTests}");
+            AutoArmLogger.Debug($"Success Rate: {results.SuccessRate:P0}");
 
             var failedTests = results.GetFailedTests();
             if (failedTests.Any())
             {
-                Log.Message($"[AutoArm] Failed tests:");
+                AutoArmLogger.Debug($"Failed tests:");
                 foreach (var kvp in failedTests)
                 {
-                    Log.Message($"[AutoArm]   - {kvp.Key}: {kvp.Value.FailureReason}");
+                    AutoArmLogger.Debug($"  - {kvp.Key}: {kvp.Value.FailureReason}");
                 }
             }
         }

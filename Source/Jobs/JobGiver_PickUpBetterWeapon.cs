@@ -11,22 +11,19 @@ using RimWorld;
 using Verse;
 using Verse.AI;
 using AutoArm.Testing;
+using AutoArm.Helpers;
+using AutoArm.Caching;
+using AutoArm.Weapons;
+using AutoArm.Logging;
+using AutoArm.Jobs;
 
-namespace AutoArm
+namespace AutoArm.Jobs
 {
     /// <summary>
     /// Main JobGiver for weapon pickup - now uses consolidated helpers
     /// </summary>
     public class JobGiver_PickUpBetterWeapon : ThinkNode_JobGiver
     {
-        private static readonly Dictionary<Pawn, PawnWeaponCheckData> pawnCheckData = new Dictionary<Pawn, PawnWeaponCheckData>();
-
-        private class PawnWeaponCheckData
-        {
-            public int lastSearchTick = 0;
-            public int consecutiveFailures = 0;
-            public ThingWithComps lastWeaponSearched = null;
-        }
 
         protected override Job TryGiveJob(Pawn pawn)
         {
@@ -37,7 +34,7 @@ namespace AutoArm
         {
             try
             {
-                AutoArmLogger.LogPawn(pawn, "[PRIMARY JOB] TestTryGiveJob starting");
+                // Removed verbose start logging
                 
                 // Check if mod is enabled first
                 if (AutoArmMod.settings?.modEnabled != true)
@@ -47,14 +44,37 @@ namespace AutoArm
                         AutoArmLogger.LogError($"[TEST] CRITICAL: Mod is disabled during test execution! Pawn: {pawn?.Name?.ToStringShort ?? "unknown"}");
                         AutoArmLogger.LogError($"[TEST] Settings instance: {AutoArmMod.settings?.GetHashCode() ?? -1}, modEnabled: {AutoArmMod.settings?.modEnabled}");
                     }
-                    AutoArmLogger.LogPawn(pawn, "[PRIMARY JOB] Mod disabled, returning null");
+                    // Mod disabled - no need to log
                     return null;
+                }
+                
+                // Performance mode: check less frequently for large colonies
+                int colonySize = pawn.Map?.mapPawns?.FreeColonists?.Count() ?? 0;
+                if (colonySize >= AutoArmMod.settings.performanceModeColonySize)
+                {
+                    // For armed pawns in large colonies, only check occasionally
+                    if (pawn.equipment?.Primary != null)
+                    {
+                        // Scale check interval based on colony size
+                        // Base: check every 1800 ticks (~30 seconds)
+                        // At 35 pawns: check every 3425 ticks (~57 seconds)  
+                        // At 50+ pawns: check every 5675 ticks (~95 seconds) - capped
+                        int baseInterval = 1800;
+                        int effectiveColonySize = Math.Min(colonySize, 50); // Cap at 50
+                        int extraInterval = (effectiveColonySize - 30) * 125; // 125 ticks per pawn over 30
+                        int checkInterval = baseInterval + extraInterval;
+                        
+                        if (!pawn.IsHashIntervalTick(checkInterval))
+                        {
+                            return null;
+                        }
+                    }
                 }
                     
                 // Use consolidated validation
                 if (!ValidationHelper.IsValidPawn(pawn, out string reason))
                 {
-                    AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Validation failed: {reason}");
+                    // Validation failed - reason already logged by ValidationHelper
                     // ValidationHelper already logs with throttling, no need to log here
                     return null;
                 }
@@ -65,7 +85,7 @@ namespace AutoArm
                     // Only check current map to avoid false flags from other maps
                     if (IsRaidActive(pawn.Map))
                     {
-                        AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Raid active on current map and disableDuringRaids is true, returning null");
+                        // Raid active - no need to log every pawn
                         return null;
                     }
                 }
@@ -78,21 +98,21 @@ namespace AutoArm
 
                 if (TimingHelper.IsOnCooldown(pawn, cooldownType))
                 {
-                    AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] On cooldown ({cooldownType}), returning null");
+                    // On cooldown - too spammy to log
                     // Don't log cooldown messages - they spam too much
                     return null;
                 }
 
                 // SimpleSidearms compatibility check
                 if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
-                    SimpleSidearmsCompat.PawnHasTemporarySidearmEquipped(pawn))
+                    DroppedItemTracker.IsSimpleSidearmsSwapInProgress(pawn))
                 {
-                    AutoArmLogger.LogPawn(pawn, "Has temporary sidearm equipped - skipping");
+                    // Temporary sidearm equipped
                     return null;
                 }
 
                 var currentWeapon = pawn.equipment?.Primary;
-                AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Current weapon: {currentWeapon?.Label ?? "none"}");
+                // Current weapon logging removed - redundant with score logging
 
                 // Check forced weapon status
                 bool currentWeaponIsForced = currentWeapon != null && ForcedWeaponHelper.IsForced(pawn, currentWeapon);
@@ -115,11 +135,11 @@ namespace AutoArm
 
                 if (isSimpleSidearmsWeapon)
                 {
-                    AutoArmLogger.LogPawn(pawn, $"Current primary {currentWeapon.def.defName} is a SimpleSidearms weapon - will only consider same-type upgrades");
+                    // SimpleSidearms weapon - same type only
                 }
 
                 float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : 0f;
-                AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Current weapon score: {currentScore}");
+                // Score logged later if weapon found
 
                 // Get best weapon - if current weapon is forced and upgrades are allowed, restrict to same type
                 ThingDef restrictToType = null;
@@ -131,10 +151,10 @@ namespace AutoArm
                 {
                     // For forced weapons with upgrades enabled, only look for same-type upgrades
                     restrictToType = currentWeapon?.def;
-                    AutoArmLogger.LogPawn(pawn, $"Current primary {currentWeapon.def.defName} is forced - will only consider same-type upgrades");
+                    // Forced weapon - same type only
                 }
 
-                AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Calling FindBestWeapon with currentScore={currentScore}, restrictToType={restrictToType?.defName ?? "none"}");
+                // FindBestWeapon call - internal details
                 var bestWeapon = FindBestWeapon(pawn, currentScore, restrictToType);
                 
                 // Add debug logging for tests
@@ -143,14 +163,14 @@ namespace AutoArm
                     AutoArmLogger.Log($"[TEST] FindBestWeapon returned: {bestWeapon?.Label ?? "null"}");
                     if (bestWeapon == null)
                     {
-                        AutoArmLogger.Log($"[TEST] Current score: {currentScore}, threshold multiplier: 1.05, min required score: {currentScore * 1.05f}");
+                        AutoArmLogger.Log($"[TEST] Current score: {currentScore}, threshold multiplier: {AutoArmMod.settings.weaponUpgradeThreshold}, min required score: {currentScore * AutoArmMod.settings.weaponUpgradeThreshold}");
                         AutoArmLogger.Log($"[TEST] Restriction type: {restrictToType?.defName ?? "none"}");
                     }
                 }
                 
                 if (bestWeapon == null)
                 {
-                    AutoArmLogger.LogPawn(pawn, "[PRIMARY JOB] No better weapon found");
+                    // No weapon found - common case, don't log
                     // Set failed search cooldown - same type we checked earlier
                     bool wasUnarmed = pawn.equipment?.Primary == null;
                     TimingHelper.SetCooldown(pawn, wasUnarmed ?
@@ -159,14 +179,14 @@ namespace AutoArm
                     return null;
                 }
                 
-                AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Best weapon found: {bestWeapon.Label} at {bestWeapon.Position}");
+                // Log success with FindBestWeapon details
 
                 // Check if we're upgrading to the same weapon type
                 if (currentWeapon != null && currentWeapon.def == bestWeapon.def)
                 {
                     // Mark current weapon to prevent SimpleSidearms from saving it
                     DroppedItemTracker.MarkPendingSameTypeUpgrade(currentWeapon);
-                    AutoArmLogger.LogWeapon(pawn, bestWeapon, "Upgrading to better version of same weapon type");
+                    // Same-type upgrade
                 }
                 else if (!SimpleSidearmsCompat.ALLOW_DUPLICATE_WEAPON_TYPES &&
                          SimpleSidearmsCompat.IsLoaded() &&
@@ -175,7 +195,7 @@ namespace AutoArm
                     // Don't pick up a weapon type we already have in inventory
                     // Note: When SimpleSidearms is loaded, this is redundant as SS handles duplicates
                     // but we keep it as a safety check
-                    AutoArmLogger.LogWeapon(pawn, bestWeapon, "Not picking up - already have this weapon type in inventory");
+                    // Already have this weapon type
                     TimingHelper.SetCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch);
                     return null;
                 }
@@ -183,13 +203,13 @@ namespace AutoArm
                 // Double-check that weapon is still available and can be reserved
                 if (!pawn.CanReserveAndReach(bestWeapon, PathEndMode.ClosestTouch, Danger.Deadly, 1, -1, null, false))
                 {
-                    AutoArmLogger.LogWeapon(pawn, bestWeapon, "Weapon no longer available for reservation");
+                    // Weapon no longer available
                     TimingHelper.SetCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch);
                     return null;
                 }
 
                 // Create standard equip job - vanilla equip handles the swap perfectly
-                AutoArmLogger.LogPawn(pawn, "[PRIMARY JOB] Creating equip job");
+                // Creating job - redundant
                 var job = JobHelper.CreateEquipJob(bestWeapon);
                 if (job != null)
                 {
@@ -197,12 +217,15 @@ namespace AutoArm
                     AutoEquipTracker.MarkAsAutoEquip(job, pawn);
                     AutoEquipTracker.SetPreviousWeapon(pawn, currentWeapon?.def);
 
-                    AutoArmLogger.LogWeapon(pawn, bestWeapon, "[PRIMARY JOB] Found better weapon to equip");
-                    AutoArmLogger.LogPawn(pawn, $"[PRIMARY JOB] Job created successfully: {job.def.defName}");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        float newScore = GetWeaponScore(pawn, bestWeapon);
+                        AutoArmLogger.Debug($"{pawn.LabelShort}: {currentWeapon?.Label ?? "unarmed"} → {bestWeapon.Label} (score: {currentScore:F0} → {newScore:F0})");
+                    }
                 }
                 else
                 {
-                    AutoArmLogger.LogPawn(pawn, "[PRIMARY JOB] JobHelper.CreateEquipJob returned null!");
+                    AutoArmLogger.Error($"{pawn.LabelShort}: Failed to create equip job for {bestWeapon.Label}");
                 }
                 return job;
             }
@@ -215,36 +238,33 @@ namespace AutoArm
 
         private ThingWithComps FindBestWeapon(Pawn pawn, float currentScore, ThingDef restrictToType = null)
         {
-            AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Starting FindBestWeapon - currentScore: {currentScore}, restrictToType: {restrictToType?.defName ?? "none"}");
+            // FindBestWeapon start - internal details
             
             // Use improved weapon cache
             var cachedWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, 60f);
-            AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] GetWeaponsNear returned {cachedWeapons.Count} weapons");
+            // Weapon count - too detailed
             
             IEnumerable<ThingWithComps> nearbyWeapons = cachedWeapons
                 .Where(w => 
                 {
                     bool canUse = ValidationHelper.CanPawnUseWeapon(pawn, w, out string reason);
-                    if (!canUse)
-                        AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Weapon {w.Label} rejected by CanPawnUseWeapon: {reason}");
+                    // Rejection reasons handled by ValidationHelper
                     return canUse;
                 })
                 .Where(w => 
                 {
                     bool dropped = DroppedItemTracker.IsRecentlyDropped(w);
-                    if (dropped)
-                        AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Weapon {w.Label} rejected - recently dropped");
+                    // Recently dropped - expected behavior
                     return !dropped;
                 }) // Skip recently dropped weapons to prevent pickup/drop loops
                 .Where(w => 
                 {
                     bool allowed = pawn.outfits?.CurrentApparelPolicy?.filter?.Allows(w) ?? true;
-                    if (!allowed)
-                        AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Weapon {w.Label} rejected by outfit filter");
+                    // Outfit filter - expected behavior
                     return allowed;
                 }) // Check outfit filter (including quality) to prevent pickup/drop loops
                 .OrderBy(w => w.Position.DistanceToSquared(pawn.Position))
-                .Take(20);
+                .Take(GetWeaponSearchLimit(pawn.Map));
 
             // If restricted to a specific type (SimpleSidearms weapon), filter to that type only
             // This ensures that when using SimpleSidearms-managed weapons, AutoArm will only
@@ -252,16 +272,16 @@ namespace AutoArm
             if (restrictToType != null)
             {
                 nearbyWeapons = nearbyWeapons.Where(w => w.def == restrictToType);
-                AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Restricting weapon search to type: {restrictToType.defName}");
+                // Type restriction applied
             }
 
             ThingWithComps bestWeapon = null;
-            float bestScore = currentScore * 1.05f; // 5% improvement threshold
-            AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Minimum score needed: {bestScore} (current {currentScore} * 1.05)");
+            float bestScore = currentScore * AutoArmMod.settings.weaponUpgradeThreshold;
+            // Score threshold - internal calculation
 
             // Convert to list once for iteration
             var weaponList = nearbyWeapons.ToList();
-            AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] {weaponList.Count} weapons passed all filters");
+            // Weapon count after filters - too detailed
             
             // Add debug logging for tests
             if (TestRunner.IsRunningTests)
@@ -281,17 +301,17 @@ namespace AutoArm
             foreach (var weapon in weaponList)
             {
                 float score = GetWeaponScore(pawn, weapon);
-                AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] {weapon.Label}: score={score} (need > {bestScore})");
+                // Individual weapon scores - too verbose
                 
                 if (score > bestScore)
                 {
-                    AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] New best weapon: {weapon.Label} with score {score}");
+                    // Best weapon updates - internal tracking
                     bestScore = score;
                     bestWeapon = weapon;
                 }
             }
 
-            AutoArmLogger.LogPawn(pawn, $"[FIND WEAPON] Returning best weapon: {bestWeapon?.Label ?? "null"}");
+            // Return value - redundant with main function
             return bestWeapon;
         }
 
@@ -304,21 +324,43 @@ namespace AutoArm
             return WeaponScoreCache.GetCachedScoreWithCE(pawn, weapon);
         }
 
+        private static int GetWeaponSearchLimit(Map map)
+        {
+            // Scale weapon search limit with map size and colony size
+            int baseLimit = 20;
+            
+            // Add more for larger maps
+            if (map?.Size.x > 200) // Large map
+                baseLimit += 10;
+            else if (map?.Size.x > 150) // Medium-large map
+                baseLimit += 5;
+                
+            // Reduce for very large colonies (performance)
+            int colonySize = map?.mapPawns?.FreeColonists?.Count() ?? 0;
+            if (colonySize > 50)
+                baseLimit = Math.Max(15, baseLimit - 10);
+            else if (colonySize > 35)
+                baseLimit = Math.Max(20, baseLimit - 5);
+                
+            return baseLimit;
+        }
+
         public static void CleanupCaches()
         {
-            // Use consolidated cleanup
-            CleanupHelper.CleanupPawnDictionary(pawnCheckData);
-            
             // Clean up raid cache for removed maps
-            var mapsToRemove = raidStatusCache.Keys.Where(m => m == null || !Find.Maps.Contains(m)).ToList();
-            foreach (var map in mapsToRemove)
+            lock (raidCacheLock)
             {
-                raidStatusCache.Remove(map);
+                var mapsToRemove = raidStatusCache.Keys.Where(m => m == null || !Find.Maps.Contains(m)).ToList();
+                foreach (var map in mapsToRemove)
+                {
+                    raidStatusCache.Remove(map);
+                }
             }
         }
 
         // Raid status cache
         private static readonly Dictionary<Map, CachedRaidStatus> raidStatusCache = new Dictionary<Map, CachedRaidStatus>();
+        private static readonly object raidCacheLock = new object();
         
         private class CachedRaidStatus
         {
@@ -335,17 +377,20 @@ namespace AutoArm
                 return false;
                 
             // Check cache first
-            if (raidStatusCache.TryGetValue(map, out var cached))
+            lock (raidCacheLock)
             {
-                int ticksSinceLastCheck = Find.TickManager.TicksGame - cached.LastCheckTick;
-                if (ticksSinceLastCheck < 120) // 2 seconds cache
+                if (raidStatusCache.TryGetValue(map, out var cached))
                 {
-                    return cached.IsActive;
+                    int ticksSinceLastCheck = Find.TickManager.TicksGame - cached.LastCheckTick;
+                    if (ticksSinceLastCheck < 600) // 10 seconds cache
+                    {
+                        return cached.IsActive;
+                    }
                 }
             }
 
             // Debug log when checking for raids - include more context
-            AutoArmLogger.Log($"[RAID CHECK] Checking for active raids on map {map.uniqueID} (Biome: {map.Biome?.defName ?? "null"})");
+            // Raid check start - too frequent
             
             // Check for raid-specific lords
             int lordCount = 0;
@@ -373,13 +418,13 @@ namespace AutoArm
                 {
                     var typeName = lordJobType.Name;
                     
-                    AutoArmLogger.Log($"[RAID CHECK] Found lord job: {typeName} for faction {lord.faction.Name} ({lord.faction.def.defName})");
+                    // Lord job details - internal
                     
                     // IMPORTANT: First check if the lord has any active pawns at all
                     var activePawns = lord.ownedPawns.Where(p => p != null && !p.Dead && !p.Downed && p.Spawned).ToList();
                     if (!activePawns.Any())
                     {
-                        AutoArmLogger.Log($"[RAID CHECK] Lord has no active pawns - skipping");
+                        // No active pawns - expected
                         continue;
                     }
                     
@@ -403,7 +448,7 @@ namespace AutoArm
                         typeName == "LordJob_WanderClose" ||              // Wandering behavior
                         typeName == "LordJob_WanderAndJoin")              // Animals wandering to join
                     {
-                        AutoArmLogger.Log($"[RAID CHECK] Skipping non-raid lord: {typeName}");
+                        // Non-raid lord - expected
                         continue;
                     }
                     
@@ -434,8 +479,7 @@ namespace AutoArm
                         // For test scenarios with mechs, just check if it's an assault type
                         if (isTestScenario && typeName.Contains("Assault"))
                         {
-                            AutoArmLogger.Log($"[RAID CHECK] Test scenario - treating mech assault as raid");
-                            AutoArmLogger.Log($"[RAID CHECK] RAID DETECTED: {typeName}");
+                            // Test scenario raid detection
                             return true;
                         }
                         
@@ -478,19 +522,18 @@ namespace AutoArm
 
                         if (!hasAttackingMech && !hasApproachingMech)
                         {
-                            AutoArmLogger.Log($"[RAID CHECK] Mechs present but not actively raiding - not a raid");
+                            // Inactive mechs - expected
                             continue;
                         }
                         
-                        AutoArmLogger.Log($"[RAID CHECK] Active mech raid confirmed - attacking: {hasAttackingMech}, approaching: {hasApproachingMech}");
+                        // Mech raid confirmed
                     }
                     else
                     {
                         // For non-mech raids in test scenarios, be less strict
                         if (isTestScenario && (typeName == "LordJob_AssaultColony" || typeName.Contains("Raid")))
                         {
-                            AutoArmLogger.Log($"[RAID CHECK] Test scenario - treating assault as raid");
-                            AutoArmLogger.Log($"[RAID CHECK] RAID DETECTED: {typeName}");
+                            // Test scenario raid
                             return true;
                         }
                         
@@ -524,30 +567,39 @@ namespace AutoArm
                         
                         if (!hasActiveHostiles)
                         {
-                            AutoArmLogger.Log($"[RAID CHECK] No active hostile pawns attacking or approaching - not a raid");
+                            // No active hostiles
                             continue;
                         }
                     }
 
-                    AutoArmLogger.Log($"[RAID CHECK] RAID DETECTED: {typeName}");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"Raid detected: {typeName} by {lord.faction.Name}");
+                    }
                     
                     // Update cache
-                    if (!raidStatusCache.ContainsKey(map))
-                        raidStatusCache[map] = new CachedRaidStatus();
-                    raidStatusCache[map].IsActive = true;
-                    raidStatusCache[map].LastCheckTick = Find.TickManager.TicksGame;
+                    lock (raidCacheLock)
+                    {
+                        if (!raidStatusCache.ContainsKey(map))
+                            raidStatusCache[map] = new CachedRaidStatus();
+                        raidStatusCache[map].IsActive = true;
+                        raidStatusCache[map].LastCheckTick = Find.TickManager.TicksGame;
+                    }
                     
                     return true;
                 }
             }
 
-            AutoArmLogger.Log($"[RAID CHECK] No active raid detected (checked {lordCount} lords, {hostileLordCount} hostile)");
+            // No raid - common case
             
             // Update cache
-            if (!raidStatusCache.ContainsKey(map))
-                raidStatusCache[map] = new CachedRaidStatus();
-            raidStatusCache[map].IsActive = false;
-            raidStatusCache[map].LastCheckTick = Find.TickManager.TicksGame;
+            lock (raidCacheLock)
+            {
+                if (!raidStatusCache.ContainsKey(map))
+                    raidStatusCache[map] = new CachedRaidStatus();
+                raidStatusCache[map].IsActive = false;
+                raidStatusCache[map].LastCheckTick = Find.TickManager.TicksGame;
+            }
             
             return false;
         }

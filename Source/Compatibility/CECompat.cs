@@ -1,4 +1,4 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Combat Extended compatibility for ammo-based weapon scoring
 // Integrates CE ammo requirements into weapon selection logic
 
@@ -10,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using Verse;
 using Verse.AI;
+using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -17,6 +18,10 @@ namespace AutoArm
     {
         private static bool? _isLoaded = null;
         private static bool _initialized = false;
+        private static readonly object _initLock = new object();
+
+        // Track logged weapons to avoid spam
+        private static HashSet<string> _loggedWeapons = new HashSet<string>();
 
         private static Type compPropertiesAmmoUserType;
         private static Type ammoLinkType;
@@ -53,7 +58,7 @@ namespace AutoArm
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm] Combat Extended detection result: {_isLoaded}");
+                    AutoArmLogger.Debug($"CECompat: Combat Extended detection result: {_isLoaded}");
                     if (_isLoaded.Value)
                     {
                         var ceMod = ModLister.AllInstalledMods.FirstOrDefault(m =>
@@ -63,7 +68,7 @@ namespace AutoArm
                             ));
                         if (ceMod != null)
                         {
-                            Log.Message($"[AutoArm] Detected CE mod: {ceMod.Name} ({ceMod.PackageIdPlayerFacing})");
+                            AutoArmLogger.Debug($"CECompat: Detected CE mod: {ceMod.Name} ({ceMod.PackageIdPlayerFacing})");
                         }
                     }
                 }
@@ -76,7 +81,13 @@ namespace AutoArm
             if (_initialized || !IsLoaded())
                 return;
 
-            _initialized = true;
+            lock (_initLock)
+            {
+                // Double-check after acquiring lock
+                if (_initialized)
+                    return;
+
+                _initialized = true;
 
             try
             {
@@ -86,34 +97,34 @@ namespace AutoArm
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message($"[AutoArm] Found {ceTypes.Count} Combat Extended types");
+                    AutoArmLogger.Debug($"CECompat: Found {ceTypes.Count} Combat Extended types");
                 }
 
                 compPropertiesAmmoUserType = ceTypes.FirstOrDefault(t => t.Name == "CompProperties_AmmoUser");
                 if (compPropertiesAmmoUserType == null)
                 {
-                    Log.Warning("[AutoArm] Could not find CompProperties_AmmoUser type");
+                    AutoArmLogger.Warn("CECompat: Could not find CompProperties_AmmoUser type");
                     return;
                 }
 
                 ammoLinkType = ceTypes.FirstOrDefault(t => t.Name == "AmmoLink");
                 if (ammoLinkType == null)
                 {
-                    Log.Warning("[AutoArm] Could not find AmmoLink type");
+                    AutoArmLogger.Warn("CECompat: Could not find AmmoLink type");
                     return;
                 }
 
                 ammoSetField = compPropertiesAmmoUserType.GetField("ammoSet");
                 if (ammoSetField == null)
                 {
-                    Log.Warning("[AutoArm] Could not find ammoSet field");
+                    AutoArmLogger.Warn("CECompat: Could not find ammoSet field");
                     return;
                 }
 
                 ammoField = ammoLinkType.GetField("ammo");
                 if (ammoField == null)
                 {
-                    Log.Warning("[AutoArm] Could not find ammo field in AmmoLink");
+                    AutoArmLogger.Warn("CECompat: Could not find ammo field in AmmoLink");
                     return;
                 }
 
@@ -134,16 +145,13 @@ namespace AutoArm
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Message("[AutoArm] Combat Extended compatibility initialized successfully");
+                    AutoArmLogger.Debug("CECompat: Combat Extended compatibility initialized successfully");
                 }
             }
             catch (Exception e)
             {
-                Log.Warning($"[AutoArm] Failed to initialize Combat Extended compatibility: {e.Message}");
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    Log.Warning($"[AutoArm] Stack trace: {e.StackTrace}");
-                }
+                AutoArmLogger.Error("Failed to initialize Combat Extended compatibility", e);
+            }
             }
         }
 
@@ -242,23 +250,33 @@ namespace AutoArm
                     hasAmmo = IsAmmoAvailableOnMap(ammoTypes, pawn);
                 }
 
-                if (AutoArmMod.settings?.debugLogging == true)
+                // Only log if first time checking this weapon
+                var logKey = $"ceammo_{weapon.def.defName}_{pawn.thingIDNumber}";
+                if (!_loggedWeapons.Contains(logKey))
                 {
-                    string ammoTypeNames = string.Join(", ", ammoTypes.Select(a => a.defName));
-                    AutoArmLogger.LogWeapon(pawn, weapon,
-                        $"CE ammo check - Needs: [{ammoTypeNames}], " +
-                        $"Inventory: {inventoryAmmoCount}, " +
-                        $"Map available: {(hasAmmo && inventoryAmmoCount == 0 ? "Yes" : "No")}, " +
-                        $"Result: {(hasAmmo ? "Has ammo" : "No ammo - SKIP")}");
+                    _loggedWeapons.Add(logKey);
+                    if (_loggedWeapons.Count > 200) // Reset periodically
+                    {
+                        _loggedWeapons.Clear();
+                    }
+                    
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        string ammoTypeNames = string.Join(", ", ammoTypes.Select(a => a.defName));
+                        AutoArmLogger.Debug($"CECompat: {weapon.Label} for {pawn.LabelShort} - Ammo types: [{ammoTypeNames}], " +
+                            $"Inventory: {inventoryAmmoCount}, " +
+                            $"Map available: {(hasAmmo && inventoryAmmoCount == 0 ? "Yes" : "No")}, " +
+                            $"Result: {(hasAmmo ? "Has ammo" : "No ammo - SKIP")}");
+                    }
                 }
 
                 return !hasAmmo;
             }
             catch (Exception e)
             {
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (Prefs.DevMode && AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Warning($"[AutoArm] Error checking CE ammo for {weapon.def.defName}: {e.Message}");
+                    AutoArmLogger.Debug($"CECompat: Error checking ammo for {weapon.def.defName}: {e.Message}");
                 }
                 return false;
             }
@@ -317,9 +335,9 @@ namespace AutoArm
             }
             catch (Exception e)
             {
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (Prefs.DevMode && AutoArmMod.settings?.debugLogging == true)
                 {
-                    Log.Warning($"[AutoArm] Error getting ammo types for {weaponDef.defName}: {e.Message}");
+                    AutoArmLogger.Debug($"CECompat: Error getting ammo types for {weaponDef.defName}: {e.Message}");
                 }
             }
 
@@ -397,6 +415,7 @@ namespace AutoArm
         public static void ClearCache()
         {
             weaponAmmoCache.Clear();
+            _loggedWeapons.Clear();
         }
 
         public static bool ShouldCheckAmmo()

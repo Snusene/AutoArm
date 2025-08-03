@@ -1,6 +1,12 @@
 // weapons-data.js - AutoArm Weapon Database
 // This file contains all weapon data for the AutoArm balance analyzer
 
+// ⚠️ DO NOT CHANGE THE WEAPON DATA VALUES ⚠️
+// These stats are taken directly from RimWorld's game files and represent actual in-game values.
+// Changing them would make the scoring system inaccurate and not reflect real game balance.
+// If a weapon seems incorrectly scored, adjust the SCORING FORMULA in index.html, not the data.
+// The goal is to find the right formula that works with actual game stats, not to "fix" the stats.
+
 // Wrap everything in an IIFE to avoid redeclaration issues
 (function () {
     'use strict';
@@ -78,11 +84,11 @@
         { name: "Plasteel Knife", dps: 12, ap: 0.18 },
 
         // Spacer
-        { name: "Monosword", dps: 18.89, ap: 0.72 },
-        { name: "Zeushammer", dps: 16.2, ap: 0.3833 },
+        { name: "Monosword", dps: 18.89, ap: 0.72, hasPersona: true },
+        { name: "Zeushammer", dps: 16.2, ap: 0.3833, hasPersona: true },
 
         // Ultra
-        { name: "Plasmasword", dps: 17.59, ap: 0.2975 },
+        { name: "Plasmasword", dps: 17.59, ap: 0.2975, hasPersona: true },
 
         // DLC special weapons
         { name: "Jade Knife", dps: 6.78, ap: 0.1748 }, // Tribal scenario special

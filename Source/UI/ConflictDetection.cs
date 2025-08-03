@@ -5,8 +5,11 @@
 using System;
 using System.Linq;
 using Verse;
+using AutoArm.Helpers;
+using AutoArm.Logging;
+using AutoArm.Definitions;
 
-namespace AutoArm
+namespace AutoArm.UI
 {
     [StaticConstructorOnStartup]
     public static class ConflictDetection
