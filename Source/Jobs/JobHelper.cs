@@ -4,13 +4,12 @@
 // Uses: Job categories and work priorities to avoid disrupting important tasks
 // Critical: Prevents mod from interrupting emergency/critical jobs
 
+using AutoArm.Logging;
 using RimWorld;
+using System;
 using System.Collections.Generic;
 using Verse;
 using Verse.AI;
-using AutoArm.Helpers;
-using AutoArm.Logging;
-using AutoArm.Jobs;
 
 namespace AutoArm.Jobs
 {
@@ -19,57 +18,34 @@ namespace AutoArm.Jobs
     /// </summary>
     public static class JobHelper
     {
-        // Job categories for interruption logic
-        private static readonly HashSet<JobDef> AlwaysCriticalJobs = new HashSet<JobDef>
-        {
-            JobDefOf.TendPatient, JobDefOf.Rescue, JobDefOf.ExtinguishSelf,
-            JobDefOf.BeatFire, JobDefOf.GotoSafeTemperature,
-            JobDefOf.AttackMelee, JobDefOf.AttackStatic, JobDefOf.Hunt,
-            JobDefOf.ManTurret, JobDefOf.Wait_Combat, JobDefOf.FleeAndCower, JobDefOf.Reload,
-            JobDefOf.Vomit, JobDefOf.LayDown, JobDefOf.Lovin, JobDefOf.Ingest,
-            JobDefOf.EnterTransporter, JobDefOf.EnterCryptosleepCasket,
-            JobDefOf.Arrest, JobDefOf.Capture, JobDefOf.EscortPrisonerToBed,
-            JobDefOf.TakeWoundedPrisonerToBed, JobDefOf.ReleasePrisoner,
-            JobDefOf.Kidnap, JobDefOf.CarryDownedPawnToExit, JobDefOf.CarryToCryptosleepCasket,
-            JobDefOf.TradeWithPawn, JobDefOf.UseCommsConsole, JobDefOf.DropEquipment
-        };
-
-        private static readonly HashSet<JobDef> AlwaysSafeToInterrupt = new HashSet<JobDef>
-        {
-            JobDefOf.Wait, JobDefOf.Wait_Wander, JobDefOf.GotoWander,
-            JobDefOf.Goto, JobDefOf.LayDownResting, JobDefOf.Clean,
-            JobDefOf.ClearSnow, JobDefOf.RemoveFloor
-        };
-
-        private static readonly HashSet<JobDef> InterruptibleForMajorUpgrade = new HashSet<JobDef>
-        {
-            JobDefOf.Sow, JobDefOf.Harvest, JobDefOf.CutPlant, JobDefOf.HarvestDesignated,
-            JobDefOf.PlantSeed, JobDefOf.FinishFrame, JobDefOf.PlaceNoCostFrame,
-            JobDefOf.BuildRoof, JobDefOf.RemoveRoof, JobDefOf.SmoothFloor,
-            JobDefOf.SmoothWall, JobDefOf.Deconstruct, JobDefOf.Uninstall,
-            JobDefOf.Repair, JobDefOf.FixBrokenDownBuilding, JobDefOf.HaulToCell,
-            JobDefOf.HaulToContainer, JobDefOf.UnloadInventory, JobDefOf.UnloadYourInventory,
-            JobDefOf.Tame, JobDefOf.Train, JobDefOf.Shear, JobDefOf.Milk, JobDefOf.Slaughter,
-            JobDefOf.DoBill, JobDefOf.Mine, JobDefOf.OperateScanner, JobDefOf.OperateDeepDrill,
-            JobDefOf.Research, JobDefOf.RearmTurret, JobDefOf.Refuel,
-            JobDefOf.FillFermentingBarrel, JobDefOf.TakeBeerOutOfFermentingBarrel,
-            JobDefOf.DeliverFood, JobDefOf.Open, JobDefOf.Flick
-        };
-
-        private static JobDef equipSecondaryJobDef;
-        private static bool equipSecondaryJobDefChecked = false;
+        // Job categories for interruption logic - initialized once
+        private static readonly HashSet<JobDef> AlwaysCriticalJobs = InitializeCriticalJobs();
         
+        private static HashSet<JobDef> InitializeCriticalJobs()
+        {
+            return new HashSet<JobDef>
+            {
+                JobDefOf.TendPatient, JobDefOf.Rescue, JobDefOf.ExtinguishSelf,
+                JobDefOf.BeatFire, JobDefOf.GotoSafeTemperature,
+                JobDefOf.AttackMelee, JobDefOf.AttackStatic, JobDefOf.Hunt,
+                JobDefOf.ManTurret, JobDefOf.Wait_Combat, JobDefOf.FleeAndCower, JobDefOf.Reload,
+                JobDefOf.Vomit, JobDefOf.LayDown, JobDefOf.Lovin, JobDefOf.Ingest,
+                JobDefOf.EnterTransporter, JobDefOf.EnterCryptosleepCasket,
+                JobDefOf.Arrest, JobDefOf.Capture, JobDefOf.EscortPrisonerToBed,
+                JobDefOf.TakeWoundedPrisonerToBed, JobDefOf.ReleasePrisoner,
+                JobDefOf.Kidnap, JobDefOf.CarryDownedPawnToExit, JobDefOf.CarryToCryptosleepCasket,
+                JobDefOf.TradeWithPawn, JobDefOf.UseCommsConsole, JobDefOf.DropEquipment
+            };
+        }
+
+        // Cached EquipSecondary job def
+        private static readonly JobDef equipSecondaryJobDef = SimpleSidearmsCompat.IsLoaded() ? 
+            DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary") : null;
+
         // String prefix sets for performance
-        private static readonly HashSet<string> CriticalJobPatterns = new HashSet<string>
+        private static readonly string[] CriticalJobPatterns = new string[]
         {
             "Ritual", "Surgery", "Operate", "Prisoner", "Mental", "PrepareCaravan"
-        };
-        
-        private static readonly HashSet<string> SafeJobPrefixes = new HashSet<string>
-        {
-            "Joy", "Play", "Social", "Relax", "Clean", "Wander", "Wait", 
-            "IdleJob", "Skygaze", "Meditate", "ViewArt", "VisitGrave", 
-            "BuildSnowman", "CloudWatch", "StandAndBeSociallyActive"
         };
 
         /// <summary>
@@ -77,39 +53,31 @@ namespace AutoArm.Jobs
         /// </summary>
         public static Job CreateEquipJob(ThingWithComps weapon, bool isSidearm = false)
         {
-            // Weapon null check
-            
             if (weapon == null)
             {
-                // Weapon is null
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug("CreateEquipJob called with null weapon");
+                }
                 return null;
             }
 
-            if (isSidearm && SimpleSidearmsCompat.IsLoaded())
+            if (isSidearm && equipSecondaryJobDef != null)
             {
-                // Lazy load the secondary job def with caching
-                if (!equipSecondaryJobDefChecked)
+                if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    equipSecondaryJobDef = DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary");
-                    equipSecondaryJobDefChecked = true;
-                    if (equipSecondaryJobDef == null)
-                    {
-                        // EquipSecondary job def not found
-                    }
+                    AutoArmLogger.Debug($"Creating EquipSecondary job for {weapon.Label} (sidearm)");
                 }
-
-                if (equipSecondaryJobDef != null)
-                {
-                    // Creating SimpleSidearms job
-                    return JobMaker.MakeJob(equipSecondaryJobDef, weapon);
-                }
+                return JobMaker.MakeJob(equipSecondaryJobDef, weapon);
             }
 
             // Default to vanilla equip job
-            // Creating vanilla equip job
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"Creating vanilla Equip job for {weapon.Label}{(isSidearm ? " (marked as sidearm)" : "")}");
+            }
             var job = JobMaker.MakeJob(JobDefOf.Equip, weapon);
             job.count = 1;
-            // Job created
             return job;
         }
 
@@ -132,58 +100,16 @@ namespace AutoArm.Jobs
 
             // Check always critical jobs
             if (AlwaysCriticalJobs.Contains(jobDef))
-            {
-                // Always critical job
                 return true;
-            }
 
-            // Check job name patterns
+            // Check job name patterns - optimized
             var defName = jobDef.defName;
-            foreach (var pattern in CriticalJobPatterns)
+            for (int i = 0; i < CriticalJobPatterns.Length; i++)
             {
-                if (defName.Contains(pattern))
-                {
-                    // Critical pattern found
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Check if a job can be safely interrupted
-        /// </summary>
-        public static bool IsSafeToInterrupt(Job job, float upgradePercentage = 0f)
-        {
-            if (job == null)
-                return true;
-
-            var jobDef = job.def;
-
-            // Always safe jobs
-            if (AlwaysSafeToInterrupt.Contains(jobDef))
-                return true;
-
-            // Check if it's interruptible for major upgrade (15% better by default)
-            float majorUpgradeThreshold = 1f + (AutoArmMod.settings.weaponUpgradeThreshold - 1f) * 3f; // Triple the threshold for interrupting work
-            if (upgradePercentage >= majorUpgradeThreshold && InterruptibleForMajorUpgrade.Contains(jobDef))
-                return true;
-
-            // Check job name patterns
-            var defName = jobDef.defName;
-            
-            // Special handling for haul jobs
-            if (defName.Contains("Haul"))
-                return !defName.Contains("Urgent") && !defName.Contains("Critical");
-            
-            // Check safe job prefixes
-            foreach (var prefix in SafeJobPrefixes)
-            {
-                if (defName.Contains(prefix))
+                if (defName.IndexOf(CriticalJobPatterns[i], StringComparison.Ordinal) >= 0)
                     return true;
             }
-            
+
             return false;
         }
 
@@ -198,7 +124,8 @@ namespace AutoArm.Jobs
             var job = pawn.CurJob;
             var jobDef = job.def;
 
-            if (AlwaysSafeToInterrupt.Contains(jobDef))
+            // Check common low priority jobs - use switch for better performance
+            if (IsLowPriorityJobDef(jobDef))
                 return true;
 
             // Check work priority
@@ -220,7 +147,17 @@ namespace AutoArm.Jobs
 
             return false;
         }
-
-
+        
+        private static bool IsLowPriorityJobDef(JobDef jobDef)
+        {
+            return jobDef == JobDefOf.Wait || 
+                   jobDef == JobDefOf.Wait_Wander ||
+                   jobDef == JobDefOf.GotoWander || 
+                   jobDef == JobDefOf.Goto ||
+                   jobDef == JobDefOf.LayDownResting || 
+                   jobDef == JobDefOf.Clean ||
+                   jobDef == JobDefOf.ClearSnow || 
+                   jobDef == JobDefOf.RemoveFloor;
+        }
     }
 }

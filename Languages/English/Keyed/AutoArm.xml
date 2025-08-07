@@ -1,39 +1,154 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
-	<!-- Mod Settings -->
-	<AutoArm_ModName>Auto Arm</AutoArm_ModName>
-	<AutoArm_SettingsCategory>Auto Arm</AutoArm_SettingsCategory>
-	<AutoArm_EnableMod>Enable Auto Arm</AutoArm_EnableMod>
-	<AutoArm_EnableModDesc>When enabled, colonists will automatically equip better weapons based on their outfit policy. When disabled, all automatic weapon management is turned off.</AutoArm_EnableModDesc>
-	<AutoArm_EnableDebugLogging>Enable Debug Logging</AutoArm_EnableDebugLogging>
-	<AutoArm_EnableDebugLoggingDesc>Outputs detailed information to the debug log for troubleshooting. This will create many log entries and may impact performance. Only enable when reporting issues.</AutoArm_EnableDebugLoggingDesc>
+	<!-- Mod Info -->
+	<AutoArm_ModName>AutoArm</AutoArm_ModName>
+	<AutoArm_SettingsCategory>AutoArm</AutoArm_SettingsCategory>
 
-	<!-- Notifications -->
+	<!-- Settings UI -->
+	<AutoArm_Settings>Settings</AutoArm_Settings>
+	<AutoArm_ResetConfig>Reset Config</AutoArm_ResetConfig>
+	<AutoArm_General>General</AutoArm_General>
+	<AutoArm_Compatibility>Compatibility</AutoArm_Compatibility>
+	<AutoArm_Advanced>Advanced</AutoArm_Advanced>
+	<AutoArm_Debug>Debug</AutoArm_Debug>
+
+	<!-- General Settings -->
+	<AutoArm_DisableDuringRaids>Disable during raids</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>Temporarily disable auto-equip when the game detects high danger (major raids/threats) to boost performance. Plays nicer with other mods as well.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_AllowForcedWeaponUpgrades>Allow quality upgrades for forced weapons</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>When enabled, colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver → masterwork revolver).</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>Allow temporary colonists to auto-equip</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>When enabled, temporary colonists (quest lodgers, borrowed pawns, royal guests) can auto-equip weapons.</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_EnableMod>Enable mod</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>When enabled, colonists will automatically equip better weapons based on their outfit policy. When disabled, all automatic weapon management is turned off.</AutoArm_EnableModDesc>
 	<AutoArm_ShowNotifications>Show notifications</AutoArm_ShowNotifications>
-	<AutoArm_ShowNotificationsDesc>Shows blue notification messages when colonists equip or drop weapons. Disabling this will make weapon changes silent but they will still happen.</AutoArm_ShowNotificationsDesc>
+	<AutoArm_ShowNotificationsDesc>Shows notification messages when colonists equip or upgrade weapons.</AutoArm_ShowNotificationsDesc>
+
+	<!-- Notification Messages -->
 	<AutoArm_EquippedWeapon>{0} equipped {1}</AutoArm_EquippedWeapon>
 	<AutoArm_UpgradedWeapon>{0} upgraded from {1} to {2}</AutoArm_UpgradedWeapon>
 	<AutoArm_UpgradedSidearm>{0} upgraded sidearm from {1} to {2}</AutoArm_UpgradedSidearm>
+	<AutoArm_EquippingSidearm>{0} is picking up {1} as a sidearm</AutoArm_EquippingSidearm>
 	<AutoArm_ReplacedWeapon>{0} replaced {1} with {2}</AutoArm_ReplacedWeapon>
-	<AutoArm_DroppingDisallowed>{0} dropped {1} (not allowed by outfit)</AutoArm_DroppingDisallowed>
-	<AutoArm_EquippedSidearm>{0} equipped {1} as sidearm</AutoArm_EquippedSidearm>
-	<!-- Mod Compatibility Settings -->
-	<AutoArm_EnableSidearmAutoEquip>Auto-equip sidearms</AutoArm_EnableSidearmAutoEquip>
-	<AutoArm_EnableSidearmAutoEquipDesc>Allows colonists to automatically pick up additional weapons as sidearms. Simple Sidearms must be installed and configured. This may impact performance with many colonists.</AutoArm_EnableSidearmAutoEquipDesc>
-	<AutoArm_CheckCEAmmo>Check for ammunition</AutoArm_CheckCEAmmo>
-	<AutoArm_CheckCEAmmoDesc>When enabled, colonists will only pick up weapons if they have access to appropriate ammunition. Disabling this may result in colonists carrying weapons they cannot use. Only affects Combat Extended games.</AutoArm_CheckCEAmmoDesc>
+	<AutoArm_ForceWeapon>Auto-force bonded weapons</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>When enabled, bonded persona weapons are automatically marked as forced, preventing automatic switching.</AutoArm_ForceWeaponDesc>
+	<AutoArm_AutoequipSpeedBoost>Auto-equip speed boost</AutoArm_AutoequipSpeedBoost>
+	<AutoArm_AutoequipSpeedBoostTooltip>Colonists run to pick up a new weapon (Normal = 1.0)</AutoArm_AutoequipSpeedBoostTooltip>
+	<AutoArm_DropBiocodedWeapons>Drop biocoded weapons</AutoArm_DropBiocodedWeapons>
+	<AutoArm_CheckEnemyCorpses>Check enemy corpses</AutoArm_CheckEnemyCorpses>
+	<AutoArm_CheckGuestCorpses>Check guest corpses</AutoArm_CheckGuestCorpses>
+	<AutoArm_CheckColonistCorpses>Check colonist corpses</AutoArm_CheckColonistCorpses>
+	<AutoArm_EnableForSlaves>Enable for slaves</AutoArm_EnableForSlaves>
+	<AutoArm_OnlyArmedEnemies>Only check armed enemies' corpses</AutoArm_OnlyArmedEnemies>
+	<AutoArm_OnlyArmedGuests>Only check armed guests' corpses</AutoArm_OnlyArmedGuests>
+	<AutoArm_OnlyArmedColonists>Only check armed colonists' corpses</AutoArm_OnlyArmedColonists>
+	<AutoArm_EnableCivilianMode>Enable civilian mode</AutoArm_EnableCivilianMode>
+	<AutoArm_CivilianModeTooltip>During peaceful times, pawns will drop their weapons at high joy and pick them up when drafted or at lower joy</AutoArm_CivilianModeTooltip>
+	<AutoArm_CivilianJoyThreshold>Civilian mode joy threshold</AutoArm_CivilianJoyThreshold>
 
-	<!-- Detected Mods Section -->
+	<!-- Pawn Settings -->
+	<AutoArm_EquipFirstWeapon>Pawn → Equip first weapon</AutoArm_EquipFirstWeapon>
+	<AutoArm_PawnSettings>Pawn Settings</AutoArm_PawnSettings>
+
+	<!-- Compatibility Settings -->
+	<AutoArm_CompatibilityPatches>Compatibility Patches</AutoArm_CompatibilityPatches>
+	<AutoArm_SimpleSidearms>Simple Sidearms</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>Combat Extended</AutoArm_CombatExtended>
+	<AutoArm_Loaded>Loaded</AutoArm_Loaded>
+	<AutoArm_NotFound>Not found</AutoArm_NotFound>
+	<AutoArm_EnableSidearmAutoEquip>Enable sidearm auto-equip</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Allows colonists to automatically pick up additional weapons as sidearms.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>Allow sidearm upgrades</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>When enabled, colonists will upgrade existing sidearms to better quality.</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_RequireAmmunition>Require ammunition</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>When enabled, colonists will only pick up weapons if they have access to appropriate ammunition.</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ CE ammo system is disabled</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsSeparate>SimpleSidearms (v1.5.0.2): Consider sidearms separately</AutoArm_SimpleSidearmsSeparate>
+	<AutoArm_SimpleSidearmsSeparateTooltip>When enabled, pawns will search for and equip sidearms as a separate task from their primary weapon</AutoArm_SimpleSidearmsSeparateTooltip>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ SimpleSidearms integration failed - reflection error. These features are disabled.</AutoArm_SimpleSidearmsReflectionFailed>
+	<AutoArm_CheckCEAmmo>Check for ammunition</AutoArm_CheckCEAmmo>
+	<AutoArm_CheckCEAmmoDesc>When enabled, colonists will only pick up weapons if they have access to appropriate ammunition. Disabling this will result in colonists carrying weapons they don't have ammo for.</AutoArm_CheckCEAmmoDesc>
+	<AutoArm_CombatExtendedAmmo>CombatExtended: Require ammo for weapons</AutoArm_CombatExtendedAmmo>
+	<AutoArm_WeaponStorageSharing>WeaponStorage: Enable cross-locker weapon sharing</AutoArm_WeaponStorageSharing>
+
+	<!-- Detected Mods -->
 	<AutoArm_DetectedMods>Detected compatible mods</AutoArm_DetectedMods>
 	<AutoArm_NoCompatModsDetected>None - using base game features only</AutoArm_NoCompatModsDetected>
 
-	<!-- Reset Button -->
-	<AutoArm_ResetToDefaults>Reset to defaults</AutoArm_ResetToDefaults>
-	<AutoArm_SettingsReset>Settings have been reset to defaults</AutoArm_SettingsReset>
+	<!-- Advanced Settings -->
+	<AutoArm_WeaponUpgrades>Weapon Upgrades</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>Threshold</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>How much better a weapon needs to be before colonists will switch. Lower values mean more frequent switching.</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>Weapon preference</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>Adjust how much all colonists prefer ranged vs melee weapons.</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_AgeRestrictions>Age Restrictions</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>Allow colonists under 18 to auto-equip weapons</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>When enabled, teenagers can auto-equip weapons based on the age slider below (vanilla allows 13+). When disabled, only adults (18+) will auto-equip weapons. Note: Vanilla already prevents children under 13 from using any weapons.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>Minimum age</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>Minimum age for children to auto-equip weapons</AutoArm_MinimumAgeDesc>
+	
+	<!-- Weapon Preference Values -->
+	<AutoArm_StrongMeleePreference>Strong melee preference</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>Moderate melee preference</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>Slight melee preference</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>Balanced (no preference)</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>Slight ranged preference</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>Moderate ranged preference</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>Strong ranged preference</AutoArm_StrongRangedPreference>
+	<AutoArm_RiskOfWeaponSwapLoops>Risk of weapon swap loops</AutoArm_RiskOfWeaponSwapLoops>
+	<AutoArm_WhatCouldGoWrong>⚠ What could go wrong?</AutoArm_WhatCouldGoWrong>
+	<AutoArm_EquipDelay>Equip delay</AutoArm_EquipDelay>
+	<AutoArm_EquipDelayTooltip>Minimum time between weapon checks (seconds)</AutoArm_EquipDelayTooltip>
+	<AutoArm_SearchRadius>Search radius</AutoArm_SearchRadius>
+	<AutoArm_SearchRadiusTooltip>How far pawns will look for weapons (tiles)</AutoArm_SearchRadiusTooltip>
+	<AutoArm_ThinkTrees>Think trees to inject (Comma-separated)</AutoArm_ThinkTrees>
+	<AutoArm_EnablePerformanceMode>Enable performance mode</AutoArm_EnablePerformanceMode>
+	<AutoArm_EnablePerformanceModeTooltip>Automatically adjusts check frequency based on colony size for better performance</AutoArm_EnablePerformanceModeTooltip>
 
+	<!-- Weapon Scoring -->
+	<AutoArm_WeaponScoring>Weapon Scoring</AutoArm_WeaponScoring>
+	<AutoArm_ScoreFormula>Score = (Base Value × Value) + (DPS × DPS Weight)</AutoArm_ScoreFormula>
+	<AutoArm_ValueWeight>Value weight</AutoArm_ValueWeight>
+	<AutoArm_DPSWeight>DPS weight</AutoArm_DPSWeight>
+	<AutoArm_ImportantNote>Important: Set both to 0 to disable Auto Arm</AutoArm_ImportantNote>
+
+	<!-- Debug Settings -->
+	<AutoArm_EnableVerboseLogging>Enable verbose logging</AutoArm_EnableVerboseLogging>
+	<AutoArm_EnableDebugLogging>Enable debug logging</AutoArm_EnableDebugLogging>
+	<AutoArm_EnableDebugLoggingDesc>Outputs detailed information to the debug log for troubleshooting. This will create many log entries and may impact performance. Only enable when reporting issues.</AutoArm_EnableDebugLoggingDesc>
+	<AutoArm_DebugColumns>Debug columns</AutoArm_DebugColumns>
+	<AutoArm_DumpCachedScores>Dump cached weapon scores to log</AutoArm_DumpCachedScores>
+	<AutoArm_RunAllTests>Run All AutoArm Tests</AutoArm_RunAllTests>
+	<AutoArm_ClickToRun>Click to run</AutoArm_ClickToRun>
+	<AutoArm_RunTestSet>Run test set: {0}</AutoArm_RunTestSet>
+
+	<!-- Log Messages -->
+	<AutoArm_DebugRequiresActiveGame>Debug tools require an active game</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>Auto Arm Debug Tools</AutoArm_DebugTools>
+	<AutoArm_RunPerformanceTest>Run Comprehensive Performance Test</AutoArm_RunPerformanceTest>
+	<AutoArm_TestWeaponDetection>Test Weapon Detection &amp; Pawn Validation</AutoArm_TestWeaponDetection>
+	<AutoArm_CopyTestResults>Copy Test Results</AutoArm_CopyTestResults>
+	<AutoArm_TestResultsCopied>Test results copied to clipboard</AutoArm_TestResultsCopied>
+	<AutoArm_NoTestResultsToCopy>No test results to copy</AutoArm_NoTestResultsToCopy>
+	<AutoArm_SaveBeforeTouching>Save before touching anything</AutoArm_SaveBeforeTouching>
+	<AutoArm_Shortcuts>Shortcuts: F5=Run Tests, F6=Copy Results</AutoArm_Shortcuts>
+	<AutoArm_BondedWeaponsForced>Marked {0} bonded weapon{1} as forced.</AutoArm_BondedWeaponsForced>
+	<AutoArm_SettingsLoaded>AutoArm settings loaded.</AutoArm_SettingsLoaded>
+	<AutoArm_SettingsSaved>AutoArm settings saved.</AutoArm_SettingsSaved>
+	<AutoArm_SettingsReset>AutoArm settings reset to defaults.</AutoArm_SettingsReset>
+	<AutoArm_ResetToDefaults>Reset to defaults</AutoArm_ResetToDefaults>
+	<AutoArm_NoTestDef>No AutoArmTestDef found with defName: {0}</AutoArm_NoTestDef>
+	<AutoArm_NoWorkerInstance>AutoArmTestDef {0} has no workerInstance</AutoArm_NoWorkerInstance>
+	<AutoArm_TestCompleted>Test {0} completed</AutoArm_TestCompleted>
+	<AutoArm_TestError>Error running test {0}: {1}</AutoArm_TestError>
+	<AutoArm_AllTestsRun>All AutoArm tests have been run.</AutoArm_AllTestsRun>
+	<AutoArm_RunningAllTests>Running all AutoArm tests...</AutoArm_RunningAllTests>
+	<AutoArm_CachedScoresDumped>Cached weapon scores have been dumped to the log.</AutoArm_CachedScoresDumped>
 	<AutoArm_TestRunner>Test Runner</AutoArm_TestRunner>
-	<AutoArm_RunAllTests>Run All Auto Arm Tests</AutoArm_RunAllTests>
 	<AutoArm_RunSpecificTest>Run Specific Test</AutoArm_RunSpecificTest>
 	<AutoArm_ExportLogs>Export Debug Logs</AutoArm_ExportLogs>
 	<AutoArm_TestResults>Test Results</AutoArm_TestResults>
+
+	<!-- Test Descriptions -->
+	<AutoArm_TestDescription>{0} Test</AutoArm_TestDescription>
 </LanguageData>

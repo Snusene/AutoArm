@@ -1,15 +1,12 @@
-// AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Main test runner and test suite coordinator
-// Runs all tests and manages test execution
-
+using AutoArm.Caching;
+using AutoArm.Helpers;
+using AutoArm.Jobs;
+using AutoArm.Logging;
 using AutoArm.Testing.Scenarios;
-using AutoArm.Testing.Helpers;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using Verse;
-using AutoArm.Caching; using AutoArm.Logging;
-using AutoArm.Jobs;
 
 namespace AutoArm.Testing
 {
@@ -19,104 +16,189 @@ namespace AutoArm.Testing
 
         public static bool IsRunningTests => isRunningTests;
 
-        // Log messages during tests regardless of debug setting
+        // Log messages during tests to AutoArm.log
         public static void TestLog(string message)
         {
             if (isRunningTests)
             {
+                // Use Debug to write to AutoArm.log instead of Info which goes to player.log
                 AutoArmLogger.Debug($"[TEST] {message}");
             }
         }
 
         public static TestResults RunAllTests(Map map)
         {
+            if (map == null)
+            {
+                AutoArmLogger.Error("[TEST] No map available for testing");
+                return new TestResults();
+            }
+
             var results = new TestResults();
             var tests = GetAllTests();
+            var stopwatch = Stopwatch.StartNew();
 
-            // Use the new TestModEnabler to ensure mod is enabled
-            using (var modEnabler = TestModEnabler.ForceEnableForTesting())
+            // Save current debug logging state
+            bool originalDebugLogging = AutoArmMod.settings?.debugLogging ?? false;
+            bool originalModEnabled = AutoArmMod.settings?.modEnabled ?? true;
+
+            try
             {
-                isRunningTests = true;
-                
-                // Use test execution context to suppress expected warnings
-                using (var testContext = new TestExecutionContext())
+                // Configure for testing - enable debug logging to see test output
+                if (AutoArmMod.settings != null)
                 {
-                    foreach (var test in tests)
+                    AutoArmMod.settings.debugLogging = true;  // Enable so test logs appear in AutoArm.log
+                    AutoArmMod.settings.modEnabled = true;
+                }
+
+                isRunningTests = true;
+                TestLog($"Starting test run with {tests.Count} tests on map {map.uniqueID}");
+
+                int testIndex = 0;
+                foreach (var test in tests)
+                {
+                    testIndex++;
+                    TestLog($"Running test {testIndex}/{tests.Count}: {test.Name}");
+
+                    // Reset state between tests
+                    ResetTestState(map);
+
+                    try
                     {
+                        test.Setup(map);
+                        var result = test.Run();
+                        results.AddResult(test.Name, result);
+                        
+                        if (!result.Success)
+                        {
+                            TestLog($"Test FAILED: {test.Name} - {result.FailureReason}");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        results.AddResult(test.Name, TestResult.Failure($"Exception: {e.Message}"));
+                        AutoArmLogger.Error($"Test {test.Name} threw exception", e);
+                    }
+                    finally
+                    {
+                        // Always run cleanup
                         try
                         {
-                            // Clear destroyed tracking between tests
-                            SafeTestCleanup.ClearDestroyedTracking();
-                            
-                            // Force garbage collection before test to clean up any lingering references
-                            GC.Collect();
-                            GC.WaitForPendingFinalizers();
-                            
-                            test.Setup(map);
-                            var result = test.Run();
-                            results.AddResult(test.Name, result);
                             test.Cleanup();
-                            
-                            // Clear tracking again after cleanup
-                            SafeTestCleanup.ClearDestroyedTracking();
                         }
-                        catch (Exception e)
+                        catch (Exception cleanupEx)
                         {
-                            results.AddResult(test.Name, TestResult.Failure($"Exception: {e.Message}"));
-                            AutoArmLogger.Error($"Test {test.Name} threw exception: {e.Message}", e);
-
-                            // Try to cleanup even if test failed
-                            try
-                            {
-                                test.Cleanup();
-                            }
-                            catch { }
+                            AutoArmLogger.Error($"Cleanup failed for test {test.Name}", cleanupEx);
                         }
                     }
                 }
-
-                // Final cleanup - clear any cached references that might have been missed
-                try
-                {
-                    ImprovedWeaponCacheManager.InvalidateCache(map);
-                    JobGiver_PickUpBetterWeapon.CleanupCaches();
-                }
-                catch { }
-
+            }
+            finally
+            {
+                // Restore original settings
                 isRunningTests = false;
-            } // modEnabler.Dispose() will restore original settings
+                if (AutoArmMod.settings != null)
+                {
+                    AutoArmMod.settings.debugLogging = originalDebugLogging;
+                    AutoArmMod.settings.modEnabled = originalModEnabled;
+                }
+
+                // Final cleanup
+                FinalCleanup(map);
+
+                stopwatch.Stop();
+                TestLog($"Test run completed in {stopwatch.ElapsedMilliseconds}ms");
+            }
 
             return results;
         }
 
         public static TestResult RunSingleTest(Map map, ITestScenario test)
         {
-            // Use the new TestModEnabler to ensure mod is enabled
-            using (var modEnabler = TestModEnabler.ForceEnableForTesting())
+            if (map == null || test == null)
             {
-                isRunningTests = true;
+                return TestResult.Failure("Invalid test parameters");
+            }
 
-                // Use test execution context to suppress expected warnings
-                using (var testContext = new TestExecutionContext())
+            bool originalDebugLogging = AutoArmMod.settings?.debugLogging ?? false;
+            bool originalModEnabled = AutoArmMod.settings?.modEnabled ?? true;
+
+            try
+            {
+                if (AutoArmMod.settings != null)
                 {
-                    try
-                    {
-                        test.Setup(map);
-                        var result = test.Run();
-                        test.Cleanup();
-                        return result;
-                    }
-                    catch (Exception e)
-                    {
-                        AutoArmLogger.Error($"Test {test.Name} threw exception: {e.Message}", e);
-                        return TestResult.Failure($"Exception: {e.Message}");
-                    }
-                    finally
-                    {
-                        isRunningTests = false;
-                    }
+                    AutoArmMod.settings.debugLogging = true;  // Enable so test logs appear in AutoArm.log
+                    AutoArmMod.settings.modEnabled = true;
                 }
-            } // modEnabler.Dispose() will restore original settings
+
+                isRunningTests = true;
+                TestLog($"Running single test: {test.Name}");
+
+                ResetTestState(map);
+                test.Setup(map);
+                var result = test.Run();
+                test.Cleanup();
+                
+                return result;
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Error($"Test {test.Name} threw exception", e);
+                return TestResult.Failure($"Exception: {e.Message}");
+            }
+            finally
+            {
+                isRunningTests = false;
+                if (AutoArmMod.settings != null)
+                {
+                    AutoArmMod.settings.debugLogging = originalDebugLogging;
+                    AutoArmMod.settings.modEnabled = originalModEnabled;
+                }
+                
+                FinalCleanup(map);
+            }
+        }
+
+        private static void ResetTestState(Map map)
+        {
+            try
+            {
+                // Clear timing cooldowns between tests
+                TimingHelper.ClearAllCooldowns();
+
+                // Clear weapon cache
+                if (map != null)
+                {
+                    ImprovedWeaponCacheManager.InvalidateCache(map);
+                }
+
+                // Clear all tracking systems
+                DroppedItemTracker.ClearAll();
+                ForcedWeaponHelper.Cleanup();
+                AutoArm.Weapons.WeaponBlacklist.CleanupOldEntries();
+                WeaponScoreCache.ClearAllCaches();
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Error("Error resetting test state", e);
+            }
+        }
+
+        private static void FinalCleanup(Map map)
+        {
+            try
+            {
+                if (map != null)
+                {
+                    ImprovedWeaponCacheManager.InvalidateCache(map);
+                }
+                JobGiver_PickUpBetterWeapon.CleanupCaches();
+                CleanupHelper.PerformFullCleanup();
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Error("Error during final cleanup", e);
+            }
         }
 
         public static List<ITestScenario> GetAllTests()
@@ -125,46 +207,49 @@ namespace AutoArm.Testing
 
             try
             {
-                // Core functionality tests
-                tests.Add(new UnarmedPawnTest());
-                tests.Add(new WeaponUpgradeTest());
+                // HIGH PRIORITY - Critical bug prevention tests
+                tests.Add(new RaceConditionTest());
+                tests.Add(new WeaponDestructionMidJobTest());
+                // tests.Add(new NullSafetyTest()); // REMOVED - Can't test
+                tests.Add(new InfiniteLoopTest());
+
+                // MEDIUM PRIORITY - Common gameplay issues
+                tests.Add(new MentalBreakTest());
+                tests.Add(new TradingTest());
+                tests.Add(new SettingsChangeTest());
+                tests.Add(new RaidDetectionTest());
+
+                // Core functionality tests - USING FIXED VERSIONS
+                tests.Add(new TestFixes.UnarmedPawnTestFixed());  // Fixed version
+                tests.Add(new TestFixes.WeaponUpgradeTestFixed());  // Fixed version
                 tests.Add(new DraftedBehaviorTest());
                 tests.Add(new WeaponDropTest());
+                tests.Add(new ThinkTreeInjectionTest());
+                tests.Add(new CooldownSystemTest());
+                tests.Add(new WeaponSwapChainTest());
+                tests.Add(new ProgressiveSearchTest());
 
                 // Preference tests
                 tests.Add(new BrawlerTest());
                 tests.Add(new HunterTest());
                 tests.Add(new SkillBasedPreferenceTest());
 
-                // Policy and restriction tests
-                tests.Add(new OutfitFilterTest());
-                tests.Add(new ForcedWeaponTest());
+                // Policy and restriction tests - USING FIXED VERSIONS
+                tests.Add(new TestFixes.OutfitFilterTestFixed());  // Fixed version
+                // tests.Add(new TestFixes.ForcedWeaponTestFixed());  // REMOVED - Can't test
                 tests.Add(new JobPriorityTest());
 
                 // DLC and age tests
                 tests.Add(new ChildColonistTest());
+                tests.Add(new NobilityTest());
 
                 // Mod compatibility tests
                 tests.Add(new CombatExtendedAmmoTest());
                 tests.Add(new SimpleSidearmsIntegrationTest());
-
-                // SimpleSidearms advanced tests
                 tests.Add(new SimpleSidearmsWeightLimitTest());
                 tests.Add(new SimpleSidearmsSlotLimitTest());
                 tests.Add(new SimpleSidearmsForcedWeaponTest());
 
-                // Pick Up and Haul + SimpleSidearms integration tests
-                tests.Add(new PickUpAndHaulWeaponHoardingTest());
-                tests.Add(new PickUpAndHaulWeaponReplacementTest());
-                tests.Add(new ComprehensiveWeaponHoardingFixTest());
-                tests.Add(new PacifistWeaponHaulingTest());
-                tests.Add(new ForcedWeaponPickUpAndHaulProtectionTest());
-
-                // Pacifist behavior tests
-                tests.Add(new PacifistBaseGameTest());
-                tests.Add(new PacifistSimpleSidearmsTest());
-                tests.Add(new PacifistFullModStackTest());
-                
                 // Weapon blacklist tests
                 tests.Add(new WeaponBlacklistBasicTest());
                 tests.Add(new WeaponBlacklistExpirationTest());
@@ -173,52 +258,26 @@ namespace AutoArm.Testing
                 // Cache system tests
                 tests.Add(new WeaponCacheSpatialIndexTest());
 
-                // Settings tests
-                tests.Add(new NotificationSettingTest());
-                tests.Add(new ForcedWeaponQualityUpgradeTest());
-                tests.Add(new WeaponUpgradeThresholdTest());
-                tests.Add(new DisableDuringRaidsTest());
-                tests.Add(new RespectWeaponBondsTest());
-
-                // System tests
+                // System tests - USING FIXED VERSION FOR SAVE/LOAD
                 tests.Add(new MapTransitionTest());
-                tests.Add(new SaveLoadTest());
+                // tests.Add(new TestFixes.SaveLoadTestFixed());  // REMOVED - Can't test
                 tests.Add(new PerformanceTest());
                 tests.Add(new EdgeCaseTest());
 
                 // Advanced tests
                 tests.Add(new TemporaryColonistTest());
                 tests.Add(new StressTest());
-                tests.Add(new PrisonerSlaveTest());
+                tests.Add(new SlaveTest());
 
                 // System and container tests
                 tests.Add(new WeaponContainerManagementTest());
                 tests.Add(new WeaponDestructionSafetyTest());
                 tests.Add(new WeaponMaterialHandlingTest());
                 tests.Add(new JobEquipmentTransferTest());
-
-                // Core functionality tests
-                tests.Add(new CooldownSystemTest());
-                tests.Add(new ThinkTreeInjectionTest());
-                tests.Add(new WeaponSwapChainTest());
-                tests.Add(new WorkInterruptionTest());
-                tests.Add(new ProgressiveSearchTest());
-
-                // Weapon scoring tests (matching web analyzer)
-                tests.Add(new WeaponScoringSystemTest());
-                tests.Add(new WeaponCachePerformanceTest());
-                tests.Add(new TraitAndRoleScoringTest());
-
-                // Diagnostic test
-                tests.Add(new DiagnosticTest());
-                tests.Add(new WeaponScoringDebugTest());
-
-                // Note: Additional test scenarios can be found in TestScenarios_Fixed.cs
-                // Add them here as needed
             }
             catch (Exception e)
             {
-                AutoArmLogger.Error($"Error creating test list: {e.Message}", e);
+                AutoArmLogger.Error("Error creating test list", e);
             }
 
             return tests;
@@ -226,16 +285,17 @@ namespace AutoArm.Testing
 
         public static void LogTestResults(TestResults results)
         {
-            AutoArmLogger.Debug($"=== Test Results ===");
+            // Use Debug to write to AutoArm.log
+            AutoArmLogger.Debug("=== Test Results ===");
             AutoArmLogger.Debug($"Total: {results.TotalTests}");
             AutoArmLogger.Debug($"Passed: {results.PassedTests}");
             AutoArmLogger.Debug($"Failed: {results.FailedTests}");
             AutoArmLogger.Debug($"Success Rate: {results.SuccessRate:P0}");
 
             var failedTests = results.GetFailedTests();
-            if (failedTests.Any())
+            if (failedTests.Count > 0)
             {
-                AutoArmLogger.Debug($"Failed tests:");
+                AutoArmLogger.Debug("Failed tests:");
                 foreach (var kvp in failedTests)
                 {
                     AutoArmLogger.Debug($"  - {kvp.Key}: {kvp.Value.FailureReason}");

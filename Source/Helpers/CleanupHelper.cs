@@ -1,34 +1,27 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Centralized memory management and cleanup operations
-// Prevents memory leaks by cleaning up dead pawns, destroyed things, old dictionaries
-// Uses: All major systems register their cleanup needs here
-// Critical: Runs every 2500 ticks to prevent long-game performance degradation
+// This file: Centralized cleanup operations and utilities
+// Coordinates cleanup for all subsystems and provides utility methods
+// Called by MemoryCleanupManager periodically
 
+using AutoArm.Caching;
+using AutoArm.Definitions;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using AutoArm.Caching;
-using AutoArm.Jobs;
-using AutoArm.Logging;
-using AutoArm.Patches;
-using AutoArm.Weapons;
 
 namespace AutoArm.Helpers
 {
     /// <summary>
-    /// Centralized cleanup management (fixes #4, #11, #28)
+    /// Centralized cleanup coordination and utility methods
     /// </summary>
     public static class CleanupHelper
     {
-        // Generic cache functionality (fixes #14)
-        private static readonly object cacheLock = new object();
-        private static Dictionary<string, object> genericCache = new Dictionary<string, object>();
-        private static Dictionary<string, int> cacheExpiration = new Dictionary<string, int>();
-        private const int DefaultCacheDuration = 600; // 10 seconds
-        private const int CleanupInterval = 2500;
-        private const int MaxPawnRecords = 100;
-        private const int MaxJobRecords = 50;
+        private const int MaxPawnRecords = Constants.MaxPawnRecords;
+        private const int MaxJobRecords = Constants.MaxJobRecords;
 
         /// <summary>
         /// Perform all cleanup operations
@@ -38,57 +31,57 @@ namespace AutoArm.Helpers
             try
             {
                 var cleanupStats = new CleanupStats();
-                
+
                 // Clean up timing data
                 TimingHelper.CleanupOldCooldowns();
-
-                // Clean up SimpleSidearms data
-                if (SimpleSidearmsCompat.IsLoaded())
-                {
-                    SimpleSidearmsCompat.CleanupOldTrackingData();
-                }
 
                 // Clean up forced weapon tracker
                 cleanupStats.ForcedWeapons = ForcedWeaponHelper.Cleanup();
 
                 // Clean up auto-equip tracker
-                AutoEquipTracker.CleanupOldJobs();
+                AutoArm.Jobs.AutoEquipTracker.Cleanup();
+
+                // Clean up forced weapon tracker (remove stale entries)
+                ForcedWeaponTracker.Cleanup();
 
                 // Clean up dropped item tracker
                 cleanupStats.DroppedItems = DroppedItemTracker.CleanupOldEntries();
                 DroppedItemTracker.ClearAllPendingUpgrades();
 
-                // Clean up weapon caches
+                // Clean up weapon caches - MINIMAL since they're now self-maintaining
+                // Only clean up destroyed maps as a safety net
                 ImprovedWeaponCacheManager.CleanupDestroyedMaps();
+                
+                // Clean up weapon score cache (pawn-weapon combinations)
                 cleanupStats.WeaponScores = WeaponScoreCache.CleanupCache();
-                
-                // Clean up our new optimized caches
-                WeaponScoringHelper.ClearWeaponScoreCache();
-                
-                // Clean up validation helper storage type caches
-                ValidationHelper.ClearStorageTypeCaches();
+
+                // Note: WeaponScoringHelper.ClearWeaponScoreCache() removed - too aggressive
+                // The cache has its own size limits and expiration
+
+                // Clean up validation helper storage type caches - only if they're too large
+                // These have size limits now so only clear if approaching limit
+                if (Prefs.DevMode || UnityEngine.Random.Range(0, 10) == 0) // 10% chance or dev mode
+                {
+                    ValidationHelper.ClearStorageTypeCaches();
+                }
 
                 // Clean up job giver data
                 CleanupJobGiverData();
 
-                // Clean up debug logging
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    WeaponDecisionLog.Cleanup();
-                }
+                // Clean up UI patch caches
+                ForcedWeaponLabelHelper.CleanupDeadPawnCaches();
 
                 // Clean up weapon blacklist
                 WeaponBlacklist.CleanupOldEntries();
-                
-                // Clean up tick rare patch dictionaries (fixes memory leak)
-                cleanupStats.TickRarePawns = Pawn_TickRare_Unified_Patch.CleanupDeadPawns();
-                
+
+                // Removed tick rare patch cleanup - no longer needed
+
                 // Clean up think node evaluation failures
-                ThinkNode_ConditionalUnarmed.CleanupEvaluationFailures();
-                
+                ThinkNode_ConditionalWeaponStatus.CleanupDeadPawns();
+
                 // Clean up expired generic cache entries
-                cleanupStats.CacheEntries = CleanupExpiredCacheEntries();
-                
+                cleanupStats.CacheEntries = GenericCache.CleanupExpired();
+
                 // Log summary if debug mode or if unusual amounts cleaned
                 if (AutoArmMod.settings?.debugLogging == true || cleanupStats.IsUnusual())
                 {
@@ -102,18 +95,23 @@ namespace AutoArm.Helpers
         }
 
         /// <summary>
-        /// Generic cleanup for pawn dictionaries
+        /// Generic cleanup for pawn dictionaries - optimized
         /// </summary>
         public static int CleanupPawnDictionary<T>(Dictionary<Pawn, T> dict, int maxRecords = MaxPawnRecords)
         {
-            if (dict == null) return 0;
+            if (dict == null || dict.Count == 0) return 0;
 
             int removed = 0;
+            var toRemove = new List<Pawn>();
 
-            // Remove dead/destroyed pawns
-            var toRemove = dict.Keys
-                .Where(IsPawnInvalid)
-                .ToList();
+            // Single pass to find invalid pawns
+            foreach (var pawn in dict.Keys)
+            {
+                if (IsPawnInvalid(pawn))
+                {
+                    toRemove.Add(pawn);
+                }
+            }
 
             foreach (var pawn in toRemove)
             {
@@ -124,12 +122,9 @@ namespace AutoArm.Helpers
             // Trim to max size if needed
             if (dict.Count > maxRecords)
             {
-                var oldestPawns = dict.Keys
-                    .OrderBy(p => p.thingIDNumber)
-                    .Take(dict.Count - maxRecords)
-                    .ToList();
-
-                foreach (var pawn in oldestPawns)
+                int toRemoveCount = dict.Count - maxRecords;
+                // Take the first N keys (don't need to sort for cleanup)
+                foreach (var pawn in dict.Keys.Take(toRemoveCount).ToList())
                 {
                     dict.Remove(pawn);
                     removed++;
@@ -240,113 +235,43 @@ namespace AutoArm.Helpers
         }
 
         /// <summary>
-        /// Schedule cleanup to run
+        /// Check if cleanup should run based on timing and conditions
         /// </summary>
         public static bool ShouldRunCleanup()
         {
-            return Find.TickManager.TicksGame % CleanupInterval == 0;
-        }
-
-        // ========================================
-        // Generic Cache Methods (from SettingsCacheHelper)
-        // ========================================
-
-        /// <summary>
-        /// Get or compute a cached value
-        /// </summary>
-        public static T GetCached<T>(string key, Func<T> computeValue, int cacheDuration = DefaultCacheDuration)
-        {
-            int currentTick = Find.TickManager?.TicksGame ?? 0;
-
-            // First check without full lock
-            lock (cacheLock)
-            {
-                if (genericCache.TryGetValue(key, out object cachedObj) && 
-                    cacheExpiration.TryGetValue(key, out int expiration) &&
-                    currentTick < expiration &&
-                    cachedObj is T cachedValue)
-                {
-                    return cachedValue;
-                }
-            }
-
-            // Compute new value outside of lock to avoid blocking
-            T value = computeValue();
-
-            // Double-check and cache it
-            lock (cacheLock)
-            {
-                // Check again in case another thread computed it while we were waiting
-                if (genericCache.TryGetValue(key, out object cachedObj2) && 
-                    cacheExpiration.TryGetValue(key, out int expiration2) &&
-                    currentTick < expiration2 &&
-                    cachedObj2 is T cachedValue2)
-                {
-                    return cachedValue2;
-                }
-                
-                genericCache[key] = value;
-                cacheExpiration[key] = currentTick + cacheDuration;
-            }
-
-            return value;
+            // Run cleanup every 10 seconds in game time
+            return Find.TickManager.TicksGame % 600 == 0;
         }
 
         /// <summary>
-        /// Clear a specific cached value
-        /// </summary>
-        public static void ClearCache(string key)
-        {
-            lock (cacheLock)
-            {
-                genericCache.Remove(key);
-                cacheExpiration.Remove(key);
-            }
-        }
-
-        /// <summary>
-        /// Clear all cached values in the generic cache
+        /// Clear all caches (compatibility method)
         /// </summary>
         public static void ClearAllCaches()
         {
-            lock (cacheLock)
+            // Clear weapon score cache
+            WeaponScoreCache.ClearCache();
+            
+            // Clear validation helper storage type caches
+            ValidationHelper.ClearStorageTypeCaches();
+            
+            // Clear generic cache
+            GenericCache.ClearAll();
+            
+            // Mark all weapon caches as changed
+            if (Find.Maps != null)
             {
-                int count = genericCache.Count;
-                genericCache.Clear();
-                cacheExpiration.Clear();
-                
-                if (count > 0 && AutoArmMod.settings?.debugLogging == true)
+                foreach (var map in Find.Maps)
                 {
-                    AutoArmLogger.Debug($"Cleared {count} cached values");
+                    ImprovedWeaponCacheManager.MarkCacheAsChanged(map);
                 }
             }
-        }
-        
-        /// <summary>
-        /// Clean up expired entries in the generic cache
-        /// </summary>
-        private static int CleanupExpiredCacheEntries()
-        {
-            int currentTick = Find.TickManager?.TicksGame ?? 0;
-            List<string> expiredKeys;
             
-            lock (cacheLock)
+            if (AutoArmMod.settings?.debugLogging == true)
             {
-                expiredKeys = cacheExpiration
-                    .Where(kvp => currentTick >= kvp.Value)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
+                AutoArmLogger.Debug("Cleared all caches");
+            }
+        }
 
-                foreach (var key in expiredKeys)
-                {
-                    genericCache.Remove(key);
-                    cacheExpiration.Remove(key);
-                }
-            }
-            
-            return expiredKeys.Count;
-        }
-        
         /// <summary>
         /// Tracks cleanup statistics
         /// </summary>
@@ -355,28 +280,26 @@ namespace AutoArm.Helpers
             public int ForcedWeapons { get; set; }
             public int DroppedItems { get; set; }
             public int WeaponScores { get; set; }
-            public int TickRarePawns { get; set; }
             public int CacheEntries { get; set; }
-            
-            public int Total => ForcedWeapons + DroppedItems + WeaponScores + TickRarePawns + CacheEntries;
-            
+
+            public int Total => ForcedWeapons + DroppedItems + WeaponScores + CacheEntries;
+
             public bool IsUnusual()
             {
                 // Warn if cleaning up too much at once (might indicate a problem)
-                return Total > 100 || TickRarePawns > 50 || WeaponScores > 200;
+                return Total > Constants.UnusualCleanupTotal || WeaponScores > Constants.UnusualCleanupScores;
             }
-            
+
             public void LogSummary()
             {
                 if (Total == 0) return;
-                
+
                 string message = $"Cleanup complete: {Total} items removed";
                 if (ForcedWeapons > 0) message += $" | Forced weapons: {ForcedWeapons}";
                 if (DroppedItems > 0) message += $" | Dropped items: {DroppedItems}";
                 if (WeaponScores > 0) message += $" | Weapon scores: {WeaponScores}";
-                if (TickRarePawns > 0) message += $" | Dead pawns: {TickRarePawns}";
                 if (CacheEntries > 0) message += $" | Cache entries: {CacheEntries}";
-                
+
                 if (IsUnusual())
                 {
                     AutoArmLogger.Warn(message + " (unusual amount)");

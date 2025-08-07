@@ -1,21 +1,28 @@
+// AutoArm RimWorld 1.5+ mod - automatic weapon management
+// This file: Simplified weapon cache with real-time tracking
+// 
+// DESIGN PRINCIPLE: Since we track EVERY weapon state change in real-time
+// via Harmony patches, the cache is ALWAYS up-to-date. No rebuilds needed!
+//
+// The only times we need to populate the cache:
+// 1. Initial map load (new game or loading save)
+// 2. Manual rebuild for debugging/recovery (dev mode only)
+
+using AutoArm.Definitions;
+using AutoArm.Logging;
+using AutoArm.Testing;
+using AutoArm.Weapons;
 using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 using Verse;
-using AutoArm.Helpers;
-using AutoArm.Logging;
-using AutoArm.Caching; using AutoArm.Weapons;
 
 namespace AutoArm.Caching
 {
     public static class ImprovedWeaponCacheManager
     {
-        // Cache statistics for monitoring performance
-        private static int cacheHits = 0;
-        private static int cacheMisses = 0;
-        private static int lastStatsLogTick = 0;
-        
         public enum WeaponCategory
         {
             MeleeBasic,      // Low quality melee
@@ -28,13 +35,10 @@ namespace AutoArm.Caching
         private class WeaponCacheEntry
         {
             public HashSet<ThingWithComps> Weapons { get; set; }
-            public int LastUpdateTick { get; set; }
-            public int LastChangeDetectedTick { get; set; }
             public Dictionary<IntVec3, List<ThingWithComps>> SpatialIndex { get; set; }
             public Dictionary<ThingWithComps, IntVec3> WeaponToGrid { get; set; }
             public Dictionary<WeaponCategory, List<ThingWithComps>> CategorizedWeapons { get; set; }
-            
-            // Removed - using WeaponScoreCache instead to avoid duplication
+            public int LastChangeDetectedTick { get; set; }
 
             public WeaponCacheEntry()
             {
@@ -42,7 +46,6 @@ namespace AutoArm.Caching
                 SpatialIndex = new Dictionary<IntVec3, List<ThingWithComps>>();
                 WeaponToGrid = new Dictionary<ThingWithComps, IntVec3>();
                 CategorizedWeapons = new Dictionary<WeaponCategory, List<ThingWithComps>>();
-
                 LastChangeDetectedTick = 0;
 
                 // Initialize categories
@@ -54,60 +57,47 @@ namespace AutoArm.Caching
         }
 
         private static Dictionary<Map, WeaponCacheEntry> weaponCache = new Dictionary<Map, WeaponCacheEntry>();
-        private const int BaseCacheLifetime = 10000; // ~167 seconds base
-        private const int GridCellSize = 20; // Matching backup version
-        
-        private static int GetCacheLifetime(Map map)
-        {
-            // Scale cache lifetime with colony size for performance
-            int colonySize = map?.mapPawns?.FreeColonists?.Count() ?? 0;
-            if (colonySize >= AutoArmMod.settings.performanceModeColonySize)
-            {
-                // At 35 pawns: 20000 ticks (~333 seconds)
-                // At 50 pawns: 30000 ticks (~500 seconds)
-                int extraLifetime = (colonySize - 30) * 600;
-                return BaseCacheLifetime + extraLifetime;
-            }
-            return BaseCacheLifetime;
-        }
-        
-        // Object pool for HashSets to avoid allocations in hot path
+
+        // Object pools to reduce allocations
         private static Stack<HashSet<ThingWithComps>> weaponSetPool = new Stack<HashSet<ThingWithComps>>();
         private static Stack<List<ThingWithComps>> weaponListPool = new Stack<List<ThingWithComps>>();
 
-        private const int MaxWeaponsPerCache = 1500;
-        private const int MaxWeaponsPerRebuild = 100;
-        private const int RebuildDelayTicks = 15;
+        // Tracking for potential memory leaks
+        private static Dictionary<Map, int> cacheHighWaterMark = new Dictionary<Map, int>();
+        private static Dictionary<Map, int> lastCacheSizeLogTick = new Dictionary<Map, int>();
+        private const int CacheSizeLogInterval = 6000; // Log every 100 seconds
+        private const float CacheGrowthWarningThreshold = 1.5f; // Warn if cache grows 50% beyond high water mark
 
-        private static Dictionary<Map, RebuildState> rebuildStates = new Dictionary<Map, RebuildState>();
-
-        private class RebuildState
-        {
-            public int ProcessedCount { get; set; }
-            public int LastProcessTick { get; set; }
-            public List<Thing> RemainingWeapons { get; set; }
-            public WeaponCacheEntry PartialCache { get; set; }
-        }
-
+        /// <summary>
+        /// Add a weapon to the cache in real-time
+        /// Called by Harmony patches when weapons spawn or change state
+        /// </summary>
         public static void AddWeaponToCache(ThingWithComps weapon)
         {
             if (weapon?.Map == null || !IsValidWeapon(weapon))
                 return;
 
             var cache = GetOrCreateCache(weapon.Map);
-
-            if (cache.Weapons.Count >= MaxWeaponsPerCache)
+            
+            if (cache.Weapons.Count >= Constants.MaxWeaponsPerCache)
             {
-                AutoArmLogger.Warn($"Weapon cache full ({MaxWeaponsPerCache} weapons) for map {weapon.Map.uniqueID}, skipping {weapon.Label}");
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Warn($"Weapon cache full ({Constants.MaxWeaponsPerCache} weapons) for map {weapon.Map.uniqueID}");
+                }
                 return;
             }
 
             if (cache.Weapons.Contains(weapon))
                 return;
 
-            cache.Weapons.Add(weapon);
+            // Only warn if cache is getting full
+            if (cache.Weapons.Count >= Constants.MaxWeaponsPerCache * 0.9f)
+            {
+                AutoArmLogger.Warn($"Weapon cache approaching limit ({cache.Weapons.Count}/{Constants.MaxWeaponsPerCache}) for map {weapon.Map.uniqueID}");
+            }
 
-            // Removed spammy autopistol logging
+            cache.Weapons.Add(weapon);
 
             // For weapons in containers, use the container's position
             IntVec3 position = weapon.Position;
@@ -116,23 +106,29 @@ namespace AutoArm.Caching
                 position = building.Position;
             }
 
-            var gridPos = new IntVec3(position.x / GridCellSize, 0, position.z / GridCellSize);
+            var gridPos = GetGridPosition(position);
+            
             if (!cache.SpatialIndex.ContainsKey(gridPos))
             {
                 cache.SpatialIndex[gridPos] = new List<ThingWithComps>();
             }
             cache.SpatialIndex[gridPos].Add(weapon);
-
             cache.WeaponToGrid[weapon] = gridPos;
-            cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
 
             // Categorize the weapon
             var category = GetWeaponCategory(weapon);
             cache.CategorizedWeapons[category].Add(weapon);
-
-            // Don't log every weapon add - too spammy
+            
+            cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
+            
+            // Track cache growth for leak detection
+            TrackCacheSize(weapon.Map, cache);
         }
 
+        /// <summary>
+        /// Remove a weapon from the cache in real-time
+        /// Called by Harmony patches when weapons despawn or become unavailable
+        /// </summary>
         public static void RemoveWeaponFromCache(ThingWithComps weapon)
         {
             if (weapon?.Map == null)
@@ -143,6 +139,7 @@ namespace AutoArm.Caching
 
             if (cache.Weapons.Remove(weapon))
             {
+                // Remove from spatial index
                 if (cache.WeaponToGrid.TryGetValue(weapon, out var gridPos))
                 {
                     if (cache.SpatialIndex.TryGetValue(gridPos, out var list))
@@ -161,11 +158,13 @@ namespace AutoArm.Caching
                 cache.CategorizedWeapons[category].Remove(weapon);
 
                 cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
-
-                // Don't log every weapon removal - too spammy
             }
         }
 
+        /// <summary>
+        /// Update weapon position in real-time
+        /// Called by Harmony patches when weapons move
+        /// </summary>
         public static void UpdateWeaponPosition(ThingWithComps weapon, IntVec3 oldPos, IntVec3 newPos)
         {
             if (weapon?.Map == null || oldPos == newPos)
@@ -180,12 +179,13 @@ namespace AutoArm.Caching
             if (!cache.Weapons.Contains(weapon))
                 return;
 
-            var oldGridPos = new IntVec3(oldPos.x / GridCellSize, 0, oldPos.z / GridCellSize);
-            var newGridPos = new IntVec3(newPos.x / GridCellSize, 0, newPos.z / GridCellSize);
+            var oldGridPos = GetGridPosition(oldPos);
+            var newGridPos = GetGridPosition(newPos);
 
             if (oldGridPos == newGridPos)
                 return;
 
+            // Remove from old position
             if (cache.SpatialIndex.TryGetValue(oldGridPos, out var oldList))
             {
                 oldList.Remove(weapon);
@@ -195,68 +195,173 @@ namespace AutoArm.Caching
                 }
             }
 
+            // Add to new position
             if (!cache.SpatialIndex.ContainsKey(newGridPos))
             {
                 cache.SpatialIndex[newGridPos] = new List<ThingWithComps>();
             }
             cache.SpatialIndex[newGridPos].Add(weapon);
-
             cache.WeaponToGrid[weapon] = newGridPos;
-
-            // Note: We don't need to update category as weapon type doesn't change
-
-            if (weapon.def.defName == "Gun_AssaultRifle")
-            {
-                AutoArmLogger.LogWeapon(null, weapon, $"Updated position from {oldPos} to {newPos}");
-            }
-        }
-
-        private static void LogCacheStats()
-        {
-            if (!Prefs.DevMode) return;
             
-            int currentTick = Find.TickManager.TicksGame;
-            if (currentTick - lastStatsLogTick > 6000) // Log every 100 seconds
+            cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
+        }
+
+        /// <summary>
+        /// Mark cache as changed (for state changes that don't add/remove weapons)
+        /// </summary>
+        public static void MarkCacheAsChanged(Map map)
+        {
+            if (map == null) return;
+            
+            if (weaponCache.TryGetValue(map, out var cache))
             {
-                int total = cacheHits + cacheMisses;
-                if (total > 0)
-                {
-                    float hitRate = (float)cacheHits / total * 100f;
-                    AutoArmLogger.Debug($"WeaponCacheManager stats - Hit rate: {hitRate:F1}% ({cacheHits} hits, {cacheMisses} misses)");
-                }
-                lastStatsLogTick = currentTick;
-                cacheHits = 0;
-                cacheMisses = 0;
+                cache.LastChangeDetectedTick = Find.TickManager.TicksGame;
             }
         }
-        
+
+        /// <summary>
+        /// Track cache size and warn about potential memory leaks
+        /// </summary>
+        private static void TrackCacheSize(Map map, WeaponCacheEntry cache)
+        {
+            int currentSize = cache.Weapons.Count;
+            int currentTick = Find.TickManager.TicksGame;
+            
+            // Update high water mark
+            if (!cacheHighWaterMark.ContainsKey(map))
+                cacheHighWaterMark[map] = currentSize;
+            else if (currentSize > cacheHighWaterMark[map])
+                cacheHighWaterMark[map] = currentSize;
+            
+            // Check if we should check for memory leaks
+            if (!lastCacheSizeLogTick.ContainsKey(map))
+                lastCacheSizeLogTick[map] = currentTick;
+            
+            if (currentTick - lastCacheSizeLogTick[map] > CacheSizeLogInterval)
+            {
+                lastCacheSizeLogTick[map] = currentTick;
+                
+                // Check for potential memory leak
+                if (currentSize > cacheHighWaterMark[map] * CacheGrowthWarningThreshold)
+                {
+                    AutoArmLogger.Warn($"[MEMORY LEAK?] Cache for map {map.uniqueID} has grown to {currentSize} weapons (50% above previous high of {cacheHighWaterMark[map]})");
+                    AutoArmLogger.Warn($"This might indicate we're missing weapon removal events. Please report this.");
+                    
+                    // Validate cache contents
+                    ValidateCacheContents(map, cache);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validate cache contents to detect stale entries
+        /// </summary>
+        private static void ValidateCacheContents(Map map, WeaponCacheEntry cache)
+        {
+            if (AutoArmMod.settings?.debugLogging != true)
+                return;
+
+            int staleCount = 0;
+            int destroyedCount = 0;
+            int wrongMapCount = 0;
+            int notSpawnedCount = 0;
+            var staleWeapons = new List<ThingWithComps>();
+            
+            foreach (var weapon in cache.Weapons)
+            {
+                bool isStale = false;
+                string reason = "";
+                
+                if (weapon == null)
+                {
+                    isStale = true;
+                    reason = "null";
+                }
+                else if (weapon.Destroyed)
+                {
+                    isStale = true;
+                    reason = "destroyed";
+                    destroyedCount++;
+                }
+                else if (!weapon.Spawned)
+                {
+                    isStale = true;
+                    reason = "not spawned";
+                    notSpawnedCount++;
+                }
+                else if (weapon.Map != map)
+                {
+                    isStale = true;
+                    reason = $"wrong map (expected {map?.uniqueID ?? -1}, got {weapon.Map?.uniqueID ?? -1})";
+                    wrongMapCount++;
+                }
+                
+                if (isStale)
+                {
+                    staleCount++;
+                    staleWeapons.Add(weapon);
+                    AutoArmLogger.Warn($"[STALE CACHE ENTRY] {weapon?.Label ?? "null"} at {weapon?.Position ?? IntVec3.Invalid} - {reason}");
+                }
+            }
+            
+            if (staleCount > 0)
+            {
+                AutoArmLogger.Error($"[CACHE VALIDATION FAILED] Found {staleCount} stale entries in cache for map {map.uniqueID}:");
+                AutoArmLogger.Error($"  - Destroyed: {destroyedCount}");
+                AutoArmLogger.Error($"  - Not spawned: {notSpawnedCount}");
+                AutoArmLogger.Error($"  - Wrong map: {wrongMapCount}");
+                AutoArmLogger.Error($"Cleaning up stale entries...");
+                
+                // Clean up stale entries
+                foreach (var weapon in staleWeapons)
+                {
+                    cache.Weapons.Remove(weapon);
+                    
+                    // Clean up spatial index
+                    if (cache.WeaponToGrid.TryGetValue(weapon, out var gridPos))
+                    {
+                        if (cache.SpatialIndex.TryGetValue(gridPos, out var list))
+                        {
+                            list.Remove(weapon);
+                            if (list.Count == 0)
+                                cache.SpatialIndex.Remove(gridPos);
+                        }
+                        cache.WeaponToGrid.Remove(weapon);
+                    }
+                    
+                    // Clean up categories
+                    var category = GetWeaponCategory(weapon);
+                    cache.CategorizedWeapons[category].Remove(weapon);
+                }
+                
+                AutoArmLogger.Error($"Cache cleaned. New size: {cache.Weapons.Count} weapons");
+            }
+            // No need to log when validation passes - only log problems
+        }
+
+        /// <summary>
+        /// Get weapons near a position - the main query method
+        /// </summary>
         public static List<ThingWithComps> GetWeaponsNear(Map map, IntVec3 position, float maxDistance)
         {
-            // Declare variables outside try block for catch block access
-            List<ThingWithComps> result = null;
-            HashSet<ThingWithComps> foundWeapons = null;
-            
+            // Early exit if no cache exists
+            if (!weaponCache.TryGetValue(map, out var cache) || cache.Weapons.Count == 0)
+            {
+                return new List<ThingWithComps>();
+            }
+
+            // Use pooled collections to avoid allocations
+            var result = weaponListPool.Count > 0 ? weaponListPool.Pop() : new List<ThingWithComps>();
+            result.Clear();
+
+            var foundWeapons = weaponSetPool.Count > 0 ? weaponSetPool.Pop() : new HashSet<ThingWithComps>();
+            foundWeapons.Clear();
+
             try
             {
-                // Early exit if no cache exists
-                if (!weaponCache.TryGetValue(map, out var cache) || cache.Weapons.Count == 0)
-                {
-                    // Don't log - too spammy
-                    return new List<ThingWithComps>();
-                }
-
-                // Use pooled collections to avoid allocations
-                result = weaponListPool.Count > 0 ? weaponListPool.Pop() : new List<ThingWithComps>();
-                result.Clear();
-                
-                foundWeapons = weaponSetPool.Count > 0 ? weaponSetPool.Pop() : new HashSet<ThingWithComps>();
-                foundWeapons.Clear();
-
-                // Removed spammy GetWeaponsNear logging - this happens too frequently
-
                 // Progressive search - start close and expand outward
-                float[] searchRadii = { 15f, 30f, maxDistance };
-                int weaponsNeeded = 15; // We'll take more if they're closer
+                float[] searchRadii = { Constants.SearchRadiusClose, Constants.SearchRadiusMedium, maxDistance };
+                int weaponsNeeded = Constants.CloseWeaponsNeeded;
 
                 foreach (float radius in searchRadii)
                 {
@@ -264,472 +369,252 @@ namespace AutoArm.Caching
                         break;
 
                     var maxDistSquared = radius * radius;
+                    SearchWeaponsInRadius(cache, position, maxDistSquared, foundWeapons, result);
 
-                    int minX = (position.x - (int)radius) / GridCellSize;
-                    int maxX = (position.x + (int)radius) / GridCellSize;
-                    int minZ = (position.z - (int)radius) / GridCellSize;
-                    int maxZ = (position.z + (int)radius) / GridCellSize;
-
-                    // Search in a spiral pattern from center outward
-                    int centerX = position.x / GridCellSize;
-                    int centerZ = position.z / GridCellSize;
-
-                    for (int ring = 0; ring <= Math.Max(maxX - centerX, maxZ - centerZ); ring++)
-                    {
-                        for (int x = centerX - ring; x <= centerX + ring; x++)
-                        {
-                            for (int z = centerZ - ring; z <= centerZ + ring; z++)
-                            {
-                                // Skip cells we've already checked
-                                if (ring > 0 && x > centerX - ring && x < centerX + ring &&
-                                    z > centerZ - ring && z < centerZ + ring)
-                                    continue;
-
-                                if (x < minX || x > maxX || z < minZ || z > maxZ)
-                                    continue;
-
-                                var gridKey = new IntVec3(x, 0, z);
-                                if (cache.SpatialIndex.TryGetValue(gridKey, out var weapons))
-                                {
-                                    foreach (var weapon in weapons)
-                                    {
-                                        // For weapons in containers, use the container's position
-                                        IntVec3 weaponPos = weapon.Position;
-                                        if (weapon.ParentHolder is Building building && building.Position.IsValid)
-                                        {
-                                            weaponPos = building.Position;
-                                        }
-                                        
-                                        if (weaponPos.DistanceToSquared(position) <= maxDistSquared)
-                                        {
-                                            // Only add if we haven't seen this weapon yet
-                                            if (foundWeapons.Add(weapon))
-                                            {
-                                                result.Add(weapon);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Early exit if we found enough close weapons
-                        if (result.Count >= weaponsNeeded && radius <= 15f)
-                        {
-                            return result;
-                        }
-                    }
+                    // Early exit if we found enough close weapons
+                    if (result.Count >= weaponsNeeded && radius <= Constants.SearchRadiusClose)
+                        break;
 
                     // If we have a good selection at medium range, stop
-                    if (result.Count >= weaponsNeeded * 2 && radius <= 30f)
-                    {
-                        return result;
-                    }
+                    if (result.Count >= weaponsNeeded * 2 && radius <= Constants.SearchRadiusMedium)
+                        break;
                 }
 
+                return result;
+            }
+            finally
+            {
                 // Return HashSet to pool
-                if (weaponSetPool.Count < 10) // Keep pool size reasonable
+                if (weaponSetPool.Count < Constants.PooledCollectionLimit)
                 {
                     foundWeapons.Clear();
                     weaponSetPool.Push(foundWeapons);
                 }
-                
-                return result; // Caller is responsible for returning list to pool
+            }
+        }
+
+        /// <summary>
+        /// Initialize cache for a map (only needed on map load)
+        /// </summary>
+        public static void InitializeCacheForMap(Map map)
+        {
+            if (map == null)
+                return;
+
+            // If cache already exists and has weapons, it's probably fine
+            if (weaponCache.TryGetValue(map, out var existingCache) && existingCache.Weapons.Count > 0)
+            {
+                return;
+            }
+
+            var cache = GetOrCreateCache(map);
+            
+            // Find all weapons on the map
+            var allWeapons = new List<ThingWithComps>();
+            
+            // Get weapons from the map
+            try
+            {
+                var mapWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)
+                    .OfType<ThingWithComps>()
+                    .Where(IsValidWeapon)
+                    .ToList();
+                allWeapons.AddRange(mapWeapons);
             }
             catch (Exception ex)
             {
-                AutoArmLogger.Error($"GetWeaponsNear failed for map {map?.uniqueID ?? -1} at {position}", ex);
-                
-                // Return collections to pool on error
-                if (weaponSetPool.Count < 10 && foundWeapons != null)
-                {
-                    foundWeapons.Clear();
-                    weaponSetPool.Push(foundWeapons);
-                }
-                if (result != null && result.Count == 0 && weaponListPool.Count < 10)
-                {
-                    weaponListPool.Push(result);
-                }
-                
-                return new List<ThingWithComps>(); // Return empty list on error
+                AutoArmLogger.Error($"Error getting weapons from map {map.uniqueID}", ex);
             }
-        }
 
-        public static void InvalidateCache(Map map)
-        {
-            if (map == null) return;
+            // Get weapons from storage containers
+            try
+            {
+                var storageBuildings = map.listerBuildings.allBuildingsColonist
+                    .Where(b => b != null && !b.Destroyed && b.Spawned && 
+                           (b.GetSlotGroup() != null || b.def.building?.fixedStorageSettings != null));
 
-            bool hadCache = weaponCache.ContainsKey(map);
-            int weaponCount = hadCache ? weaponCache[map].Weapons.Count : 0;
+                foreach (var building in storageBuildings)
+                {
+                    var innerContainer = building.TryGetInnerInteractableThingOwner();
+                    if (innerContainer != null)
+                    {
+                        foreach (var item in innerContainer)
+                        {
+                            if (item is ThingWithComps weapon && IsValidWeapon(weapon))
+                            {
+                                allWeapons.Add(weapon);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoArmLogger.Error($"Error checking storage containers for map {map.uniqueID}", ex);
+            }
+
+            // Add all weapons to cache
+            foreach (var weapon in allWeapons)
+            {
+                AddWeaponToCache(weapon);
+            }
+
+            // Check for discrepancies
+            if (cache.Weapons.Count != cache.WeaponToGrid.Count)
+            {
+                AutoArmLogger.Warn($"[CACHE INIT WARNING] Weapon count ({cache.Weapons.Count}) doesn't match grid mappings ({cache.WeaponToGrid.Count})!");
+            }
             
-            if (weaponCache.ContainsKey(map))
-            {
-                weaponCache.Remove(map);
-            }
-
-            if (rebuildStates.ContainsKey(map))
-            {
-                rebuildStates.Remove(map);
-            }
-
-            // Also clear weapon base score cache when map cache is invalidated
-            WeaponScoringHelper.ClearWeaponScoreCache();
-
-            if (hadCache)
-                AutoArmLogger.Debug($"Invalidated weapon cache for map {map.uniqueID} ({weaponCount} weapons)");
+            // Set initial high water mark
+            cacheHighWaterMark[map] = cache.Weapons.Count;
+            lastCacheSizeLogTick[map] = Find.TickManager.TicksGame;
         }
 
         /// <summary>
-        /// Clear all weapon caches for all maps
+        /// Clear cache for a destroyed map
         /// </summary>
-        public static void ClearCache()
+        public static void ClearCacheForMap(Map map)
         {
-            weaponCache.Clear();
-            rebuildStates.Clear();
-            
-            // Also clear pooled collections
-            weaponSetPool.Clear();
-            weaponListPool.Clear();
-            
-            // Clear weapon score cache
-            WeaponScoringHelper.ClearWeaponScoreCache();
-            
-            AutoArmLogger.Log("Cleared all weapon caches");
-        }
-        
-        /// <summary>
-        /// Clear and rebuild all weapon caches for all maps
-        /// </summary>
-        public static void ClearAndRebuildCache()
-        {
-            // First clear everything
-            ClearCache();
-            
-            // Only rebuild if we're in an active game with maps
-            if (Current.Game != null && Find.Maps != null)
-            {
-                // Then trigger rebuild for all active maps
-                foreach (var map in Find.Maps)
-            {
-                if (map != null)
-                {
-                    AutoArmLogger.Log($"Triggering weapon cache rebuild for {map.uniqueID} ({(map.IsPlayerHome ? "player home" : "other map")})");
-                    // This will trigger a rebuild when the cache is accessed
-                    // The rebuild is incremental, so it won't freeze the game
-                    TriggerCacheRebuild(map);
-                }
-            }
-            
-                AutoArmLogger.Log($"Cleared and initiated rebuild of weapon caches for {Find.Maps.Count} maps");
-            }
-            else
-            {
-                AutoArmLogger.Log("Cleared weapon caches (no active game to rebuild)");
-            }
-        }
-        
-        /// <summary>
-        /// Trigger a cache rebuild for a specific map
-        /// </summary>
-        private static void TriggerCacheRebuild(Map map)
-        {
-            if (map == null) return;
-            
-            // Simply accessing the cache will trigger a rebuild if it doesn't exist
-            GetOrCreateCache(map);
+            if (map == null)
+                return;
+
+            weaponCache.Remove(map);
+            cacheHighWaterMark.Remove(map);
+            lastCacheSizeLogTick.Remove(map);
         }
 
+        /// <summary>
+        /// Clean up caches for destroyed maps
+        /// </summary>
         public static void CleanupDestroyedMaps()
         {
-            // Only clean up if we're in an active game
             if (Current.Game == null || Find.Maps == null)
                 return;
-                
+
             var mapsToRemove = weaponCache.Keys.Where(m => m == null || !Find.Maps.Contains(m)).ToList();
-
-            if (mapsToRemove.Any())
+            foreach (var map in mapsToRemove)
             {
-                foreach (var map in mapsToRemove)
-                {
-                    weaponCache.Remove(map);
-                    rebuildStates.Remove(map);
-                }
+                weaponCache.Remove(map);
+                cacheHighWaterMark.Remove(map);
+                lastCacheSizeLogTick.Remove(map);
+            }
 
-                AutoArmLogger.Log($"Cleaned up {mapsToRemove.Count} destroyed map caches");
+            // Cleanup complete - only log if there were errors
+        }
+
+        /// <summary>
+        /// Manual cache rebuild - ONLY for debugging/recovery
+        /// Should never be needed if real-time tracking is working
+        /// </summary>
+        public static void DebugRebuildCache(Map map)
+        {
+            if (!Prefs.DevMode)
+                return;
+
+            AutoArmLogger.Warn($"MANUAL CACHE REBUILD for map {map?.uniqueID ?? -1} - this shouldn't be needed!");
+            
+            if (map == null)
+                return;
+
+            // Log current cache state before rebuild
+            if (weaponCache.TryGetValue(map, out var oldCache))
+            {
+                AutoArmLogger.Warn($"Old cache had {oldCache.Weapons.Count} weapons");
+                ValidateCacheContents(map, oldCache);
+            }
+
+            // Clear existing cache
+            weaponCache.Remove(map);
+            cacheHighWaterMark.Remove(map);
+            lastCacheSizeLogTick.Remove(map);
+            
+            // Reinitialize
+            InitializeCacheForMap(map);
+            
+            if (weaponCache.TryGetValue(map, out var newCache))
+            {
+                AutoArmLogger.Warn($"New cache has {newCache.Weapons.Count} weapons");
             }
         }
+        
+        /// <summary>
+        /// Get cache statistics for debugging (dev mode only)
+        /// </summary>
+        public static void LogCacheStatistics()
+        {
+            if (!Prefs.DevMode)
+                return;
+                
+            AutoArmLogger.Debug("[CACHE STATISTICS]");
+            foreach (var kvp in weaponCache)
+            {
+                var map = kvp.Key;
+                var cache = kvp.Value;
+                int highWater = cacheHighWaterMark.ContainsKey(map) ? cacheHighWaterMark[map] : cache.Weapons.Count;
+                
+                AutoArmLogger.Debug($"  Map {map.uniqueID}: {cache.Weapons.Count} weapons (high water: {highWater})");
+            }
+        }
+
+        // ========== HELPER METHODS ==========
 
         private static WeaponCacheEntry GetOrCreateCache(Map map)
         {
             if (!weaponCache.TryGetValue(map, out var cache))
             {
-                cacheMisses++;
-                LogCacheStats();
-                
-                if (rebuildStates.TryGetValue(map, out var rebuildState))
-                {
-                    if (Find.TickManager.TicksGame - rebuildState.LastProcessTick >= RebuildDelayTicks)
-                    {
-                        ContinueRebuild(map, rebuildState);
-                    }
-                    return rebuildState.PartialCache;
-                }
-                else
-                {
-                    StartRebuild(map);
-                    return weaponCache.TryGetValue(map, out cache) ? cache : new WeaponCacheEntry();
-                }
-            }
-            else
-            {
-                cacheHits++;
+                cache = new WeaponCacheEntry();
+                weaponCache[map] = cache;
             }
             return cache;
         }
 
-        private static void StartRebuild(Map map)
+        private static IntVec3 GetGridPosition(IntVec3 position)
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            return new IntVec3(
+                position.x / Constants.GridCellSize, 
+                0, 
+                position.z / Constants.GridCellSize
+            );
+        }
 
-            List<Thing> allWeapons;
-            try
+        private static void SearchWeaponsInRadius(WeaponCacheEntry cache, IntVec3 position, float maxDistSquared, 
+            HashSet<ThingWithComps> foundWeapons, List<ThingWithComps> result)
+        {
+            int searchRadius = Mathf.CeilToInt(Mathf.Sqrt(maxDistSquared));
+            int minX = (position.x - searchRadius) / Constants.GridCellSize;
+            int maxX = (position.x + searchRadius) / Constants.GridCellSize;
+            int minZ = (position.z - searchRadius) / Constants.GridCellSize;
+            int maxZ = (position.z + searchRadius) / Constants.GridCellSize;
+            
+            // Perform grid search
+            
+            for (int x = minX; x <= maxX; x++)
             {
-                allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).ToList();
-                if (Prefs.DevMode)
-                    AutoArmLogger.Debug($"StartRebuild: Found {allWeapons.Count} weapons via ThingRequestGroup.Weapon for map {map.uniqueID}");
-                
-                // Debug: Log what weapons are equipped by colonists
-                var equippedWeapons = map.mapPawns.FreeColonists
-                    .Where(p => p.equipment?.Primary != null)
-                    .Select(p => p.equipment.Primary.Label)
-                    .ToList();
-                if (equippedWeapons.Any())
+                for (int z = minZ; z <= maxZ; z++)
                 {
-                    AutoArmLogger.Log($"Colonists have these weapons equipped: {string.Join(", ", equippedWeapons)}");
-                }
-                
-                // Debug: Log what weapons are in colonist inventories
-                var inventoryWeapons = new List<string>();
-                foreach (var pawn in map.mapPawns.FreeColonists)
-                {
-                    if (pawn.inventory?.innerContainer != null)
+                    var gridKey = new IntVec3(x, 0, z);
+                    if (cache.SpatialIndex.TryGetValue(gridKey, out var weapons))
                     {
-                        foreach (var item in pawn.inventory.innerContainer)
+                        foreach (var weapon in weapons)
                         {
-                            if (item is ThingWithComps weapon && weapon.def.IsWeapon)
+                            // Skip if already found
+                            if (!foundWeapons.Add(weapon))
+                                continue;
+
+                            // Check distance
+                            IntVec3 weaponPos = weapon.Position;
+                            if (weapon.ParentHolder is Building building && building.Position.IsValid)
                             {
-                                inventoryWeapons.Add(weapon.Label);
+                                weaponPos = building.Position;
+                            }
+
+                            float distSq = weaponPos.DistanceToSquared(position);
+                            if (distSq <= maxDistSquared)
+                            {
+                                result.Add(weapon);
                             }
                         }
                     }
-                }
-                if (inventoryWeapons.Any())
-                {
-                    AutoArmLogger.Log($"Colonists have these weapons in inventory: {string.Join(", ", inventoryWeapons)}");
-                }
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.Error($"Critical error getting weapon list from listerThings for map {map.uniqueID}", ex);
-                AutoArmLogger.Error($"This might be caused by mods interfering with ThingRequestGroup");
-                allWeapons = new List<Thing>(); // Empty list to prevent crash
-            }
-
-
-
-                // CRITICAL: Also check for weapons inside storage containers
-        // The listerThings only tracks items directly on the map, not in containers
-        var weaponsInStorage = new List<Thing>();
-        try
-        {
-            // Get all buildings that might be storage
-            var potentialStorageBuildings = map.listerBuildings.allBuildingsColonist
-                .Where(b => b != null && !b.Destroyed && b.Spawned);
-
-            foreach (var building in potentialStorageBuildings)
-            {
-                try
-                {
-                    // Check if this building is likely to be storage
-                    bool isStorage = false;
-                    
-                    // Primary check: Does it have a SlotGroup?
-                    if (building.GetSlotGroup() != null)
-                    {
-                        isStorage = true;
-                    }
-                    // Secondary check: Does it have storage settings?
-                    else if (building.def.building?.fixedStorageSettings != null)
-                    {
-                        isStorage = true;
-                    }
-                    // Check common storage building names
-                    else if (building.def.defName.IndexOf("shelf", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("rack", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("crate", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("box", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("container", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("storage", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("fridge", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             building.def.defName.IndexOf("freezer", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        isStorage = true;
-                    }
-                    
-                    if (isStorage)
-                    {
-                        // Try to get the inner container
-                        var innerContainer = building.TryGetInnerInteractableThingOwner();
-                        if (innerContainer != null)
-                        {
-                            // Check each item in the container
-                            foreach (var item in innerContainer)
-                            {
-                                if (item != null && 
-                                    item is ThingWithComps weapon &&
-                                    item.def?.IsWeapon == true &&
-                                    item.def?.IsApparel != true)
-                                {
-                                    weaponsInStorage.Add(item);
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                // Log but continue - don't let one bad building break the whole process
-                if (Prefs.DevMode)
-                        AutoArmLogger.Debug($"Error checking storage building {building?.Label ?? "unknown"}: {ex.Message}");
-            }
-            }
-
-            if (weaponsInStorage.Count > 0)
-            {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Debug($"Found {weaponsInStorage.Count} additional weapons in storage containers");
-                allWeapons.AddRange(weaponsInStorage);
-            }
-        }
-        catch (Exception ex)
-        {
-            AutoArmLogger.Error($"Error checking weapons in storage for map {map.uniqueID}", ex);
-            // Continue with weapons we already found
-        }
-
-        AutoArmLogger.Debug($"Starting incremental rebuild for map {map.uniqueID}: {allWeapons.Count} total weapons ({weaponsInStorage.Count} in storage)");
-        
-        // Debug: Log first few weapons found
-        int debugCount = 0;
-        foreach (var weapon in allWeapons.Take(5))
-        {
-            if (weapon is ThingWithComps twc)
-            {
-                AutoArmLogger.Log($"[WEAPON CACHE] Sample weapon {++debugCount}: {twc.Label} at {twc.Position} (in storage: {weaponsInStorage.Contains(weapon)})");
-            }
-        }
-
-            var state = new RebuildState
-            {
-                ProcessedCount = 0,
-                LastProcessTick = Find.TickManager.TicksGame,
-                RemainingWeapons = allWeapons,
-                PartialCache = new WeaponCacheEntry
-                {
-                    LastUpdateTick = Find.TickManager.TicksGame
-                }
-            };
-
-            ProcessRebuildChunk(map, state, MaxWeaponsPerRebuild);
-
-            if (state.RemainingWeapons.Count == 0)
-            {
-                weaponCache[map] = state.PartialCache;
-                rebuildStates.Remove(map);
-
-                sw.Stop();
-                AutoArmLogger.Debug($"Completed weapon cache rebuild for map {map.uniqueID}: {state.PartialCache.Weapons.Count} weapons cached in {sw.ElapsedMilliseconds}ms");
-            }
-            else
-            {
-                rebuildStates[map] = state;
-                AutoArmLogger.Log($"Processed {state.ProcessedCount} weapons, {state.RemainingWeapons.Count} remaining");
-            }
-        }
-
-        private static void ContinueRebuild(Map map, RebuildState state)
-        {
-            ProcessRebuildChunk(map, state, MaxWeaponsPerRebuild);
-            state.LastProcessTick = Find.TickManager.TicksGame;
-
-            if (state.RemainingWeapons.Count == 0 || state.PartialCache.Weapons.Count >= MaxWeaponsPerCache)
-            {
-                weaponCache[map] = state.PartialCache;
-                rebuildStates.Remove(map);
-
-                AutoArmLogger.Debug($"Completed incremental rebuild for map {map.uniqueID}: {state.PartialCache.Weapons.Count} weapons cached");
-            }
-        }
-
-        private static void ProcessRebuildChunk(Map map, RebuildState state, int chunkSize)
-        {
-            int processed = 0;
-            var entry = state.PartialCache;
-
-            while (processed < chunkSize && state.RemainingWeapons.Count > 0 && entry.Weapons.Count < MaxWeaponsPerCache)
-            {
-                var thing = state.RemainingWeapons[0];
-                state.RemainingWeapons.RemoveAt(0);
-
-                try
-                {
-                    var weapon = thing as ThingWithComps;
-                    if (weapon?.def == null)
-                    {
-                        if (thing != null)
-                        {
-                            AutoArmLogger.Log($"Skipping non-ThingWithComps or null def: {thing.Label}");
-                        }
-                        continue;
-                    }
-
-                    if (!IsValidWeapon(weapon))
-                    {
-                        // Removed spammy debug log - weapon validation happens frequently
-                        continue;
-                    }
-
-                    // Removed spammy autopistol logging during rebuild
-
-                    entry.Weapons.Add(weapon);
-
-                    // For weapons in containers, use the container's position
-                    IntVec3 position = weapon.Position;
-                    if (weapon.ParentHolder is Building building && building.Position.IsValid)
-                    {
-                        position = building.Position;
-                    }
-
-                    var gridPos = new IntVec3(position.x / GridCellSize, 0, position.z / GridCellSize);
-                    if (!entry.SpatialIndex.ContainsKey(gridPos))
-                    {
-                        entry.SpatialIndex[gridPos] = new List<ThingWithComps>();
-                    }
-                    entry.SpatialIndex[gridPos].Add(weapon);
-                    entry.WeaponToGrid[weapon] = gridPos;
-
-                    // Categorize the weapon
-                    var category = GetWeaponCategory(weapon);
-                    entry.CategorizedWeapons[category].Add(weapon);
-
-                    state.ProcessedCount++;
-                    processed++;
-                }
-                catch (Exception ex)
-                {
-                    // Catch any exceptions from problematic modded weapons
-                    AutoArmLogger.Error($"Failed to process weapon '{thing?.Label ?? "unknown"}' during rebuild", ex);
-                    // Continue processing other weapons
                 }
             }
         }
@@ -742,8 +627,6 @@ namespace AutoArm.Caching
             if (weapon.Destroyed || !weapon.Spawned)
                 return false;
 
-            // Use comprehensive weapon validation with improved exception handling
-            // This now handles Kiiro Race and other modded items gracefully
             return WeaponValidation.IsProperWeapon(weapon);
         }
 
@@ -754,7 +637,6 @@ namespace AutoArm.Caching
 
             if (weapon.def.IsMeleeWeapon)
             {
-                // Check quality
                 if (weapon.TryGetQuality(out QualityCategory qc) && (int)qc >= (int)QualityCategory.Good)
                     return WeaponCategory.MeleeAdvanced;
                 return WeaponCategory.MeleeBasic;
@@ -764,20 +646,21 @@ namespace AutoArm.Caching
                 if (weapon.def.Verbs?.Count > 0 && weapon.def.Verbs[0] != null)
                 {
                     float range = weapon.def.Verbs[0].range;
-                    if (range < 20f)
+                    if (range < Constants.CategoryRangeShort)
                         return WeaponCategory.RangedShort;
-                    else if (range <= 35f)
+                    else if (range <= Constants.CategoryRangeMedium)
                         return WeaponCategory.RangedMedium;
                     else
                         return WeaponCategory.RangedLong;
                 }
             }
 
-            return WeaponCategory.MeleeBasic; // Default
+            return WeaponCategory.MeleeBasic;
         }
 
-
-
+        /// <summary>
+        /// Get weapons by category (for specialized queries)
+        /// </summary>
         public static List<ThingWithComps> GetWeaponsByCategory(Map map, WeaponCategory category)
         {
             if (!weaponCache.TryGetValue(map, out var cache))
@@ -786,52 +669,53 @@ namespace AutoArm.Caching
             return new List<ThingWithComps>(cache.CategorizedWeapons[category]);
         }
 
-        public static List<ThingWithComps> GetWeaponsByCategoriesNear(Map map, IntVec3 position,
-            float maxDistance, params WeaponCategory[] categories)
+        /// <summary>
+        /// Force process any pending weapon operations (legacy compatibility)
+        /// </summary>
+        public static void ForceProcessPendingWeapons()
         {
-            if (!weaponCache.TryGetValue(map, out var cache))
-                return new List<ThingWithComps>();
-
-            var result = new List<ThingWithComps>();
-            var maxDistSquared = maxDistance * maxDistance;
-
-            foreach (var category in categories)
-            {
-                foreach (var weapon in cache.CategorizedWeapons[category])
-                {
-                    // For weapons in containers, use the container's position
-                    IntVec3 weaponPos = weapon.Position;
-                    if (weapon.ParentHolder is Building building && building.Position.IsValid)
-                    {
-                        weaponPos = building.Position;
-                    }
-                    
-                    if (weaponPos.DistanceToSquared(position) <= maxDistSquared)
-                    {
-                        result.Add(weapon);
-                    }
-                }
-            }
-
-            return result;
+            // No-op - real-time tracking doesn't have pending operations
         }
 
         /// <summary>
-        /// Get cached pawn-weapon score using the centralized WeaponScoreCache
+        /// Clear and rebuild cache (legacy compatibility)
+        /// </summary>
+        public static void ClearAndRebuildCache(Map map)
+        {
+            if (map == null)
+                return;
+                
+            // Clear existing cache
+            ClearCacheForMap(map);
+            
+            // Reinitialize
+            InitializeCacheForMap(map);
+        }
+
+        /// <summary>
+        /// Invalidate cache for a map (legacy compatibility)
+        /// </summary>
+        public static void InvalidateCache(Map map)
+        {
+            if (map == null)
+                return;
+                
+            // With real-time tracking, we just mark as changed
+            MarkCacheAsChanged(map);
+            
+            // If in dev mode, do a validation
+            if (Prefs.DevMode && weaponCache.TryGetValue(map, out var cache))
+            {
+                ValidateCacheContents(map, cache);
+            }
+        }
+
+        /// <summary>
+        /// Get cached weapon score (delegates to WeaponScoreCache)
         /// </summary>
         public static float GetCachedWeaponScore(Pawn pawn, ThingWithComps weapon)
         {
-            // Use the centralized WeaponScoreCache which has better invalidation tracking
             return WeaponScoreCache.GetCachedScore(pawn, weapon);
-        }
-
-        /// <summary>
-        /// Clear pawn-weapon score cache for a specific pawn (when skills/traits change)
-        /// </summary>
-        public static void ClearPawnScoreCache(Pawn pawn)
-        {
-            // Delegate to centralized cache which tracks skill changes properly
-            WeaponScoreCache.MarkPawnSkillsChanged(pawn);
         }
     }
 }

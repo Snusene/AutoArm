@@ -1,194 +1,160 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Harmony patches for outfit filter enforcement
-// Drops weapons when they violate outfit policies
+// This file: Simple outfit filter enforcement - drops weapons when player forbids them
+// ONE-TIME drop when player changes policy, no constant checking
 
+using AutoArm.Helpers;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 using HarmonyLib;
 using RimWorld;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
 using Verse.AI;
-using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging; using AutoArm.Patches;
-using AutoArm.Weapons;
 
 namespace AutoArm
 {
-    [HarmonyPatch(typeof(Pawn_OutfitTracker), "CurrentApparelPolicy", MethodType.Setter)]
-    public static class Pawn_OutfitTracker_CurrentApparelPolicy_Setter_Patch
+    /// <summary>
+    /// Simple one-time weapon drop when player forbids a weapon type in outfit policy
+    /// </summary>
+    [HarmonyPatch(typeof(ThingFilter), "SetAllow", new Type[] { typeof(ThingDef), typeof(bool) })]
+    public static class ThingFilter_SetAllow_Weapon_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(Pawn ___pawn)
+        public static void Postfix(ThingFilter __instance, ThingDef thingDef, bool allow)
         {
-            if (___pawn == null || AutoArmMod.settings?.modEnabled != true)
+            // === EARLY EXITS - FASTEST CHECKS FIRST ===
+            // Only act when player FORBIDS a weapon type
+            if (allow || thingDef == null || !thingDef.IsWeapon)
                 return;
-
-            if (!___pawn.IsColonist || !___pawn.Spawned || ___pawn.Dead || ___pawn.Drafted)
-                return;
-
-            // Don't interfere if pawn is hauling something
-            if (JobGiverHelpers.IsHaulingJob(___pawn))
-            {
-                // Pawn is hauling
-                return;
-            }
-
-            // Check primary weapon
-            if (___pawn.equipment?.Primary != null && ___pawn.jobs != null)
-            {
-                // Don't interfere with sidearm upgrades in progress
-                if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
-                    DroppedItemTracker.IsSimpleSidearmsSwapInProgress(___pawn))
-                {
-                    // Sidearm upgrade in progress
-                    return;
-                }
-
-                // Don't force temporary colonists (quest pawns) to drop their weapons
-                if (JobGiverHelpers.IsTemporaryColonist(___pawn))
-                {
-                    // Temporary colonist
-                    return;
-                }
-
-                var filter = ___pawn.outfits?.CurrentApparelPolicy?.filter;
-                if (filter != null)
-                {
-                    // Only check filter for proper weapons that appear in the UI
-                    if (!WeaponValidation.IsProperWeapon(___pawn.equipment.Primary))
-                    {
-                        // Not a proper weapon (wood log, beer, etc.) - don't apply filter rules
-                        // Not a proper weapon
-                        return;
-                    }
-
-                    bool weaponAllowed = filter.Allows(___pawn.equipment.Primary);
-                    // Removed spammy outfit filter check log
-
-                    if (!weaponAllowed)
-                    {
-                        // Check if this weapon is forced - if so, keep it equipped
-                        if (ForcedWeaponHelper.IsForced(___pawn, ___pawn.equipment.Primary))
-                        {
-                            // ALWAYS keep forced weapons regardless of outfit filter
-                            // Keeping forced weapon
-                            return; // Don't drop forced weapons
-                        }
-
-                        // Note: Bonded weapons are NOT exempt from outfit filters
-                        // If the outfit says no plasma swords, even bonded ones get dropped
-
-                        // Check if pawn is in a ritual - don't drop ritual items during ceremonies
-                        if (ValidationHelper.IsInRitual(___pawn))
-                        {
-                            // Pawn in ritual
-                            return; // Don't drop items during rituals
-                        }
-
-                        ForcedWeaponHelper.ClearForced(___pawn);
-
-                        // Mark weapon as dropped to prevent immediate re-pickup
-                        DroppedItemTracker.MarkAsDropped(___pawn.equipment.Primary, 600); // 10 second cooldown
-
-                        var dropJob = new Job(JobDefOf.DropEquipment, ___pawn.equipment.Primary);
-                        ___pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
-
-                        if (AutoArmMod.settings?.debugLogging == true)
-                        {
-                            AutoArmLogger.Debug($"{___pawn.LabelShort}: Outfit changed, dropping {___pawn.equipment.Primary.Label}");
-                        }
-
-                        if (PawnUtility.ShouldSendNotificationAbout(___pawn) && AutoArmMod.settings?.showNotifications == true)
-                        {
-                            Messages.Message("AutoArm_DroppingDisallowed".Translate(
-                                ___pawn.LabelShort.CapitalizeFirst(),
-                                ___pawn.equipment.Primary.Label ?? ___pawn.equipment.Primary.def?.label ?? "weapon"
-                            ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
-                        }
-                    }
-                }
-            }
-
-            // Also check sidearms when outfit changes
-            CheckAndDropDisallowedSidearms(___pawn);
-
-            // Schedule an additional check next tick to ensure all weapons are dropped
-            LongEventHandler.ExecuteWhenFinished(() =>
-            {
-                if (___pawn != null && ___pawn.Spawned && !___pawn.Dead)
-                {
-                    CheckAndDropDisallowedSidearms(___pawn);
-                }
-            });
-
-            if (Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.ContainsKey(___pawn))
-            {
-                Pawn_TickRare_Unified_Patch.lastWeaponSearchTick.Remove(___pawn);
-            }
-        }
-
-        public static void CheckAndDropDisallowedSidearms(Pawn pawn)
-        {
+                
             // Check if mod is enabled
             if (AutoArmMod.settings?.modEnabled != true)
                 return;
                 
-            if (!SimpleSidearmsCompat.IsLoaded() || pawn?.inventory?.innerContainer == null)
+            // Only check proper weapons that appear in the filter UI
+            if (!WeaponValidation.IsProperWeapon(thingDef))
                 return;
-
-            // Also validate if we just finished a Pick Up and Haul job
-            if (PickUpAndHaulCompat.IsLoaded())
-            {
-                PickUpAndHaulCompat.ValidateInventoryWeapons(pawn);
-            }
-
-            // Don't interfere if pawn is hauling something
-            if (JobGiverHelpers.IsHaulingJob(pawn))
-            {
+                
+            // === CRITICAL OPTIMIZATION: Check if this is an outfit filter FIRST ===
+            // This avoids checking stockpiles, bills, etc.
+            var outfitDatabase = Current.Game?.outfitDatabase;
+            if (outfitDatabase == null)
                 return;
-            }
-
-            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-            if (filter == null)
-                return;
-
-            var weaponsToCheck = pawn.inventory.innerContainer
-                .OfType<ThingWithComps>()
-                .Where(t => t.def.IsWeapon)
-                .ToList();
-
-            foreach (var weapon in weaponsToCheck)
+                
+            // Find which outfit policy this filter belongs to (if any)
+            ApparelPolicy affectedPolicy = null;
+            var outfitPolicies = outfitDatabase.AllOutfits;
+            if (outfitPolicies != null)
             {
-                // Only check filter for proper weapons that appear in the UI
-                if (!WeaponValidation.IsProperWeapon(weapon))
+                for (int i = 0; i < outfitPolicies.Count; i++)
                 {
-                    continue; // Skip non-proper weapons like wood logs, beer bottles, etc.
-                }
-
-                if (!filter.Allows(weapon))
-                {
-                    // Check if this is a forced weapon - don't drop forced weapons
-                    if (ForcedWeaponHelper.IsWeaponDefForced(pawn, weapon.def))
+                    if (outfitPolicies[i].filter == __instance)
                     {
-                        continue;
+                        affectedPolicy = outfitPolicies[i];
+                        break; // Found it - stop searching!
                     }
-
-                    // Note: Bonded weapons are NOT exempt from outfit filters
-
-                    // Drop the weapon
-                    Thing droppedWeapon;
-                    if (pawn.inventory.innerContainer.TryDrop(weapon, pawn.Position, pawn.Map,
-                        ThingPlaceMode.Near, out droppedWeapon))
+                }
+            }
+            
+            // Not an outfit filter - exit immediately
+            if (affectedPolicy == null)
+                return;
+                
+            // === OPTIMIZED: Only check affected pawns ===
+            
+            foreach (var map in Find.Maps)
+            {
+                if (map?.mapPawns?.FreeColonists == null)
+                    continue;
+                    
+                // Only check pawns using THIS SPECIFIC policy
+                foreach (var pawn in map.mapPawns.FreeColonists)
+                {
+                    // Skip if not using this policy
+                    if (pawn.outfits?.CurrentApparelPolicy != affectedPolicy)
+                        continue;
+                        
+                    // Skip busy pawns
+                    if (pawn.Drafted || pawn.InMentalState || pawn.Downed)
+                        continue;
+                        
+                    // Skip if in ritual or hauling (more expensive checks)
+                    if (ValidationHelper.IsInRitual(pawn) || JobGiverHelpers.IsHaulingJob(pawn))
+                        continue;
+                        
+                    // Skip temporary colonists
+                    if (JobGiverHelpers.IsTemporaryColonist(pawn))
+                        continue;
+                        
+                    // Check primary weapon FIRST (fastest check)
+                    var primary = pawn.equipment?.Primary;
+                    
+                    if (primary != null && primary.def == thingDef)
                     {
-                        if (droppedWeapon != null)
+                        // Skip if forced
+                        if (!ForcedWeaponHelper.IsForced(pawn, primary))
                         {
-                            // Mark it as dropped so it won't be immediately picked up again
-                            SimpleSidearmsCompat.MarkWeaponAsRecentlyDropped(droppedWeapon as ThingWithComps);
-                            // Additional marking with longer cooldown to prevent pickup loops
-                            DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200); // 20 seconds
-
+                            // Mark weapon to prevent immediate re-pickup
+                            DroppedItemTracker.MarkAsDropped(primary, 600);
+                            
+                            // Queue a drop job
+                            var dropJob = new Job(JobDefOf.DropEquipment, primary);
+                            pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
+                            
+                            if (AutoArmMod.settings?.showNotifications == true && PawnUtility.ShouldSendNotificationAbout(pawn))
+                            {
+                                Messages.Message("AutoArm_DroppingDisallowed".Translate(
+                                    pawn.LabelShort.CapitalizeFirst(),
+                                    thingDef.label
+                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                            }
+                            
                             if (AutoArmMod.settings?.debugLogging == true)
                             {
-                                AutoArmLogger.Debug($"{pawn.LabelShort}: Dropped disallowed sidearm - {weapon.Label}");
+                                AutoArmLogger.Debug($"{pawn.LabelShort}: Dropping {thingDef.label} (forbidden in outfit)");
+                            }
+                        }
+                    }
+                    
+                    // Check inventory only if pawn has inventory with items
+                    var inventory = pawn.inventory?.innerContainer;
+                    if (inventory != null && inventory.Count > 0)
+                    {
+                        // Manual iteration is faster than LINQ for small collections
+                        List<ThingWithComps> weaponsToRemove = null;
+                        
+                        for (int i = 0; i < inventory.Count; i++)
+                        {
+                            var item = inventory[i] as ThingWithComps;
+                            if (item != null && item.def == thingDef && 
+                                WeaponValidation.IsProperWeapon(item) &&
+                                !ForcedWeaponHelper.IsForced(pawn, item))
+                            {
+                                if (weaponsToRemove == null)
+                                    weaponsToRemove = new List<ThingWithComps>();
+                                weaponsToRemove.Add(item);
+                            }
+                        }
+                        
+                        if (weaponsToRemove != null)
+                        {
+                            foreach (var weapon in weaponsToRemove)
+                            {
+                                Thing droppedWeapon;
+                                if (inventory.TryDrop(weapon, pawn.Position, pawn.Map, 
+                                    ThingPlaceMode.Near, out droppedWeapon))
+                                {
+                                    // Mark to prevent re-pickup
+                                    DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200);
+                                    
+                                    if (AutoArmMod.settings?.debugLogging == true)
+                                    {
+                                        AutoArmLogger.Debug($"{pawn.LabelShort}: Dropped sidearm {weapon.Label} (forbidden in outfit)");
+                                    }
+                                }
                             }
                         }
                     }
@@ -196,10 +162,16 @@ namespace AutoArm
             }
         }
     }
-
+    
+    /// <summary>
+    /// Handle "Clear All" button - drops all non-forced weapons after a 5 second delay
+    /// </summary>
     [HarmonyPatch(typeof(ThingFilter), "SetDisallowAll")]
     public static class ThingFilter_SetDisallowAll_Patch
     {
+        // Track pending "Clear All" actions with their scheduled tick
+        private static Dictionary<ApparelPolicy, int> pendingClearAlls = new Dictionary<ApparelPolicy, int>();
+        
         [HarmonyPostfix]
         public static void Postfix(ThingFilter __instance)
         {
@@ -209,8 +181,93 @@ namespace AutoArm
             if (Current.Game == null || Find.Maps == null)
                 return;
 
-            var pawnsToDropWeapons = new List<(Pawn pawn, ThingWithComps weapon)>();
+            // Check if this filter belongs to an outfit policy
+            var outfitPolicies = Current.Game?.outfitDatabase?.AllOutfits;
+            if (outfitPolicies == null)
+                return;
+                
+            ApparelPolicy affectedPolicy = null;
+            foreach (var policy in outfitPolicies)
+            {
+                if (policy.filter == __instance)
+                {
+                    affectedPolicy = policy;
+                    break;
+                }
+            }
+            
+            if (affectedPolicy == null)
+                return;
 
+            // Schedule this clear-all to execute in 5 seconds (300 ticks)
+            int executeTick = Find.TickManager.TicksGame + 300;
+            pendingClearAlls[affectedPolicy] = executeTick;
+            
+            if (AutoArmMod.settings?.debugLogging == true)
+            {
+                AutoArmLogger.Debug($"Clear All clicked for {affectedPolicy.label} - weapons will drop in 5 seconds");
+            }
+        }
+        
+        // Check for pending drops every tick
+        [HarmonyPatch(typeof(Game), "UpdatePlay")]
+        public static class Game_UpdatePlay_CheckPendingDrops
+        {
+            [HarmonyPostfix]
+            public static void Postfix()
+            {
+                if (pendingClearAlls.Count == 0)
+                    return;
+                    
+                int currentTick = Find.TickManager.TicksGame;
+                var toExecute = new List<ApparelPolicy>();
+                
+                // Find policies that are ready to execute
+                foreach (var kvp in pendingClearAlls)
+                {
+                    if (currentTick >= kvp.Value)
+                    {
+                        toExecute.Add(kvp.Key);
+                    }
+                }
+                
+                // Execute and remove from pending
+                foreach (var policy in toExecute)
+                {
+                    ExecuteClearAll(policy);
+                    pendingClearAlls.Remove(policy);
+                }
+            }
+        }
+        
+        private static void ExecuteClearAll(ApparelPolicy policy)
+        {
+            if (policy == null)
+                return;
+                
+            // Re-check that the policy still has everything disallowed
+            // (Player might have re-enabled items during the 5 second wait)
+            bool hasAnyWeaponsAllowed = false;
+            foreach (var weaponDef in DefDatabase<ThingDef>.AllDefs.Where(d => d.IsWeapon && WeaponValidation.IsProperWeapon(d)))
+            {
+                if (policy.filter.Allows(weaponDef))
+                {
+                    hasAnyWeaponsAllowed = true;
+                    break;
+                }
+            }
+            
+            // If player re-enabled some weapons, don't drop anything
+            if (hasAnyWeaponsAllowed)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"Cancelled weapon drop for {policy.label} - player re-enabled some weapons");
+                }
+                return;
+            }
+
+            // Drop all weapons from affected colonists
             foreach (var map in Find.Maps)
             {
                 if (map?.mapPawns?.FreeColonists == null)
@@ -218,73 +275,54 @@ namespace AutoArm
 
                 foreach (var pawn in map.mapPawns.FreeColonists)
                 {
-                    if (pawn == null || pawn.Drafted || pawn.jobs == null)
+                    if (pawn.outfits?.CurrentApparelPolicy != policy)
+                        continue;
+                        
+                    // Don't interfere with busy pawns
+                    if (pawn.Drafted || pawn.InMentalState || pawn.Downed || 
+                        ValidationHelper.IsInRitual(pawn) || JobGiverHelpers.IsHaulingJob(pawn))
+                        continue;
+                        
+                    // Don't force temporary colonists to drop weapons
+                    if (JobGiverHelpers.IsTemporaryColonist(pawn))
                         continue;
 
-                    // Don't interfere if pawn is hauling something
-                    if (JobGiverHelpers.IsHaulingJob(pawn))
+                    // Drop primary weapon if not forced
+                    if (pawn.equipment?.Primary != null && 
+                        WeaponValidation.IsProperWeapon(pawn.equipment.Primary) &&
+                        !ForcedWeaponHelper.IsForced(pawn, pawn.equipment.Primary))
                     {
-                        continue;
-                    }
-
-                    if (pawn.outfits?.CurrentApparelPolicy?.filter == __instance &&
-                        pawn.equipment?.Primary != null &&
-                        WeaponValidation.IsProperWeapon(pawn.equipment.Primary)) // Only drop proper weapons that appear in filter UI
-                    {
-                        pawnsToDropWeapons.Add((pawn, pawn.equipment.Primary));
-                    }
-                }
-            }
-
-            if (pawnsToDropWeapons.Count > 0)
-            {
-                LongEventHandler.ExecuteWhenFinished(() =>
-                {
-                    foreach (var (pawn, weapon) in pawnsToDropWeapons)
-                    {
-                        if (pawn?.equipment?.Primary == weapon && !pawn.Drafted && pawn.jobs != null)
+                        DroppedItemTracker.MarkAsDropped(pawn.equipment.Primary, 600);
+                        var dropJob = new Job(JobDefOf.DropEquipment, pawn.equipment.Primary);
+                        pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
+                        
+                        if (AutoArmMod.settings?.debugLogging == true)
                         {
-                            // Don't interfere with sidearm upgrades in progress
-                            if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true &&
-                                DroppedItemTracker.IsSimpleSidearmsSwapInProgress(pawn))
-                            {
-                                // Sidearm upgrade in progress
-                                continue;
-                            }
-
-                            // Don't force temporary colonists (quest pawns) to drop their weapons
-                            if (JobGiverHelpers.IsTemporaryColonist(pawn))
-                            {
-                                // Temporary colonist
-                                continue;
-                            }
-
-                            // Check if this weapon is forced - if so, keep it equipped
-                            if (ForcedWeaponHelper.IsForced(pawn, weapon))
-                            {
-                                // Keeping forced weapon
-                                continue; // Skip this pawn, don't drop forced weapons
-                            }
-
-                            // Note: Bonded weapons are NOT exempt from outfit filters
-                            // If the outfit says no weapons, even bonded ones get dropped
-
-                            // Check if pawn is in a ritual - don't drop ritual items during ceremonies
-                            if (ValidationHelper.IsInRitual(pawn))
-                            {
-                                // Pawn in ritual
-                                continue; // Don't drop items during rituals
-                            }
-
-                            ForcedWeaponHelper.ClearForced(pawn);
-
-                            var dropJob = new Job(JobDefOf.DropEquipment, weapon);
-                            pawn.jobs.TryTakeOrderedJob(dropJob, JobTag.Misc);
-
-                            // All items disallowed
+                            AutoArmLogger.Debug($"{pawn.LabelShort}: Dropping all weapons (Clear All executed after 5 second delay)");
                         }
                     }
-                });
+                    
+                    // Drop all sidearms that aren't forced
+                    if (pawn.inventory?.innerContainer != null)
+                    {
+                        var weaponsToRemove = pawn.inventory.innerContainer
+                            .OfType<ThingWithComps>()
+                            .Where(w => w.def.IsWeapon && 
+                                   WeaponValidation.IsProperWeapon(w) &&
+                                   !ForcedWeaponHelper.IsForced(pawn, w))
+                            .ToList();
+                            
+                        foreach (var weapon in weaponsToRemove)
+                        {
+                            Thing droppedWeapon;
+                            if (pawn.inventory.innerContainer.TryDrop(weapon, pawn.Position, pawn.Map, 
+                                ThingPlaceMode.Near, out droppedWeapon))
+                            {
+                                DroppedItemTracker.MarkAsDropped(droppedWeapon, 1200);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

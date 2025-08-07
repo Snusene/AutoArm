@@ -1,10 +1,10 @@
-﻿using System;
+﻿using AutoArm.Logging;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
-using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -14,13 +14,13 @@ namespace AutoArm
         private static bool _initialized = false;
         private static bool _initFailed = false;
         private static readonly object _initLock = new object();
-        
+
         // Score bonus per infusion - balanced for typical weapon scoring
         private const float SCORE_PER_INFUSION = 25f;
 
-// Track logged weapons to avoid spam
+        // Track logged weapons to avoid spam
         private static HashSet<string> _loggedWeapons = new HashSet<string>();
-        
+
         private static Type compInfusionType;
         private static MethodInfo getInfusionsMethod;
         private static PropertyInfo getInfusionsProperty;
@@ -54,53 +54,53 @@ namespace AutoArm
 
                 try
                 {
-                compInfusionType = GenTypes.AllTypes.FirstOrDefault(t =>
-                    t.Name == "CompInfusion" &&
-                    t.Namespace != "AutoArm");
+                    compInfusionType = GenTypes.AllTypes.FirstOrDefault(t =>
+                        t.Name == "CompInfusion" &&
+                        t.Namespace != "AutoArm");
 
-                if (compInfusionType == null)
-                {
+                    if (compInfusionType == null)
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug("InfusionCompat: Could not find CompInfusion type");
+                        }
+                        _initFailed = true;
+                        return;
+                    }
+
+                    var members = compInfusionType.GetMembers(BindingFlags.Public | BindingFlags.Instance);
+
+                    foreach (var member in members)
+                    {
+                        if (member.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            if (member is PropertyInfo prop && IsCollectionType(prop.PropertyType))
+                            {
+                                getInfusionsProperty = prop;
+                                break;
+                            }
+                            else if (member is MethodInfo method &&
+                                    method.GetParameters().Length == 0 &&
+                                    IsCollectionType(method.ReturnType))
+                            {
+                                getInfusionsMethod = method;
+                                break;
+                            }
+                        }
+                    }
+
+                    _initialized = true;
+
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        AutoArmLogger.Debug("InfusionCompat: Could not find CompInfusion type");
+                        AutoArmLogger.Debug($"InfusionCompat initialized - Property: {getInfusionsProperty != null}, Method: {getInfusionsMethod != null}");
                     }
+                }
+                catch (Exception e)
+                {
+                    AutoArmLogger.Error("Failed to initialize Infusion 2 compatibility", e);
                     _initFailed = true;
-                    return;
                 }
-
-                var members = compInfusionType.GetMembers(BindingFlags.Public | BindingFlags.Instance);
-
-                foreach (var member in members)
-                {
-                    if (member.Name.IndexOf("infusion", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        if (member is PropertyInfo prop && IsCollectionType(prop.PropertyType))
-                        {
-                            getInfusionsProperty = prop;
-                            break;
-                        }
-                        else if (member is MethodInfo method &&
-                                method.GetParameters().Length == 0 &&
-                                IsCollectionType(method.ReturnType))
-                        {
-                            getInfusionsMethod = method;
-                            break;
-                        }
-                    }
-                }
-
-                _initialized = true;
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug($"InfusionCompat initialized - Property: {getInfusionsProperty != null}, Method: {getInfusionsMethod != null}");
-                }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.Error("Failed to initialize Infusion 2 compatibility", e);
-                _initFailed = true;
-            }
             }
         }
 
@@ -178,7 +178,7 @@ namespace AutoArm
                         {
                             _loggedWeapons.Add(cacheKey);
                             if (_loggedWeapons.Count > 100) _loggedWeapons.Clear(); // Prevent unbounded growth
-                            
+
                             if (Prefs.DevMode && AutoArmMod.settings?.debugLogging == true)
                             {
                                 AutoArmLogger.Debug($"InfusionCompat: {weapon.Label} has {count} infusions (+{count * SCORE_PER_INFUSION} score)");

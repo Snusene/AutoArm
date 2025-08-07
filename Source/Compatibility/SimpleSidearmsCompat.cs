@@ -1,9 +1,7 @@
-using AutoArm.Caching;
+using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
 using AutoArm.Logging;
-using AutoArm.Weapons;
-using HarmonyLib;
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -14,58 +12,36 @@ using Verse.AI;
 
 namespace AutoArm
 {
-    // Complete SimpleSidearms Compatibility
-    // Properly handles all SS integration:
-    // - ThingDefStuffDefPair for remembered weapons
-    // - Informs SS of all weapon changes
-    // - Checks for SS pending jobs
-    // - Respects unarmed preferences
-    // - Thread-safe caching
+    /// <summary>
+    /// Simplified SimpleSidearms compatibility
+    /// Uses SS's own methods for equipping sidearms while respecting all rules
+    /// </summary>
     public static class SimpleSidearmsCompat
     {
+        // Job def for swapping sidearms
+        private static JobDef _swapSidearmJobDef;
         private static bool? _isLoaded = null;
         private static bool _initialized = false;
 
+        /// <summary>
+        /// Returns true if SimpleSidearms reflection failed during initialization
+        /// </summary>
+        public static bool ReflectionFailed => _reflectionFailed;
+
+        private static bool _reflectionFailed = false;
+
         // Core types from SimpleSidearms
         private static Type compSidearmMemoryType;
-        private static Type statCalculatorType;
         private static Type thingDefStuffDefPairType;
+        private static Type statCalculatorType;
         private static Type weaponAssingmentType;
-        private static Type gettersFiltersType;
-        private static Type jobGiverRetrieveWeaponType;
 
         // Core methods we need
         private static MethodInfo getMemoryCompForPawnMethod;
-        private static MethodInfo canPickupSidearmMethod;
-        private static MethodInfo rangedDPSMethod;
-        private static MethodInfo getMeleeDPSMethod;
-        private static MethodInfo informOfDroppedSidearmMethod;
-        private static MethodInfo informOfAddedSidearmMethod;
-        private static MethodInfo tryGiveJobStaticMethod;
 
-        // Properties and fields
-        private static PropertyInfo rememberedWeaponsProperty;
-        private static FieldInfo thingDefField;
-        private static FieldInfo stuffDefField;
-
-        // JobDefs from SimpleSidearms
-        private static JobDef equipSecondaryJobDef;
-
-        // Thread-safe weapon score cache
-        private static readonly object _cacheLock = new object();
-        private static Dictionary<string, float> weaponScoreCache = new Dictionary<string, float>();
-        private static Dictionary<string, int> weaponScoreCacheTick = new Dictionary<string, int>();
-        private const int WEAPON_SCORE_CACHE_LIFETIME = 1000;
-
-        // Pending upgrade tracking
-        private static Dictionary<Pawn, PendingUpgradeInfo> pendingUpgrades = new Dictionary<Pawn, PendingUpgradeInfo>();
-
-        public class PendingUpgradeInfo
-        {
-            public ThingWithComps oldWeapon;
-            public ThingWithComps newWeapon;
-            public int startTick;
-        }
+        private static MethodInfo canPickupSidearmInstanceMethod;
+        private static MethodInfo equipSidearmMethod;
+        private static MethodInfo getSidearmsListMethod;
 
         public static bool IsLoaded()
         {
@@ -85,121 +61,87 @@ namespace AutoArm
             return _isLoaded.Value;
         }
 
-        private static void EnsureInitialized()
+        public static void EnsureInitialized()
         {
             if (_initialized || !IsLoaded())
                 return;
 
             try
             {
-                // Get types
-                compSidearmMemoryType = GenTypes.AllTypes.FirstOrDefault(t =>
-                    t.FullName == "SimpleSidearms.rimworld.CompSidearmMemory");
-
+                // Find essential type and method only
                 statCalculatorType = GenTypes.AllTypes.FirstOrDefault(t =>
                     t.FullName == "PeteTimesSix.SimpleSidearms.Utilities.StatCalculator");
 
+                if (statCalculatorType == null)
+                {
+                    _reflectionFailed = true;
+                    return;
+                }
+
+                // Get the essential validation method
+                canPickupSidearmInstanceMethod = statCalculatorType.GetMethod("CanPickupSidearmInstance",
+                    new Type[] { typeof(ThingWithComps), typeof(Pawn), typeof(string).MakeByRefType() });
+
+                if (canPickupSidearmInstanceMethod == null)
+                {
+                    _reflectionFailed = true;
+                    return;
+                }
+
+                // Optional types - don't fail if not found
+                compSidearmMemoryType = GenTypes.AllTypes.FirstOrDefault(t =>
+                    t.FullName == "SimpleSidearms.rimworld.CompSidearmMemory");
+                    
                 thingDefStuffDefPairType = GenTypes.AllTypes.FirstOrDefault(t =>
                     t.FullName == "SimpleSidearms.rimworld.ThingDefStuffDefPair");
-
+                    
                 weaponAssingmentType = GenTypes.AllTypes.FirstOrDefault(t =>
                     t.FullName == "PeteTimesSix.SimpleSidearms.Utilities.WeaponAssingment");
 
-                gettersFiltersType = GenTypes.AllTypes.FirstOrDefault(t =>
-                    t.FullName == "PeteTimesSix.SimpleSidearms.Utilities.GettersFilters");
-
-                jobGiverRetrieveWeaponType = GenTypes.AllTypes.FirstOrDefault(t =>
-                    t.FullName == "SimpleSidearms.rimworld.JobGiver_RetrieveWeapon");
-
-                // Get methods
+                // Optional methods
                 if (compSidearmMemoryType != null)
                 {
                     getMemoryCompForPawnMethod = compSidearmMemoryType.GetMethod("GetMemoryCompForPawn",
-                        BindingFlags.Public | BindingFlags.Static);
-
-                    rememberedWeaponsProperty = compSidearmMemoryType.GetProperty("RememberedWeapons");
-
-                    informOfDroppedSidearmMethod = compSidearmMemoryType.GetMethod("InformOfDroppedSidearm",
-                        new Type[] { typeof(ThingWithComps), typeof(bool) });
-
-                    informOfAddedSidearmMethod = compSidearmMemoryType.GetMethod("InformOfAddedSidearm",
-                        new Type[] { typeof(ThingWithComps) });
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new Type[] { typeof(Pawn), typeof(bool) },
+                        null);
+                        
+                    // If that doesn't work, try without the bool parameter
+                    if (getMemoryCompForPawnMethod == null)
+                    {
+                        getMemoryCompForPawnMethod = compSidearmMemoryType.GetMethod("GetMemoryCompForPawn",
+                            BindingFlags.Public | BindingFlags.Static,
+                            null,
+                            new Type[] { typeof(Pawn) },
+                            null);
+                    }
+                    
+                    getSidearmsListMethod = compSidearmMemoryType.GetMethod("GetRememberedWeapons",
+                        BindingFlags.Public | BindingFlags.Instance);
                 }
 
-                if (statCalculatorType != null)
+                if (weaponAssingmentType != null)
                 {
-                    canPickupSidearmMethod = statCalculatorType.GetMethod("CanPickupSidearmInstance",
-                        new Type[] { typeof(ThingWithComps), typeof(Pawn), typeof(string).MakeByRefType() });
-
-                    rangedDPSMethod = statCalculatorType.GetMethod("RangedDPS",
-                        new Type[] { typeof(ThingWithComps), typeof(float), typeof(float), typeof(float) });
-
-                    getMeleeDPSMethod = statCalculatorType.GetMethod("getMeleeDPSBiased",
-                        new Type[] { typeof(ThingWithComps), typeof(Pawn), typeof(float), typeof(float) });
+                    equipSidearmMethod = weaponAssingmentType.GetMethod("equipSidearm",
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new Type[] { typeof(Pawn), typeof(ThingWithComps), typeof(bool), typeof(bool) },
+                        null);
                 }
-
-                if (thingDefStuffDefPairType != null)
-                {
-                    thingDefField = thingDefStuffDefPairType.GetField("thing");
-                    stuffDefField = thingDefStuffDefPairType.GetField("stuff");
-                }
-
-                if (jobGiverRetrieveWeaponType != null)
-                {
-                    tryGiveJobStaticMethod = jobGiverRetrieveWeaponType.GetMethod("TryGiveJobStatic",
-                        BindingFlags.Public | BindingFlags.Static);
-                }
-
-                // Get JobDefs
-                equipSecondaryJobDef = DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary");
 
                 _initialized = true;
-                AutoArmLogger.Log("Simple Sidearms compatibility initialized successfully");
             }
-            catch (Exception e)
+            catch
             {
-                AutoArmLogger.Error("Failed to initialize Simple Sidearms compatibility", e);
+                _reflectionFailed = true;
+                _initialized = false;
             }
         }
 
-        private static object GetSidearmComp(Pawn pawn)
-        {
-            if (!IsLoaded() || pawn == null || getMemoryCompForPawnMethod == null)
-                return null;
-
-            try
-            {
-                return getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, false });
-            }
-            catch (Exception e)
-            {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Error($"SimpleSidearms GetSidearmComp failed", e);
-                return null;
-            }
-        }
-
-        // Check if SimpleSidearms already has a weapon job
-        public static bool HasPendingSidearmJob(Pawn pawn)
-        {
-            if (!IsLoaded() || pawn == null || tryGiveJobStaticMethod == null)
-                return false;
-
-            try
-            {
-                object[] parameters = new object[] { pawn, false }; // false = not in combat
-                var job = tryGiveJobStaticMethod.Invoke(null, parameters) as Job;
-                return job != null;
-            }
-            catch (Exception e)
-            {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Error($"SimpleSidearms HasPendingSidearmJob failed", e);
-                return false;
-            }
-        }
-
-        // Main validation method
+        /// <summary>
+        /// Check if SimpleSidearms allows this weapon as sidearm
+        /// </summary>
         public static bool CanPickupSidearmInstance(ThingWithComps weapon, Pawn pawn, out string reason)
         {
             reason = "";
@@ -208,142 +150,1099 @@ namespace AutoArm
 
             EnsureInitialized();
 
+            if (_reflectionFailed)
+            {
+                reason = "SimpleSidearms reflection failed";
+                return false; // Block operations if reflection failed
+            }
+
             try
             {
-                if (canPickupSidearmMethod != null)
+                if (canPickupSidearmInstanceMethod != null)
                 {
                     object[] parameters = new object[] { weapon, pawn, null };
-                    bool result = (bool)canPickupSidearmMethod.Invoke(null, parameters);
+                    bool result = (bool)canPickupSidearmInstanceMethod.Invoke(null, parameters);
                     reason = (string)parameters[2] ?? "";
                     return result;
                 }
             }
             catch (Exception e)
             {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Warn($"SimpleSidearms CanPickupSidearmInstance failed: {e.Message}");
+                // Log error but don't block equipping
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] SimpleSidearms CanPickupSidearmInstance error: {e.Message}");
+                }
+                // Don't set _reflectionFailed here - this is a runtime error, not a setup failure
+                // Runtime errors shouldn't permanently disable SS integration
+                reason = "SimpleSidearms validation error";
             }
 
             return true;
         }
 
-        // Calculate weapon score using SimpleSidearms' DPS methods
-        private static float GetWeaponScore(ThingWithComps weapon, Pawn pawn, bool preferMelee = false)
+        /// <summary>
+        /// Check if a weapon is managed by SimpleSidearms (in the remembered list)
+        /// </summary>
+        public static bool IsSimpleSidearmsManaged(Pawn pawn, ThingWithComps weapon)
         {
-            if (weapon == null || !WeaponValidation.IsProperWeapon(weapon))
-                return 0f;
+            if (!IsLoaded() || pawn == null || weapon == null)
+                return false;
 
-            // Thread-safe cache check
-            float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
-            float shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0f;
-            string cacheKey = $"{weapon.ThingID}_{pawn.ThingID}_{preferMelee}_{meleeSkill:F0}_{shootingSkill:F0}";
+            EnsureInitialized();
 
-            lock (_cacheLock)
-            {
-                if (weaponScoreCache.TryGetValue(cacheKey, out float cachedScore) &&
-                    weaponScoreCacheTick.TryGetValue(cacheKey, out int cacheTick) &&
-                    Find.TickManager.TicksGame - cacheTick < WEAPON_SCORE_CACHE_LIFETIME)
-                {
-                    return cachedScore;
-                }
-            }
-
-            float score = 0f;
+            if (_reflectionFailed)
+                return false;
 
             try
             {
-                if (weapon.def.IsRangedWeapon && rangedDPSMethod != null)
+                // Get the memory comp for this pawn
+                if (getMemoryCompForPawnMethod != null && compSidearmMemoryType != null)
                 {
-                    // RangedDPS(weapon, speedBias, averageSpeed, distance)
-                    // Use default values: speedBias = 1, averageSpeed = 1, distance = 15 (medium range)
-                    score = (float)rangedDPSMethod.Invoke(null, new object[] { weapon, 1f, 1f, 15f });
-                    if (preferMelee)
-                        score *= 0.7f;
-                }
-                else if (weapon.def.IsMeleeWeapon && getMeleeDPSMethod != null)
-                {
-                    // getMeleeDPSBiased(weapon, pawn, speedBias, averageSpeed)
-                    // Use default values: speedBias = 1, averageSpeed = 1
-                    score = (float)getMeleeDPSMethod.Invoke(null, new object[] { weapon, pawn, 1f, 1f });
-                    if (!preferMelee)
-                        score *= 0.7f;
-                }
-
-                // Apply quality modifier
-                QualityCategory quality;
-                if (weapon.TryGetQuality(out quality))
-                {
-                    score *= 0.95f + ((int)quality * 0.05f);
-                }
-            }
-            catch (Exception e)
-            {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Debug($"SimpleSidearms weapon scoring failed, using fallback: {e.Message}");
-                // Fallback to AutoArm's scoring
-                score = WeaponScoringHelper.GetTotalScore(pawn, weapon);
-            }
-
-            lock (_cacheLock)
-            {
-                weaponScoreCache[cacheKey] = score;
-                weaponScoreCacheTick[cacheKey] = Find.TickManager.TicksGame;
-            }
-
-            return score;
-        }
-
-        // Get remembered sidearm pairs (with stuff)
-        private static List<object> GetRememberedSidearmPairs(Pawn pawn)
-        {
-            var pairs = new List<object>();
-            var comp = GetSidearmComp(pawn);
-            if (comp == null || rememberedWeaponsProperty == null)
-                return pairs;
-
-            try
-            {
-                var rememberedList = rememberedWeaponsProperty.GetValue(comp) as System.Collections.IEnumerable;
-                if (rememberedList != null)
-                {
-                    foreach (var item in rememberedList)
+                    // Try to call with appropriate parameters based on method signature
+                    object memoryComp = null;
+                    var parameters = getMemoryCompForPawnMethod.GetParameters();
+                    
+                    if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool))
                     {
-                        if (item != null)
-                            pairs.Add(item);
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, false });
+                    }
+                    else if (parameters.Length == 1)
+                    {
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn });
+                    }
+                    if (memoryComp != null && getSidearmsListMethod != null)
+                    {
+                        // Get the list of remembered weapons
+                        // GetRememberedWeapons typically takes no parameters
+                        object rememberedWeapons = null;
+                        try
+                        {
+                            rememberedWeapons = getSidearmsListMethod.Invoke(memoryComp, new object[0]);
+                        }
+                        catch (TargetParameterCountException)
+                        {
+                            // Try with a bool parameter if no parameters didn't work
+                            try
+                            {
+                                rememberedWeapons = getSidearmsListMethod.Invoke(memoryComp, new object[] { true });
+                            }
+                            catch (Exception e2)
+                            {
+                                AutoArmLogger.Debug($"Failed to invoke GetRememberedWeapons with parameter variations: {e2.Message}");
+                                return false;
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            AutoArmLogger.Debug($"Failed to invoke GetRememberedWeapons: {e.Message}");
+                            return false;
+                        }
+                        if (rememberedWeapons != null)
+                        {
+                            // Check if this weapon's def/stuff combo is in the remembered list
+                            foreach (var item in (System.Collections.IEnumerable)rememberedWeapons)
+                            {
+                                if (item != null)
+                                {
+                                    // The item is likely a ThingDefStuffDefPair
+                                    var thingField = item.GetType().GetField("thing");
+                                    var stuffField = item.GetType().GetField("stuff");
+
+                                    if (thingField != null)
+                                    {
+                                        var thingDef = thingField.GetValue(item) as ThingDef;
+                                        var stuffDef = stuffField?.GetValue(item) as ThingDef;
+
+                                        if (thingDef == weapon.def && stuffDef == weapon.Stuff)
+                                        {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             catch (Exception e)
             {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Debug($"SimpleSidearms GetRememberedSidearmPairs failed: {e.Message}");
-            }
-
-            return pairs;
-        }
-
-        public static bool IsRememberedSidearm(Pawn pawn, ThingWithComps weapon)
-        {
-            if (!IsLoaded() || weapon == null || pawn == null)
-                return false;
-
-            var rememberedPairs = GetRememberedSidearmPairs(pawn);
-
-            foreach (var pair in rememberedPairs)
-            {
-                if (pair != null && thingDefField != null && stuffDefField != null)
-                {
-                    var thingDef = thingDefField.GetValue(pair) as ThingDef;
-                    var stuffDef = stuffDefField.GetValue(pair) as ThingDef;
-
-                    if (thingDef == weapon.def && stuffDef == weapon.Stuff)
-                        return true;
-                }
+                AutoArmLogger.Debug($"Failed to check if weapon is SS managed: {e.Message}");
             }
 
             return false;
         }
 
+        /// <summary>
+        /// Create a job to equip a sidearm using SimpleSidearms' EquipSecondary job
+        /// </summary>
+        public static Job CreateEquipSidearmJob(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded() || pawn == null || weapon == null || _reflectionFailed)
+                return null;
+
+            // Verify SimpleSidearms allows this
+            string reason;
+            if (!CanPickupSidearmInstance(weapon, pawn, out reason))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] SimpleSidearms rejects {weapon.Label}: {reason}");
+                }
+                return null;
+            }
+
+            // Use SimpleSidearms' EquipSecondary job
+            var jobDef = DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary");
+            if (jobDef != null)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Creating EquipSecondary job for {weapon.Label}");
+                }
+                return JobMaker.MakeJob(jobDef, weapon);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Try to equip a sidearm using SimpleSidearms' internal method
+        /// This is for direct equipping without creating a job
+        /// </summary>
+        public static bool TryEquipSidearm(Pawn pawn, ThingWithComps weapon, bool dropCurrent = true, bool intentional = false)
+        {
+            if (!IsLoaded() || pawn == null || weapon == null)
+                return false;
+
+            EnsureInitialized();
+
+            if (_reflectionFailed || equipSidearmMethod == null)
+                return false;
+
+            try
+            {
+                bool result = (bool)equipSidearmMethod.Invoke(null, new object[] { pawn, weapon, dropCurrent, intentional });
+
+                if (result && AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Successfully equipped sidearm {weapon.Label} using SimpleSidearms");
+                }
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Warn($"Failed to equip sidearm: {e.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Switch a sidearm to primary using SimpleSidearms' method
+        /// </summary>
+        public static bool SwitchToPrimary(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded() || pawn == null || weapon == null)
+                return false;
+
+            EnsureInitialized();
+
+            if (_reflectionFailed)
+                return false;
+
+            try
+            {
+                // Get the WeaponAssingment type
+                if (weaponAssingmentType == null)
+                {
+                    AutoArmLogger.Warn("Could not find WeaponAssingment type for switching");
+                    return false;
+                }
+
+                // Get the SetAsForced method to switch to primary
+                var setAsForcedMethod = weaponAssingmentType.GetMethod(
+                    "SetAsForced",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null,
+                    new Type[] { typeof(Pawn), typeof(Thing), typeof(bool) },
+                    null);
+
+                if (setAsForcedMethod == null)
+                {
+                    AutoArmLogger.Warn("Could not find SetAsForced method");
+                    return false;
+                }
+
+                // Switch the weapon to primary (true = forced)
+                setAsForcedMethod.Invoke(null, new object[] { pawn, weapon, false });
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Switched {weapon.Label} to primary using SimpleSidearms");
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Warn($"Failed to switch weapon to primary: {e.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Find the best sidearm to add or upgrade
+        /// For upgrades: uses custom swap job to ensure old weapon ends up at new weapon location
+        /// </summary>
+        public static Job FindBestSidearmJob(Pawn pawn, Func<Pawn, ThingWithComps, float> getWeaponScore, int searchRadius)
+        {
+            if (!IsLoaded() || pawn == null || _reflectionFailed)
+                return null;
+
+            // Get current weapons separated by location
+            var inventoryWeapons = new Dictionary<ThingDef, ThingWithComps>();
+            ThingWithComps primaryWeapon = pawn.equipment?.Primary;
+
+            // Add inventory weapons only
+            if (pawn.inventory?.innerContainer != null)
+            {
+                foreach (Thing t in pawn.inventory.innerContainer)
+                {
+                    if (t is ThingWithComps weapon && t.def.IsWeapon)
+                    {
+                        // Keep the lower quality one for upgrade comparison
+                        if (!inventoryWeapons.ContainsKey(weapon.def))
+                        {
+                            inventoryWeapons[weapon.def] = weapon;
+                        }
+                        else
+                        {
+                            float currentScore = getWeaponScore(pawn, inventoryWeapons[weapon.def]);
+                            float newScore = getWeaponScore(pawn, weapon);
+                            if (newScore < currentScore)
+                            {
+                                inventoryWeapons[weapon.def] = weapon;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Search for weapons
+            var cachedWeapons = Caching.ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, searchRadius);
+
+            ThingWithComps bestWeapon = null;
+            float bestScore = 0f;
+            bool isUpgrade = false;
+            ThingWithComps weaponToReplace = null;
+
+            foreach (var weapon in cachedWeapons)
+            {
+                // Basic validation
+                if (!ValidationHelper.CanPawnUseWeapon(pawn, weapon, out string reason))
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: {reason}");
+                    }
+                    continue;
+                }
+
+                if (DroppedItemTracker.IsRecentlyDropped(weapon))
+                    continue;
+
+                // CHECK OUTFIT FILTER
+                if (!(pawn.outfits?.CurrentApparelPolicy?.filter?.Allows(weapon) ?? true))
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: Outfit filter");
+                    }
+                    continue;
+                }
+
+                float score = getWeaponScore(pawn, weapon);
+
+                // Skip if this matches the primary weapon type (handled by primary upgrade logic)
+                if (primaryWeapon != null && weapon.def == primaryWeapon.def)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Skipping {weapon.Label} - matches primary weapon type");
+                    }
+                    continue;
+                }
+
+                // Check if we already have this weapon type in inventory
+                if (inventoryWeapons.ContainsKey(weapon.def))
+                {
+                    var existingWeapon = inventoryWeapons[weapon.def];
+                    float existingScore = getWeaponScore(pawn, existingWeapon);
+                    float threshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
+
+                    // Check if SS manages this weapon
+                    bool isSidearmManaged = IsSimpleSidearmsManaged(pawn, existingWeapon);
+                    
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Checking upgrade for {existingWeapon.Label}: SS-managed={isSidearmManaged}, existingScore={existingScore:F0}, newScore={score:F0}, threshold={threshold:F2}");
+                    }
+
+                    // For SS-managed weapons OR any weapon in inventory, check upgrade settings
+                    // (weapons in inventory should be considered as potential sidearms even if SS hasn't registered them yet)
+                    if (isSidearmManaged || existingWeapon.holdingOwner == pawn.inventory.innerContainer)
+                    {
+                        // Check if sidearm upgrades are allowed
+                        if (AutoArmMod.settings?.allowSidearmUpgrades != true)
+                        {
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Skipping {weapon.Label} - sidearm upgrades disabled");
+                            }
+                            continue;
+                        }
+                        
+                        // Check if this weapon type is forced/preferred in SS
+                        bool isForced, isPreferred;
+                        if (IsWeaponTypeForced(pawn, existingWeapon.def, out isForced, out isPreferred))
+                        {
+                            // Weapon type is forced/preferred - check if forced upgrades are allowed
+                            if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
+                            {
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Skipping {weapon.Label} - weapon type {existingWeapon.def.label} is {(isForced ? "forced" : "preferred")} and forced upgrades disabled");
+                                }
+                                continue;
+                            }
+                        }
+
+                        // Only consider if it's a significant upgrade
+                        if (score > existingScore * threshold)
+                        {
+                            if (score > bestScore)
+                            {
+                                bestWeapon = weapon;
+                                bestScore = score;
+                                isUpgrade = true;
+                                weaponToReplace = existingWeapon;
+
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Found SS-managed weapon upgrade: {existingWeapon.Label} -> {weapon.Label}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: Not enough upgrade over {existingWeapon.Label} ({score} <= {existingScore} * {threshold})");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not SS-managed and not in inventory, skip (we already have this type elsewhere)
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Skipping {weapon.Label} - already have {weapon.def.label} (not in inventory)");
+                        }
+                        continue;
+                    }
+                }
+                else
+                {
+                    // New weapon type - check if SS allows it
+                    string ssReason;
+                    if (!CanPickupSidearmInstance(weapon, pawn, out ssReason))
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] SimpleSidearms rejects {weapon.Label}: {ssReason}");
+                        }
+                        continue;
+                    }
+
+                    // New sidearm
+                    if (score > bestScore)
+                    {
+                        bestWeapon = weapon;
+                        bestScore = score;
+                        isUpgrade = false;
+                        weaponToReplace = null;
+
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Found new sidearm: {weapon.Label}");
+                        }
+                    }
+                }
+            }
+
+            if (bestWeapon == null)
+                return null;
+
+            // Create appropriate job
+            if (isUpgrade && weaponToReplace != null)
+            {
+                // For sidearm upgrades, use custom swap job to ensure old weapon ends up at new weapon location
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Creating swap job for SS upgrade: {weaponToReplace.Label} -> {bestWeapon.Label}");
+                }
+
+                // Create our custom swap job
+                var job = CreateSwapSidearmJob(pawn, bestWeapon, weaponToReplace);
+                if (job != null)
+                {
+                    AutoEquipTracker.MarkAsAutoEquip(job, pawn);
+                    // SimpleSidearms is the authority - no need to track forcing separately
+                }
+                return job;
+            }
+            else
+            {
+                // For new sidearms, use EquipSecondary
+                var job = CreateEquipSidearmJob(pawn, bestWeapon);
+                
+                if (job != null)
+                {
+                    // Mark for AutoArm tracking
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Creating new sidearm job for {bestWeapon.Label}");
+                    }
+                    
+                    // Show immediate notification for new sidearm pickup
+                    if (AutoArmMod.settings?.showNotifications == true && 
+                        PawnUtility.ShouldSendNotificationAbout(pawn))
+                    {
+                        Messages.Message("AutoArm_EquippingSidearm".Translate(
+                            pawn.LabelShort.CapitalizeFirst(),
+                            bestWeapon.Label
+                        ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                    }
+                }
+                
+                return job;
+            }
+        }
+
+        /// <summary>
+        /// Create a job to swap a sidearm with a better weapon
+        /// </summary>
+        private static Job CreateSwapSidearmJob(Pawn pawn, ThingWithComps newWeapon, ThingWithComps oldWeapon)
+        {
+            if (_swapSidearmJobDef == null)
+            {
+                // Create the job def if it doesn't exist
+                _swapSidearmJobDef = new JobDef
+                {
+                    defName = "AutoArmSwapSidearm",
+                    driverClass = typeof(JobDriver_SwapSidearm),
+                    reportString = "swapping sidearm.",
+                    casualInterruptible = false
+                };
+            }
+
+            return JobMaker.MakeJob(_swapSidearmJobDef, newWeapon, oldWeapon);
+        }
+
+        /// <summary>
+        /// Forget a weapon in SimpleSidearms memory
+        /// </summary>
+        private static void ForgetSidearmInMemory(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded() || pawn == null || weapon == null)
+                return;
+
+            EnsureInitialized();
+            if (_reflectionFailed)
+                return;
+
+            try
+            {
+                if (getMemoryCompForPawnMethod != null && compSidearmMemoryType != null)
+                {
+                    // Try to call with appropriate parameters based on method signature
+                    object memoryComp = null;
+                    var parameters = getMemoryCompForPawnMethod.GetParameters();
+                    
+                    if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool))
+                    {
+                        // Signature: GetMemoryCompForPawn(Pawn pawn, bool fillExistingIfCreating)
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, false });
+                    }
+                    else if (parameters.Length == 1)
+                    {
+                        // Signature: GetMemoryCompForPawn(Pawn pawn)
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn });
+                    }
+                    
+                    if (memoryComp != null)
+                    {
+                        // Call InformOfDroppedSidearm with intentional = true
+                        var informDropMethod = compSidearmMemoryType.GetMethod("InformOfDroppedSidearm",
+                            BindingFlags.Public | BindingFlags.Instance);
+
+                        if (informDropMethod != null)
+                        {
+                            informDropMethod.Invoke(memoryComp, new object[] { weapon, true });
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Debug($"Failed to forget weapon in SS memory: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Reorder weapons after an equip to ensure the best weapon is primary
+        /// Uses SimpleSidearms' own logic to determine the best weapon setup
+        /// </summary>
+        public static void ReorderWeaponsAfterEquip(Pawn pawn)
+        {
+            if (!IsLoaded() || pawn == null)
+                return;
+
+            EnsureInitialized();
+
+            if (_reflectionFailed)
+                return;
+
+            try
+            {
+                // Get the WeaponAssingment type
+                if (weaponAssingmentType == null)
+                {
+                    AutoArmLogger.Warn("Could not find WeaponAssingment type");
+                    return;
+                }
+
+                // Get the equipBestWeaponFromInventoryByPreference method
+                var reorderMethod = weaponAssingmentType.GetMethod(
+                    "equipBestWeaponFromInventoryByPreference",
+                    BindingFlags.Public | BindingFlags.Static);
+
+                if (reorderMethod == null)
+                {
+                    AutoArmLogger.Warn("Could not find equipBestWeaponFromInventoryByPreference method");
+                    return;
+                }
+
+                // Get the DroppingModeEnum type and Calm value
+                var droppingModeType = GenTypes.AllTypes.FirstOrDefault(t =>
+                    t.FullName == "PeteTimesSix.SimpleSidearms.Utilities.Enums+DroppingModeEnum");
+
+                if (droppingModeType == null)
+                {
+                    AutoArmLogger.Warn("Could not find DroppingModeEnum type");
+                    return;
+                }
+
+                // Get the Calm enum value
+                var calmValue = Enum.Parse(droppingModeType, "Calm");
+
+                // Correct signature: (Pawn, DroppingModeEnum, PrimaryWeaponMode?, Pawn target)
+                // We pass null for PrimaryWeaponMode? and target
+                reorderMethod.Invoke(null, new object[] { pawn, calmValue, null, null });
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] SimpleSidearms reordered weapons after auto-equip");
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Warn($"Failed to reorder weapons: {e.Message}");
+            }
+        }
+
+        public static void CleanupAfterLoad()
+        {
+            _isLoaded = null;
+            _initialized = false;
+            _reflectionFailed = false;
+            thingDefStuffDefPairType = null;
+        }
+
+        /// <summary>
+        /// Check if a weapon type is forced/preferred in SimpleSidearms
+        /// This includes ForcedWeapon, DefaultRangedWeapon, and PreferredMeleeWeapon
+        /// </summary>
+        public static bool IsWeaponTypeForced(Pawn pawn, ThingDef weaponDef, out bool isForced, out bool isPreferred)
+        {
+            isForced = false;
+            isPreferred = false;
+            
+            if (!IsLoaded() || pawn == null || weaponDef == null)
+                return false;
+
+            EnsureInitialized();
+            if (_reflectionFailed)
+                return false;
+
+            try
+            {
+                if (getMemoryCompForPawnMethod != null && compSidearmMemoryType != null)
+                {
+                    // Try to call with appropriate parameters based on method signature
+                    object memoryComp = null;
+                    var parameters = getMemoryCompForPawnMethod.GetParameters();
+                    
+                    if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool))
+                    {
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, false });
+                    }
+                    else if (parameters.Length == 1)
+                    {
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn });
+                    }
+                    
+                    // Removed debug logging for performance - this is called very frequently
+                    
+                    if (memoryComp != null)
+                    {
+                        // Use cached ThingDefStuffDefPair type
+                        var pairType = thingDefStuffDefPairType;
+                        
+                        // Check ForcedWeapon (returns ThingDefStuffDefPair?)
+                        var forcedWeaponProp = compSidearmMemoryType.GetProperty("ForcedWeapon");
+                        
+                        if (forcedWeaponProp != null)
+                        {
+                            var forcedWeaponNullable = forcedWeaponProp.GetValue(memoryComp);
+                            
+                            if (forcedWeaponNullable != null)
+                            {
+                                // Check if it's a nullable struct or a direct struct
+                                var forcedWeapon = forcedWeaponNullable;
+                                
+                                // Check if it's a nullable type
+                                var hasValueProp = forcedWeaponNullable.GetType().GetProperty("HasValue");
+                                if (hasValueProp != null)
+                                {
+                                    // It's a nullable struct
+                                    if (!(bool)hasValueProp.GetValue(forcedWeaponNullable))
+                                    {
+                                        // Nullable without value, skip
+                                    }
+                                    else
+                                    {
+                                        // Extract the value from nullable
+                                        var valueProp = forcedWeaponNullable.GetType().GetProperty("Value");
+                                        if (valueProp != null)
+                                        {
+                                            forcedWeapon = valueProp.GetValue(forcedWeaponNullable);
+                                        }
+                                    }
+                                }
+                                
+                                // Now check the actual struct (whether it came from nullable or direct)
+                                if (forcedWeapon != null && pairType != null)
+                                {
+                                    var thingField = pairType.GetField("thing");
+                                    if (thingField != null)
+                                    {
+                                        var forcedDef = thingField.GetValue(forcedWeapon) as ThingDef;
+                                        if (forcedDef == weaponDef)
+                                        {
+                                            isForced = true;
+                                            if (AutoArmMod.settings?.debugLogging == true)
+                                            {
+                                                AutoArmLogger.Debug($"[SS Check] {weaponDef.defName} is FORCED for {pawn.LabelShort}");
+                                            }
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check ForcedWeaponWhileDrafted (if pawn is drafted)
+                        if (pawn.Drafted)
+                        {
+                            var forcedDraftedProp = compSidearmMemoryType.GetProperty("ForcedWeaponWhileDrafted");
+                            if (forcedDraftedProp != null)
+                            {
+                                var forcedDraftedNullable = forcedDraftedProp.GetValue(memoryComp);
+                                if (forcedDraftedNullable != null)
+                                {
+                                    var hasValueProp = forcedDraftedNullable.GetType().GetProperty("HasValue");
+                                    if (hasValueProp != null && (bool)hasValueProp.GetValue(forcedDraftedNullable))
+                                    {
+                                        var valueProp = forcedDraftedNullable.GetType().GetProperty("Value");
+                                        if (valueProp != null)
+                                        {
+                                            var forcedDrafted = valueProp.GetValue(forcedDraftedNullable);
+                                            if (forcedDrafted != null && pairType != null)
+                                            {
+                                                var thingField = pairType.GetField("thing");
+                                                if (thingField != null)
+                                                {
+                                                    var forcedDef = thingField.GetValue(forcedDrafted) as ThingDef;
+                                                    if (forcedDef == weaponDef)
+                                                    {
+                                                        isForced = true;
+                                                        if (AutoArmMod.settings?.debugLogging == true)
+                                                        {
+                                                            AutoArmLogger.Debug($"[SS Check] {weaponDef.defName} is FORCED WHILE DRAFTED for {pawn.LabelShort}");
+                                                        }
+                                                        return true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check DefaultRangedWeapon
+                        if (weaponDef.IsRangedWeapon)
+                        {
+                            var defaultRangedProp = compSidearmMemoryType.GetProperty("DefaultRangedWeapon");
+                            if (defaultRangedProp != null)
+                            {
+                                var defaultRangedNullable = defaultRangedProp.GetValue(memoryComp);
+                                if (defaultRangedNullable != null)
+                                {
+                                    var hasValueProp = defaultRangedNullable.GetType().GetProperty("HasValue");
+                                    if (hasValueProp != null && (bool)hasValueProp.GetValue(defaultRangedNullable))
+                                    {
+                                        var valueProp = defaultRangedNullable.GetType().GetProperty("Value");
+                                        if (valueProp != null)
+                                        {
+                                            var defaultRanged = valueProp.GetValue(defaultRangedNullable);
+                                            if (defaultRanged != null && pairType != null)
+                                            {
+                                                var thingField = pairType.GetField("thing");
+                                                if (thingField != null)
+                                                {
+                                                    var defaultDef = thingField.GetValue(defaultRanged) as ThingDef;
+                                                    if (defaultDef == weaponDef)
+                                                    {
+                                                        isPreferred = true;
+                                                        if (AutoArmMod.settings?.debugLogging == true)
+                                                        {
+                                                            AutoArmLogger.Debug($"[SS Check] {weaponDef.defName} is DEFAULT RANGED for {pawn.LabelShort}");
+                                                        }
+                                                        return true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check PreferredMeleeWeapon
+                        if (weaponDef.IsMeleeWeapon)
+                        {
+                            var preferredMeleeProp = compSidearmMemoryType.GetProperty("PreferredMeleeWeapon");
+                            if (preferredMeleeProp != null)
+                            {
+                                var preferredMeleeNullable = preferredMeleeProp.GetValue(memoryComp);
+                                if (preferredMeleeNullable != null)
+                                {
+                                    var hasValueProp = preferredMeleeNullable.GetType().GetProperty("HasValue");
+                                    if (hasValueProp != null && (bool)hasValueProp.GetValue(preferredMeleeNullable))
+                                    {
+                                        var valueProp = preferredMeleeNullable.GetType().GetProperty("Value");
+                                        if (valueProp != null)
+                                        {
+                                            var preferredMelee = valueProp.GetValue(preferredMeleeNullable);
+                                            if (preferredMelee != null && pairType != null)
+                                            {
+                                                var thingField = pairType.GetField("thing");
+                                                if (thingField != null)
+                                                {
+                                                    var preferredDef = thingField.GetValue(preferredMelee) as ThingDef;
+                                                    if (preferredDef == weaponDef)
+                                                    {
+                                                        isPreferred = true;
+                                                        if (AutoArmMod.settings?.debugLogging == true)
+                                                        {
+                                                            AutoArmLogger.Debug($"[SS Check] {weaponDef.defName} is PREFERRED MELEE for {pawn.LabelShort}");
+                                                        }
+                                                        return true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Removed "not forced" debug logging for performance - this is called very frequently
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Debug($"Failed to check SS forced/preferred status: {e.Message}\nStackTrace: {e.StackTrace}");
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Check if AutoArm should skip this weapon based on SS forcing and upgrade settings
+        /// </summary>
+        public static bool ShouldSkipWeaponUpgrade(Pawn pawn, ThingDef currentWeaponDef, ThingDef newWeaponDef)
+        {
+            if (!IsLoaded() || pawn == null)
+                return false;
+
+            bool isForced, isPreferred;
+            if (IsWeaponTypeForced(pawn, currentWeaponDef, out isForced, out isPreferred))
+            {
+                // If SS has forced/preferred this weapon type
+                if (newWeaponDef != currentWeaponDef)
+                {
+                    // Different weapon type - always block
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Cannot change from {currentWeaponDef.label} to {newWeaponDef.label} - weapon type is {(isForced ? "forced" : "preferred")} in SimpleSidearms");
+                    }
+                    return true;
+                }
+                else
+                {
+                    // Same weapon type - check if forced upgrades are allowed
+                    if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Cannot upgrade {currentWeaponDef.label} - weapon type is {(isForced ? "forced" : "preferred")} and forced upgrades disabled");
+                        }
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Tell SimpleSidearms to force a weapon type (used for bonded weapons)
+        /// </summary>
+        public static bool SetWeaponAsForced(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded() || pawn == null || weapon == null)
+                return false;
+
+            EnsureInitialized();
+            if (_reflectionFailed)
+                return false;
+
+            try
+            {
+                // First try using SetAsForced method if available (cleaner approach)
+                if (weaponAssingmentType != null)
+                {
+                    // Look for SetAsForced(Pawn, Thing, bool)
+                    var setAsForcedMethod = weaponAssingmentType.GetMethod("SetAsForced",
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new Type[] { typeof(Pawn), typeof(Thing), typeof(bool) },
+                        null);
+                    
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[SS SetForced Debug] Found SetAsForced method: {setAsForcedMethod != null}");
+                    }
+                        
+                    if (setAsForcedMethod != null)
+                    {
+                        // Call SetAsForced(pawn, weapon, true) where true = force it
+                        setAsForcedMethod.Invoke(null, new object[] { pawn, weapon, true });
+                        
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Called SetAsForced for {weapon.Label}");
+                        }
+                        return true;
+                    }
+                }
+                
+                // Fallback: Try setting the property directly
+                if (getMemoryCompForPawnMethod != null && compSidearmMemoryType != null)
+                {
+                    // Try to call with appropriate parameters based on method signature
+                    object memoryComp = null;
+                    var parameters = getMemoryCompForPawnMethod.GetParameters();
+                    
+                    if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool))
+                    {
+                        // Use true for fillExistingIfCreating to ensure comp is created
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, true });
+                    }
+                    else if (parameters.Length == 1)
+                    {
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn });
+                    }
+                    
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[SS SetForced Debug] Got memory comp: {memoryComp != null}");
+                    }
+                    
+                    if (memoryComp != null)
+                    {
+                        // Use cached ThingDefStuffDefPair type
+                        var pairType = thingDefStuffDefPairType;
+                        
+                        if (pairType != null)
+                        {
+                            // Try to create the pair - constructor might be (ThingDef, ThingDef?) or just (ThingDef)
+                            object weaponPair = null;
+                            try
+                            {
+                                // Try with both parameters
+                                weaponPair = Activator.CreateInstance(pairType, weapon.def, weapon.Stuff);
+                            }
+                            catch (Exception)
+                            {
+                                // Try with just ThingDef
+                                try
+                                {
+                                    weaponPair = Activator.CreateInstance(pairType, weapon.def);
+                                }
+                                catch (Exception e2)
+                                {
+                                    AutoArmLogger.Debug($"Failed to create ThingDefStuffDefPair: {e2.Message}");
+                                    return false;
+                                }
+                            }
+                            
+                            if (weaponPair != null)
+                            {
+                                // Set the stuff field if needed
+                                if (weapon.Stuff != null)
+                                {
+                                    var stuffField = pairType.GetField("stuff");
+                                    if (stuffField != null)
+                                    {
+                                        stuffField.SetValue(weaponPair, weapon.Stuff);
+                                    }
+                                }
+                                
+                                // Set as ForcedWeapon
+                                var forcedWeaponProp = compSidearmMemoryType.GetProperty("ForcedWeapon");
+                                if (forcedWeaponProp != null)
+                                {
+                                    // Check if the property type is nullable or not
+                                    var propertyType = forcedWeaponProp.PropertyType;
+                                    object valueToSet = weaponPair;
+                                    
+                                    if (propertyType.IsGenericType && propertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+                                    {
+                                        // Property expects nullable, wrap the struct
+                                        var nullableType = typeof(Nullable<>).MakeGenericType(pairType);
+                                        valueToSet = Activator.CreateInstance(nullableType, weaponPair);
+                                        
+                                        if (AutoArmMod.settings?.debugLogging == true)
+                                        {
+                                            AutoArmLogger.Debug($"[SS SetForced Debug] Property expects nullable, wrapping {weapon.def.defName}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (AutoArmMod.settings?.debugLogging == true)
+                                        {
+                                            AutoArmLogger.Debug($"[SS SetForced Debug] Property expects non-nullable, using direct struct for {weapon.def.defName}");
+                                        }
+                                    }
+                                    
+                                    if (AutoArmMod.settings?.debugLogging == true)
+                                    {
+                                        AutoArmLogger.Debug($"[SS SetForced Debug] Setting ForcedWeapon property for {weapon.def.defName}");
+                                    }
+                                    
+                                    forcedWeaponProp.SetValue(memoryComp, valueToSet);
+                                    
+                                    // Verify it was set
+                                    var verifyValue = forcedWeaponProp.GetValue(memoryComp);
+                                    
+                                    if (AutoArmMod.settings?.debugLogging == true)
+                                    {
+                                        AutoArmLogger.Debug($"[SS SetForced Debug] After setting, ForcedWeapon value is: {verifyValue}, Type: {verifyValue?.GetType()?.FullName ?? "null"}");
+                                        
+                                        if (verifyValue != null)
+                                        {
+                                            var hasValueProp = verifyValue.GetType().GetProperty("HasValue");
+                                            if (hasValueProp != null)
+                                            {
+                                                bool hasValue = (bool)hasValueProp.GetValue(verifyValue);
+                                                AutoArmLogger.Debug($"[SS SetForced Debug] HasValue: {hasValue}");
+                                                
+                                                if (hasValue)
+                                                {
+                                                    var valueProp = verifyValue.GetType().GetProperty("Value");
+                                                    if (valueProp != null)
+                                                    {
+                                                        var actualPair = valueProp.GetValue(verifyValue);
+                                                        if (actualPair != null)
+                                                        {
+                                                            var thingField = pairType.GetField("thing");
+                                                            if (thingField != null)
+                                                            {
+                                                                var verifyDef = thingField.GetValue(actualPair) as ThingDef;
+                                                                AutoArmLogger.Debug($"[SS SetForced Debug] Verified forced weapon def: {verifyDef?.defName ?? "null"}");
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Debug($"Failed to set weapon as forced in SS: {e.Message}");
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Check if a weapon is bonded and sync with SimpleSidearms if needed
+        /// Should be called when a weapon becomes primary
+        /// </summary>
+        public static void SyncBondedPrimaryWeapon(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded() || pawn == null || weapon == null)
+                return;
+                
+            // Only sync if respecting weapon bonds
+            if (AutoArmMod.settings?.respectWeaponBonds != true)
+                return;
+                
+            // Check if this weapon is bonded to this pawn
+            var biocomp = weapon.TryGetComp<CompBiocodable>();
+            if (biocomp?.CodedPawn == pawn)
+            {
+                // This is a bonded weapon for this pawn - tell SS to force it
+                SetWeaponAsForced(pawn, weapon);
+            }
+        }
+
+        /// <summary>
+        /// Inform SimpleSidearms that a weapon was dropped
+        /// </summary>
         public static void InformOfDroppedSidearm(Pawn pawn, ThingWithComps weapon)
         {
             if (!IsLoaded() || pawn == null || weapon == null)
@@ -351,22 +1250,46 @@ namespace AutoArm
 
             EnsureInitialized();
 
+            if (_reflectionFailed)
+                return;
+
             try
             {
-                var comp = GetSidearmComp(pawn);
-                if (comp != null && informOfDroppedSidearmMethod != null)
+                if (getMemoryCompForPawnMethod != null && compSidearmMemoryType != null)
                 {
-                    informOfDroppedSidearmMethod.Invoke(comp, new object[] { weapon, true });
-                    AutoArmLogger.LogWeapon(pawn, weapon, "Informed SS of weapon drop");
+                    // Try to call with appropriate parameters based on method signature
+                    object memoryComp = null;
+                    var parameters = getMemoryCompForPawnMethod.GetParameters();
+                    
+                    if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool))
+                    {
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, false });
+                    }
+                    else if (parameters.Length == 1)
+                    {
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn });
+                    }
+                    if (memoryComp != null)
+                    {
+                        var informDropMethod = compSidearmMemoryType.GetMethod("InformOfDroppedSidearm",
+                            BindingFlags.Public | BindingFlags.Instance);
+
+                        if (informDropMethod != null)
+                        {
+                            informDropMethod.Invoke(memoryComp, new object[] { weapon, true }); // intentional = true
+                        }
+                    }
                 }
             }
             catch (Exception e)
             {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Debug($"SimpleSidearms InformOfDroppedSidearm failed: {e.Message}");
+                AutoArmLogger.Warn($"Failed to inform SimpleSidearms of weapon drop: {e.Message}");
             }
         }
 
+        /// <summary>
+        /// Inform SimpleSidearms that a weapon was added
+        /// </summary>
         public static void InformOfAddedSidearm(Pawn pawn, ThingWithComps weapon)
         {
             if (!IsLoaded() || pawn == null || weapon == null)
@@ -374,549 +1297,182 @@ namespace AutoArm
 
             EnsureInitialized();
 
-            try
-            {
-                var comp = GetSidearmComp(pawn);
-                if (comp != null && informOfAddedSidearmMethod != null)
-                {
-                    informOfAddedSidearmMethod.Invoke(comp, new object[] { weapon });
-                    AutoArmLogger.LogWeapon(pawn, weapon, "Informed SS of weapon addition");
-                }
-            }
-            catch (Exception e)
-            {
-                if (Prefs.DevMode)
-                    AutoArmLogger.Debug($"SimpleSidearms InformOfAddedSidearm failed: {e.Message}");
-            }
-        }
-
-        // Main sidearm job method
-        public static Job TryGetSidearmUpgradeJob(Pawn pawn)
-        {
-            if (!IsLoaded() || pawn == null || !pawn.IsColonist)
-                return null;
-
-            // Check if SS already has a job pending
-            if (HasPendingSidearmJob(pawn))
-            {
-                AutoArmLogger.LogPawn(pawn, "SimpleSidearms already has a weapon job pending");
-                return null;
-            }
-
-            // Check settings and conditions
-            if (AutoArmMod.settings?.autoEquipSidearms != true)
-                return null;
-
-            if (AutoArmMod.settings?.allowTemporaryColonists != true && JobGiverHelpers.IsTemporaryColonist(pawn))
-                return null;
-
-            if (AutoArmMod.settings?.disableDuringRaids == true)
-            {
-                foreach (var checkMap in Find.Maps)
-                {
-                    if (JobGiver_PickUpBetterWeapon.IsRaidActive(checkMap))
-                        return null;
-                }
-            }
-
-            // Check cooldown
-            if (TimingHelper.IsOnCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch))
-                return null;
-
-            EnsureInitialized();
-            if (!_initialized)
-                return null;
+            if (_reflectionFailed)
+                return;
 
             try
             {
-                // Track ALL current weapons (including stuff variations)
-                var currentWeaponsByType = new Dictionary<(ThingDef def, ThingDef stuff), ThingWithComps>();
-                var currentWeaponsByDef = new Dictionary<ThingDef, List<ThingWithComps>>();
-
-                // Add primary weapon
-                if (pawn.equipment?.Primary != null)
+                if (getMemoryCompForPawnMethod != null && compSidearmMemoryType != null)
                 {
-                    var primary = pawn.equipment.Primary;
-                    var key = (primary.def, primary.Stuff);
-                    currentWeaponsByType[key] = primary;
-
-                    if (!currentWeaponsByDef.ContainsKey(primary.def))
-                        currentWeaponsByDef[primary.def] = new List<ThingWithComps>();
-                    currentWeaponsByDef[primary.def].Add(primary);
-                }
-
-                // Add inventory weapons
-                foreach (var item in pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
-                {
-                    if (item is ThingWithComps weapon && weapon.def.IsWeapon)
+                    // Try to call with appropriate parameters based on method signature
+                    object memoryComp = null;
+                    var parameters = getMemoryCompForPawnMethod.GetParameters();
+                    
+                    if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool))
                     {
-                        var key = (weapon.def, weapon.Stuff);
-
-                        // Keep best of each type+stuff combination
-                        if (!currentWeaponsByType.ContainsKey(key) ||
-                            GetWeaponScore(weapon, pawn) > GetWeaponScore(currentWeaponsByType[key], pawn))
-                        {
-                            currentWeaponsByType[key] = weapon;
-                        }
-
-                        if (!currentWeaponsByDef.ContainsKey(weapon.def))
-                            currentWeaponsByDef[weapon.def] = new List<ThingWithComps>();
-                        currentWeaponsByDef[weapon.def].Add(weapon);
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn, false });
                     }
-                }
-
-                bool preferMelee = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level >
-                                  pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level;
-
-                // Get nearby weapons
-                var nearbyWeapons = ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, 40f)
-                    .Where(w => w != null &&
-                               !w.IsForbidden(pawn) &&
-                               !DroppedItemTracker.IsRecentlyDropped(w) &&
-                               ValidationHelper.CanPawnUseWeapon(pawn, w, out _) &&
-                               pawn.CanReserveAndReach(w, PathEndMode.ClosestTouch, Danger.Deadly))
-                    .OrderBy(w => w.Position.DistanceToSquared(pawn.Position))
-                    .Take(20);
-
-                foreach (var weapon in nearbyWeapons)
-                {
-                    // Check outfit filter
-                    var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
-                    if (filter != null && !filter.Allows(weapon))
-                        continue;
-
-                    // Check SimpleSidearms validation
-                    string reason;
-                    bool canPickup = CanPickupSidearmInstance(weapon, pawn, out reason);
-
-                    var weaponKey = (weapon.def, weapon.Stuff);
-
-                    // Check for exact duplicate (same def + stuff)
-                    if (currentWeaponsByType.ContainsKey(weaponKey))
+                    else if (parameters.Length == 1)
                     {
-                        // Only consider upgrades if allowed
-                        if (AutoArmMod.settings?.allowSidearmUpgrades == true)
+                        memoryComp = getMemoryCompForPawnMethod.Invoke(null, new object[] { pawn });
+                    }
+                    if (memoryComp != null)
+                    {
+                        var informAddMethod = compSidearmMemoryType.GetMethod("InformOfAddedSidearm",
+                            BindingFlags.Public | BindingFlags.Instance);
+
+                        if (informAddMethod != null)
                         {
-                            var existingWeapon = currentWeaponsByType[weaponKey];
-
-                            // Don't upgrade forced weapons unless allowed
-                            if (ForcedWeaponHelper.IsForced(pawn, existingWeapon) &&
-                                AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
-                                continue;
-
-                            float existingScore = GetWeaponScore(existingWeapon, pawn, preferMelee);
-                            float newScore = GetWeaponScore(weapon, pawn, preferMelee);
-
-                            // Only upgrade if significantly better (quality difference usually)
-                            if (newScore > existingScore * 1.15f)
+                            // Try with just weapon parameter first
+                            try
                             {
-                                AutoArmLogger.LogPawn(pawn, $"Upgrading {existingWeapon.Label} to {weapon.Label}");
-
-                                // Mark old weapon to prevent re-pickup
-                                DroppedItemTracker.MarkPendingSameTypeUpgrade(existingWeapon);
-
-                                // Inform SS we're dropping the old one
-                                InformOfDroppedSidearm(pawn, existingWeapon);
-
-                                var job = JobMaker.MakeJob(JobDefOf.Equip, weapon);
-                                return job;
+                                informAddMethod.Invoke(memoryComp, new object[] { weapon });
                             }
-                        }
-                        continue;
-                    }
-
-                    // New weapon type/stuff combination
-                    if (!canPickup)
-                    {
-                        // Try replacing worst weapon if at limits
-                        if (AutoArmMod.settings?.allowSidearmUpgrades == true && reason != null &&
-                            (reason.ToLower().Contains("limit") ||
-                             reason.ToLower().Contains("mass") ||
-                             reason.ToLower().Contains("bulk")))
-                        {
-                            // Find worst non-forced weapon
-                            ThingWithComps worstWeapon = null;
-                            float worstScore = float.MaxValue;
-
-                            foreach (var kvp in currentWeaponsByType)
+                            catch (TargetParameterCountException)
                             {
-                                var existingWeapon = kvp.Value;
-                                if (!ForcedWeaponHelper.IsForced(pawn, existingWeapon))
+                                // If that fails, try with weapon and intentional flag (like InformOfDroppedSidearm)
+                                try
                                 {
-                                    float score = GetWeaponScore(existingWeapon, pawn, preferMelee);
-                                    if (score < worstScore)
-                                    {
-                                        worstScore = score;
-                                        worstWeapon = existingWeapon;
-                                    }
+                                    informAddMethod.Invoke(memoryComp, new object[] { weapon, true });
                                 }
-                            }
-
-                            // Check if replacement is worthwhile
-                            if (worstWeapon != null)
-                            {
-                                float newScore = GetWeaponScore(weapon, pawn, preferMelee);
-                                if (newScore > worstScore * 1.15f)
+                                catch (Exception e2)
                                 {
-                                    AutoArmLogger.LogPawn(pawn, $"Replacing {worstWeapon.Label} with {weapon.Label}");
-
-                                    // Drop worst weapon
-                                    if (pawn.inventory?.innerContainer?.Contains(worstWeapon) == true)
-                                    {
-                                        Thing droppedWeapon;
-                                        if (pawn.inventory.innerContainer.TryDrop(worstWeapon, pawn.Position, pawn.Map,
-                                            ThingPlaceMode.Near, out droppedWeapon))
-                                        {
-                                            DroppedItemTracker.MarkAsDropped(droppedWeapon, 3600);
-                                            InformOfDroppedSidearm(pawn, worstWeapon);
-
-                                            var job = equipSecondaryJobDef != null ?
-                                                JobMaker.MakeJob(equipSecondaryJobDef, weapon) :
-                                                JobMaker.MakeJob(JobDefOf.Equip, weapon);
-
-                                            // We'll inform SS after pickup succeeds
-                                            return job;
-                                        }
-                                    }
+                                    AutoArmLogger.Warn($"Failed to inform SimpleSidearms of weapon add with both parameter variations: {e2.Message}");
                                 }
                             }
                         }
-                        continue;
-                    }
-
-                    // Can pickup - check if it's remembered or worth getting
-                    if (IsRememberedSidearm(pawn, weapon))
-                    {
-                        AutoArmLogger.LogWeapon(pawn, weapon, "Picking up remembered sidearm");
-                        var job = equipSecondaryJobDef != null ?
-                            JobMaker.MakeJob(equipSecondaryJobDef, weapon) :
-                            JobMaker.MakeJob(JobDefOf.Equip, weapon);
-                        return job;
-                    }
-
-                    // Not remembered - check if worth picking up
-                    float weaponScore = GetWeaponScore(weapon, pawn, preferMelee);
-
-                    // Calculate average score of current weapons
-                    float avgCurrentScore = currentWeaponsByType.Values
-                        .Select(w => GetWeaponScore(w, pawn, preferMelee))
-                        .DefaultIfEmpty(0f)
-                        .Average();
-
-                    // Only pick up if significantly better than average
-                    if (weaponScore > avgCurrentScore * 1.2f)
-                    {
-                        AutoArmLogger.LogWeapon(pawn, weapon, "Picking up high-quality sidearm");
-                        var job = equipSecondaryJobDef != null ?
-                            JobMaker.MakeJob(equipSecondaryJobDef, weapon) :
-                            JobMaker.MakeJob(JobDefOf.Equip, weapon);
-                        return job;
                     }
                 }
-
-                // No suitable weapons found
-                TimingHelper.SetCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch);
-                return null;
             }
             catch (Exception e)
             {
-                AutoArmLogger.Error($"SimpleSidearms TryGetSidearmUpgradeJob failed for {pawn?.LabelShort}", e);
-                TimingHelper.SetCooldown(pawn, TimingHelper.CooldownType.FailedUpgradeSearch);
-                return null;
+                AutoArmLogger.Warn($"Failed to inform SimpleSidearms of weapon add: {e.Message}");
             }
         }
-
-        public static void CleanupAfterLoad()
+        /// <summary>
+        /// JobDriver for swapping sidearms - ensures old weapon ends up at new weapon location
+        /// </summary>
+        public class JobDriver_SwapSidearm : JobDriver
         {
-            if (!IsLoaded())
-                return;
+            private ThingWithComps NewWeapon => (ThingWithComps)job.targetA.Thing;
+            private ThingWithComps OldWeapon => (ThingWithComps)job.targetB.Thing;
 
-            lock (_cacheLock)
+            public override bool TryMakePreToilReservations(bool errorOnFailed)
             {
-                weaponScoreCache.Clear();
-                weaponScoreCacheTick.Clear();
+                // Reserve the new weapon so no one else takes it
+                return pawn.Reserve(NewWeapon, job, 1, -1, null, errorOnFailed);
             }
 
-            AutoArmLogger.Log("Cleared sidearm cache after load");
-        }
-
-        // Cleanup old cache entries
-        public static void CleanupOldCache()
-        {
-            var currentTick = Find.TickManager.TicksGame;
-            var expiredKeys = new List<string>();
-
-            lock (_cacheLock)
+            protected override IEnumerable<Toil> MakeNewToils()
             {
-                foreach (var kvp in weaponScoreCacheTick)
+                // Fail if new weapon disappears
+                this.FailOnDestroyedNullOrForbidden(TargetIndex.A);
+                this.FailOnDespawnedNullOrForbidden(TargetIndex.A);
+
+                // Go to the new weapon
+                yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.ClosestTouch)
+                    .FailOnDespawnedNullOrForbidden(TargetIndex.A)
+                    .FailOnSomeonePhysicallyInteracting(TargetIndex.A);
+
+                // Do the swap at this location
+                yield return new Toil
                 {
-                    if (currentTick - kvp.Value > WEAPON_SCORE_CACHE_LIFETIME * 2)
-                        expiredKeys.Add(kvp.Key);
-                }
-
-                foreach (var key in expiredKeys)
-                {
-                    weaponScoreCache.Remove(key);
-                    weaponScoreCacheTick.Remove(key);
-                }
-            }
-        }
-
-        // Pending upgrade methods
-        public static bool HasPendingUpgrade(Pawn pawn)
-        {
-            return pendingUpgrades.ContainsKey(pawn);
-        }
-
-        public static PendingUpgradeInfo GetPendingUpgrade(Pawn pawn)
-        {
-            pendingUpgrades.TryGetValue(pawn, out var info);
-            return info;
-        }
-
-        public static void CancelPendingUpgrade(Pawn pawn)
-        {
-            pendingUpgrades.Remove(pawn);
-        }
-
-        public static void MarkPendingUpgrade(Pawn pawn, ThingWithComps oldWeapon, ThingWithComps newWeapon)
-        {
-            pendingUpgrades[pawn] = new PendingUpgradeInfo
-            {
-                oldWeapon = oldWeapon,
-                newWeapon = newWeapon,
-                startTick = Find.TickManager.TicksGame
-            };
-        }
-
-        // AllowBlockedWeaponUse method
-        public static bool AllowBlockedWeaponUse()
-        {
-            if (!IsLoaded())
-                return true; // Default to allowing if SS not loaded
-
-            // This would check SS settings, but for now return true
-            return true;
-        }
-
-        // Clean up old pending upgrades
-        public static void CleanupOldTrackingData()
-        {
-            var currentTick = Find.TickManager.TicksGame;
-            var expiredPawns = pendingUpgrades
-                .Where(kvp => kvp.Key == null || kvp.Key.Dead ||
-                             currentTick - kvp.Value.startTick > 1800) // 30 seconds timeout
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var pawn in expiredPawns)
-            {
-                pendingUpgrades.Remove(pawn);
-            }
-        }
-
-        // Backwards compatibility
-        [Obsolete("Use CanPickupSidearmInstance")]
-        public static bool CanPickupWeaponAsSidearm(ThingWithComps weapon, Pawn pawn, out string reason)
-        {
-            return CanPickupSidearmInstance(weapon, pawn, out reason);
-        }
-
-        // Backwards compatibility - returns false as concept is deprecated
-        [Obsolete("Use DroppedItemTracker.IsSimpleSidearmsSwapInProgress instead")]
-        public static bool PawnHasTemporarySidearmEquipped(Pawn pawn)
-        {
-            // This concept is deprecated - use DroppedItemTracker instead
-            return false;
-        }
-
-        // Check if primary weapon is a remembered sidearm
-        public static bool PrimaryIsRememberedSidearm(Pawn pawn)
-        {
-            if (!IsLoaded() || pawn?.equipment?.Primary == null)
-                return false;
-
-            return IsRememberedSidearm(pawn, pawn.equipment.Primary);
-        }
-
-        // Constant for duplicate prevention
-        public const bool ALLOW_DUPLICATE_WEAPON_TYPES = false;
-
-        // Property version that could check actual SS settings
-        public static bool AllowDuplicateWeaponTypes
-        {
-            get
-            {
-                if (!IsLoaded())
-                    return false;
-                
-                // Would need to reflect into SS settings
-                // For now, return false (no duplicates allowed)
-                return ALLOW_DUPLICATE_WEAPON_TYPES;
-            }
-        }
-
-        // Test helper methods
-        public static int GetMaxSidearmsForPawn(Pawn pawn)
-        {
-            // Simplified - actual SS has complex calculations
-            return 3; // Default value for testing
-        }
-
-        public static int GetCurrentSidearmCount(Pawn pawn)
-        {
-            if (pawn?.inventory?.innerContainer == null)
-                return 0;
-                
-            return pawn.inventory.innerContainer.Count(t => t is ThingWithComps && t.def.IsWeapon);
-        }
-
-        public static void LogSimpleSidearmsSettings()
-        {
-            AutoArmLogger.Log("SimpleSidearms settings (test mode) - Max sidearms: 3");
-        }
-
-        public static void MarkWeaponAsRecentlyDropped(ThingWithComps weapon)
-        {
-            // Use DroppedItemTracker instead
-            if (weapon != null)
-                DroppedItemTracker.MarkAsDropped(weapon, 1200);
-        }
-    }
-
-    // ==============================================
-    // HARMONY PATCHES
-    // ==============================================
-
-    // Clean up on game load
-    [HarmonyPatch(typeof(Game), "LoadGame")]
-    public static class Game_LoadGame_SimpleSidearms_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            SimpleSidearmsCompat.CleanupAfterLoad();
-        }
-    }
-
-    // Periodic cleanup
-    [HarmonyPatch(typeof(Pawn), "TickRare")]
-    public static class Pawn_TickRare_SimpleSidearms_Patch
-    {
-        private static int lastCleanupTick = 0;
-        private const int CLEANUP_INTERVAL = 2500;
-
-        [HarmonyPostfix]
-        public static void Postfix(Pawn __instance)
-        {
-            if (!__instance.IsColonist || !SimpleSidearmsCompat.IsLoaded())
-                return;
-
-            int currentTick = Find.TickManager.TicksGame;
-            if (currentTick - lastCleanupTick > CLEANUP_INTERVAL)
-            {
-                SimpleSidearmsCompat.CleanupOldCache();
-                SimpleSidearmsCompat.CleanupOldTrackingData(); // Fix memory leak
-                lastCleanupTick = currentTick;
-            }
-        }
-    }
-
-    // SimpleSidearms notification is now integrated into the main AddEquipment patch in EquipmentPatches.cs
-
-    // Dynamic patches for SimpleSidearms methods
-    public static class SimpleSidearms_Dynamic_Patches
-    {
-        private static bool patchesApplied = false;
-
-        public static void ApplyPatches(Harmony harmony)
-        {
-            if (!SimpleSidearmsCompat.IsLoaded() || patchesApplied)
-                return;
-
-            try
-            {
-                // Patch WeaponAssingment.equipSpecificWeapon to maintain forced status
-                var weaponAssignmentType = GenTypes.AllTypes.FirstOrDefault(t =>
-                    t.FullName == "PeteTimesSix.SimpleSidearms.Utilities.WeaponAssingment");
-
-                if (weaponAssignmentType != null)
-                {
-                    var equipSpecificWeaponMethod = weaponAssignmentType.GetMethod("equipSpecificWeapon",
-                        BindingFlags.Public | BindingFlags.Static);
-                    if (equipSpecificWeaponMethod != null)
+                    initAction = delegate
                     {
-                        harmony.Patch(equipSpecificWeaponMethod,
-                            prefix: new HarmonyMethod(typeof(SimpleSidearms_Dynamic_Patches), nameof(EquipSpecificWeapon_Prefix)),
-                            postfix: new HarmonyMethod(typeof(SimpleSidearms_Dynamic_Patches), nameof(EquipSpecificWeapon_Postfix)));
-                        AutoArmLogger.Log("Patched SimpleSidearms.equipSpecificWeapon");
-                    }
-                }
-
-                patchesApplied = true;
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.Error("Failed to patch SimpleSidearms methods", e);
-            }
-        }
-
-        public static void EquipSpecificWeapon_Prefix(Pawn pawn, ThingWithComps weapon, bool dropCurrent, bool intentionalDrop)
-        {
-            if (pawn == null || !pawn.IsColonist)
-                return;
-
-            DroppedItemTracker.MarkSimpleSidearmsSwapInProgress(pawn);
-        }
-
-        public static void EquipSpecificWeapon_Postfix(Pawn pawn, ThingWithComps weapon, bool dropCurrent, bool intentionalDrop)
-        {
-            if (pawn == null || !pawn.IsColonist)
-                return;
-
-            LongEventHandler.ExecuteWhenFinished(() =>
-            {
-                DroppedItemTracker.ClearSimpleSidearmsSwapInProgress(pawn);
-
-                // Re-apply forced status
-                var forcedDefs = ForcedWeaponHelper.GetForcedWeaponDefs(pawn);
-                if (forcedDefs.Count > 0)
-                {
-                    if (pawn.equipment?.Primary != null && forcedDefs.Contains(pawn.equipment.Primary.def))
-                    {
-                        ForcedWeaponHelper.SetForced(pawn, pawn.equipment.Primary);
-                    }
-
-                    foreach (var item in pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
-                    {
-                        if (item is ThingWithComps invWeapon && invWeapon.def.IsWeapon && forcedDefs.Contains(invWeapon.def))
+                        try
                         {
-                            AutoArmLogger.LogWeapon(pawn, invWeapon, "Maintained forced status on sidearm");
+                            // Verify both weapons still exist
+                            if (NewWeapon == null || OldWeapon == null)
+                            {
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Swap cancelled - weapon no longer exists");
+                                }
+                                return;
+                            }
+
+                            // Drop old weapon from inventory at THIS location (where new weapon is)
+                            if (OldWeapon.holdingOwner == pawn.inventory.innerContainer)
+                            {
+                                Thing droppedWeapon;
+                                if (OldWeapon.stackCount > 1)
+                                {
+                                    droppedWeapon = OldWeapon.SplitOff(1);
+                                }
+                                else
+                                {
+                                    pawn.inventory.innerContainer.Remove(OldWeapon);
+                                    droppedWeapon = OldWeapon;
+                                }
+
+                                // Place it exactly where we're standing (at new weapon location)
+                                GenPlace.TryPlaceThing(droppedWeapon, pawn.Position, pawn.Map, ThingPlaceMode.Near);
+
+                                // Inform SimpleSidearms we dropped it
+                                ForgetSidearmInMemory(pawn, OldWeapon);
+
+                                // Mark for AutoArm tracking
+                                DroppedItemTracker.MarkAsDropped(droppedWeapon, 600);
+
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Dropped {OldWeapon.Label} at {pawn.Position}");
+                                }
+                            }
+
+                            // Pick up new weapon into inventory
+                            if (NewWeapon.Spawned)
+                            {
+                                NewWeapon.DeSpawn();
+                            }
+                            if (!pawn.inventory.innerContainer.TryAdd(NewWeapon))
+                            {
+                                AutoArmLogger.Warn($"[{pawn.LabelShort}] Failed to add {NewWeapon.Label} to inventory");
+                                // Try to re-spawn it if we failed
+                                if (!NewWeapon.Spawned)
+                                {
+                                    GenPlace.TryPlaceThing(NewWeapon, pawn.Position, pawn.Map, ThingPlaceMode.Near);
+                                }
+                                return;
+                            }
+
+                            // Inform SimpleSidearms we added it
+                            InformOfAddedSidearm(pawn, NewWeapon);
+
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Picked up {NewWeapon.Label} as sidearm");
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Swap complete: {OldWeapon.Label} -> {NewWeapon.Label}");
+                            }
+
+                            // Show notification for sidearm upgrade
+                            if (AutoArmMod.settings?.showNotifications == true && 
+                                PawnUtility.ShouldSendNotificationAbout(pawn))
+                            {
+                                Messages.Message("AutoArm_UpgradedSidearm".Translate(
+                                    pawn.LabelShort.CapitalizeFirst(),
+                                    OldWeapon.Label,
+                                    NewWeapon.Label
+                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                            }
+
+                            // Let SimpleSidearms reorder weapons if needed
+                            // SS is the authority - no need to sync forcing
+                            ReorderWeaponsAfterEquip(pawn);
                         }
-                    }
-                }
-            });
+                        catch (Exception e)
+                        {
+                            AutoArmLogger.Error($"[{pawn.LabelShort}] Error during sidearm swap: {e.Message}", e);
+                        }
+                    },
+                    defaultCompleteMode = ToilCompleteMode.Instant
+                };
+            }
         }
     }
+}
 
-    // ==============================================
-    // ADDITIONAL PATCHES FOR SS INTEGRATION
-    // ==============================================
-
-    public static class SimpleSidearms_WeaponSwap_Patches
-    {
-        public static void ApplyPatches(Harmony harmony)
-        {
-            SimpleSidearms_Dynamic_Patches.ApplyPatches(harmony);
-        }
-    }
-
-    public static class SimpleSidearms_JobGiver_RetrieveWeapon_Patch
-    {
-        public static void ApplyPatch(Harmony harmony)
-        {
-            // This would patch SS's JobGiver_RetrieveWeapon if needed
-            // Currently no specific patches required
-        }
-    }
+namespace AutoArm.Jobs
+{
+    // JobDriver_SwapSidearm is now in SimpleSidearmsCompat as a nested class
 }

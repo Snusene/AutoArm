@@ -1,16 +1,32 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Centralized pawn and weapon validation with defensive checks
 // Prevents errors from modded content and edge cases
+//
+// ================== CORE VALIDATION PRINCIPLE ==================
+// Player control is ABSOLUTE. If a player forbids an item or sets outfit
+// restrictions, those choices are honored WITHOUT EXCEPTION.
+// 
+// This mod works WITHIN player restrictions, never around them.
+// Being unarmed, injured, or in any "emergency" state does NOT bypass:
+// - Forbidden status (if player forbids it, no pawn touches it)
+// - Outfit filters (if not allowed by outfit, pawn won't equip it)
+// - Any other player-configured restrictions
+//
+// NEVER add code that bypasses these checks for ANY reason.
+// The player's decisions always take priority over mod convenience.
+// ===============================================================
 
+using AutoArm.Caching;
+using AutoArm.Definitions;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Testing;
+using AutoArm.Weapons;
 using RimWorld;
 using RimWorld.Planet;
 using System;
-using System.Linq;
 using Verse;
 using Verse.AI;
-using AutoArm.Testing;
-using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging;
-using AutoArm.Weapons;
 
 namespace AutoArm.Helpers
 {
@@ -23,14 +39,14 @@ namespace AutoArm.Helpers
         private static readonly System.Collections.Generic.HashSet<Type> knownStorageTypes = new System.Collections.Generic.HashSet<Type>();
 
         private static readonly System.Collections.Generic.HashSet<Type> knownNonStorageTypes = new System.Collections.Generic.HashSet<Type>();
-        
+
         // Limit cache sizes to prevent unbounded growth
         private const int MaxCacheSize = 100; // Most mods won't have more than 100 storage types
 
         /// <summary>
         /// Consolidated weapon validation (fixes #1, #15)
         /// </summary>
-        public static bool IsValidWeapon(ThingWithComps weapon, Pawn pawn, out string reason)
+        public static bool IsValidWeapon(ThingWithComps weapon, Pawn pawn, out string reason, bool skipSimpleSidearmsCheck = false)
         {
             reason = "";
 
@@ -44,6 +60,11 @@ namespace AutoArm.Helpers
                 }
                 return false;
             }
+
+            // IMPORTANT: We track if pawn is unarmed for logging purposes only
+            // Being unarmed does NOT bypass any validation checks
+            // Player-set restrictions (forbidden, outfit) must ALWAYS be respected
+            bool isUnarmed = pawn?.equipment?.Primary == null;
 
             if (weapon.def == null)
             {
@@ -77,7 +98,7 @@ namespace AutoArm.Helpers
             // No need for special ritual item handling here
 
             // SimpleSidearms compatibility - but with smart handling for primary weapons
-            if (!TestRunner.IsRunningTests && SimpleSidearmsCompat.IsLoaded())
+            if (!TestRunner.IsRunningTests && SimpleSidearmsCompat.IsLoaded() && !skipSimpleSidearmsCheck)
             {
                 bool shouldCheckSidearmRestrictions = true;
 
@@ -89,7 +110,8 @@ namespace AutoArm.Helpers
                 // Case 2: Check if current primary is a "true" primary or a remembered sidearm
                 else if (pawn.equipment?.Primary != null)
                 {
-                    bool primaryIsRememberedSidearm = SimpleSidearmsCompat.IsRememberedSidearm(pawn, pawn.equipment.Primary);
+                    // SimpleSidearmsCompat simplified - can't check if remembered sidearm
+                    bool primaryIsRememberedSidearm = false;
 
                     if (!primaryIsRememberedSidearm)
                     {
@@ -99,9 +121,15 @@ namespace AutoArm.Helpers
                         var newScore = WeaponScoreCache.GetCachedScore(pawn, weapon);
 
                         // If new weapon is significantly better, it would replace the primary
-                        if (newScore > currentScore * 1.15f)
+                        // Use the actual configured threshold, not a hardcoded value
+                        float upgradeThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
+                        if (newScore > currentScore * upgradeThreshold)
                         {
                             shouldCheckSidearmRestrictions = false;
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] {weapon.Label} would replace primary (score {newScore:F0} > {currentScore:F0} * {upgradeThreshold:F2}) - bypassing SS sidearm restrictions");
+                            }
                         }
                     }
                     else
@@ -117,7 +145,8 @@ namespace AutoArm.Helpers
                             {
                                 if (item is ThingWithComps invWeapon && invWeapon.def.IsWeapon)
                                 {
-                                    if (!SimpleSidearmsCompat.IsRememberedSidearm(pawn, invWeapon))
+                                    // SimpleSidearmsCompat simplified - assume not remembered sidearm
+                                    if (true)
                                     {
                                         hasAnyNonSidearmWeapon = true;
                                         break;
@@ -145,13 +174,27 @@ namespace AutoArm.Helpers
                     if (!allowed)
                     {
                         reason = $"SimpleSidearms: {ssReason}";
+
+                        // Log when we're applying SS restrictions to what might be a primary upgrade
+                        if (AutoArmMod.settings?.debugLogging == true && pawn.equipment?.Primary != null)
+                        {
+                            var currentScore = WeaponScoreCache.GetCachedScore(pawn, pawn.equipment.Primary);
+                            var newScore = WeaponScoreCache.GetCachedScore(pawn, weapon);
+                            float upgradeThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
+
+                            if (newScore > currentScore)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] {weapon.Label} rejected by SS: {ssReason} (scores: {newScore:F0} vs {currentScore:F0}, needed >{currentScore * upgradeThreshold:F0})");
+                            }
+                        }
+
                         return false;
                     }
                 }
             }
 
-            // Outfit filter check - only apply to proper weapons that appear in the filter UI
-            // During tests, skip outfit filtering entirely
+            // Outfit filter check - NEVER skip this (player-controlled restriction)
+            // WARNING: Do NOT add emergency/unarmed exceptions here - players set outfit filters for a reason!
             if (!TestRunner.IsRunningTests && pawn.outfits?.CurrentApparelPolicy?.filter != null && WeaponValidation.IsProperWeapon(weapon))
             {
                 var filter = pawn.outfits.CurrentApparelPolicy.filter;
@@ -164,219 +207,72 @@ namespace AutoArm.Helpers
 
             // Use vanilla EquipmentUtility.CanEquip for comprehensive mod compatibility
             // This catches most mod restrictions including body size requirements
-            try
+            // NOTE: This check is now handled in WeaponScoreCache to avoid repeated calls
+            // The cache will return CANNOT_EQUIP (-1) if this check fails
+            // We still do a basic check here for immediate validation needs
+            if (!TestRunner.IsRunningTests)
             {
-                if (!EquipmentUtility.CanEquip(weapon, pawn))
+                // Quick check for obvious restrictions we can detect without calling CanEquip
+                // Body size check via weapon mass (heavy weapons often have restrictions)
+                if (weapon.GetStatValue(StatDefOf.Mass) > 5.0f && pawn.BodySize < 1.0f)
                 {
-                    // Try to get more specific error message
-                    string errorMessage = "Cannot equip (mod restriction)";
-
-                    // Check if it's a body size issue by looking at the weapon's label or description
-                    if (weapon.def.defName.Contains("Mech") ||
-                        weapon.def.defName.Contains("Heavy") ||
-                        weapon.def.defName.Contains("Exo") ||
-                        weapon.def.label?.Contains("mech") == true ||
-                        weapon.def.description?.Contains("large frame") == true ||
-                        weapon.def.description?.Contains("body size") == true ||
-                        weapon.GetStatValue(StatDefOf.Mass) > 5.0f) // Heavy weapons often have body size restrictions
-                    {
-                        // This is likely a body size issue - be specific but don't blacklist
-                        // The pawn might later equip power armor or a mech suit
-                        errorMessage = $"Body size restriction (pawn: {pawn.BodySize:F1})";
-                    }
-                    else
-                    {
-                        // For non-body-size restrictions, we can blacklist
-                        // (e.g., faction restrictions, tech level, etc.)
-                        WeaponBlacklist.AddToBlacklist(weapon.def, pawn, "non-body-size mod restriction");
-                    }
-
-                    reason = errorMessage;
+                    reason = $"Likely body size restriction (weapon mass: {weapon.GetStatValue(StatDefOf.Mass):F1}, pawn size: {pawn.BodySize:F1})";
                     return false;
                 }
-            }
-            catch (Exception ex)
-            {
-                // Some mods might throw exceptions during validation
-                // Don't blacklist - exceptions are often temporary/random
-                if (AutoArmMod.settings?.debugLogging == true)
+                
+                // Check for mod extension restrictions
+                if (weapon.def.modExtensions != null)
                 {
-                    AutoArmLogger.Debug($"Exception checking CanEquip for {weapon.Label} on {pawn.LabelShort}: {ex.Message}");
-                }
-
-                // Provide specific error messages when possible
-                if (ex.Message?.Contains("BodySize") == true ||
-                    ex.Message?.Contains("body size") == true ||
-                    ex.Message?.Contains("FFF") == true)
-                {
-                    reason = $"Body size restriction (exception) - pawn size: {pawn.BodySize:F1}";
-                }
-                else
-                {
-                    reason = "Temporary validation error - will retry";
-                }
-
-                // Don't blacklist exceptions - they're often transient
-                return false;
-            }
-
-            // Additional check for weapon blacklist (weapons that failed to equip before)
-            // But skip this check for body-size related blacklists if pawn's size might have changed
-            if (WeaponBlacklist.IsBlacklisted(weapon.def, pawn))
-            {
-                // Check if this was blacklisted for body size reasons
-                // If so, re-validate since pawn might now be wearing power armor
-                if (weapon.def.defName.Contains("Mech") ||
-                    weapon.def.defName.Contains("Heavy") ||
-                    weapon.def.defName.Contains("Exo") ||
-                    weapon.GetStatValue(StatDefOf.Mass) > 5.0f)
-                {
-                    // This might be a body-size restricted weapon - try CanEquip again
-                    try
+                    foreach (var extension in weapon.def.modExtensions)
                     {
-                        if (EquipmentUtility.CanEquip(weapon, pawn))
+                        if (extension != null)
                         {
-                            // Pawn can now equip it! Remove from blacklist
-                            WeaponBlacklist.RemoveFromBlacklist(weapon.def, pawn);
-                            if (AutoArmMod.settings?.debugLogging == true)
+                            var type = extension.GetType();
+                            var typeName = type.Name.ToLower();
+
+                            // Check for common framework extension types
+                            if (typeName.Contains("framework") || typeName.Contains("fff") ||
+                                typeName.Contains("bodysize") || typeName.Contains("restriction"))
                             {
-                                AutoArmLogger.Debug($"Removed {weapon.Label} from blacklist for {pawn.LabelShort} - can now equip (body size: {pawn.BodySize:F1})");
-                            }
-                        }
-                        else
-                        {
-                            reason = "Previously failed to equip (body size restriction)";
-                            return false;
-                        }
-                    }
-                    catch
-                    {
-                        reason = "Previously failed to equip (body size restriction)";
-                        return false;
-                    }
-                }
-                else
-                {
-                    reason = "Previously failed to equip (mod restriction)";
-                    return false;
-                }
-            }
+                                // Check body size fields
+                                var bodySizeField = type.GetField("requiredBodySize") ??
+                                                  type.GetField("minBodySize") ??
+                                                  type.GetField("maxBodySize") ??
+                                                  type.GetField("bodySize") ??
+                                                  type.GetField("minimumBodySize");
 
-            // Check if weapon has body size requirements through extension data
-            if (weapon.def.modExtensions != null)
-            {
-                foreach (var extension in weapon.def.modExtensions)
-                {
-                    if (extension != null)
-                    {
-                        var type = extension.GetType();
-                        var typeName = type.Name.ToLower();
-
-                        // Check for common framework extension types
-                        if (typeName.Contains("framework") || typeName.Contains("fff") ||
-                            typeName.Contains("bodysize") || typeName.Contains("restriction"))
-                        {
-                            // Check body size fields
-                            var bodySizeField = type.GetField("requiredBodySize") ??
-                                              type.GetField("minBodySize") ??
-                                              type.GetField("maxBodySize") ??
-                                              type.GetField("bodySize") ??
-                                              type.GetField("minimumBodySize");
-
-                            if (bodySizeField != null)
-                            {
-                                // Check if pawn's body size meets requirement
-                                float pawnBodySize = pawn.BodySize;
-                                var requiredSize = bodySizeField.GetValue(extension);
-
-                                if (requiredSize is float minSize)
+                                if (bodySizeField != null)
                                 {
-                                    if (pawnBodySize < minSize)
-                                    {
-                                        reason = $"Body size too small ({pawnBodySize:F2} < {minSize:F2})";
-                                        return false;
-                                    }
-                                }
-                            }
+                                    // Check if pawn's body size meets requirement
+                                    float pawnBodySize = pawn.BodySize;
+                                    var requiredSize = bodySizeField.GetValue(extension);
 
-                            // Check for supported body sizes list
-                            var supportedSizesField = type.GetField("supportedBodySizes") ??
-                                                    type.GetField("allowedBodySizes") ??
-                                                    type.GetField("bodySizes");
-
-                            if (supportedSizesField != null)
-                            {
-                                try
-                                {
-                                    var supportedSizes = supportedSizesField.GetValue(extension);
-                                    if (supportedSizes != null)
+                                    if (requiredSize is float minSize)
                                     {
-                                        // Check if it's a list/array that contains body size values
-                                        var listType = supportedSizes.GetType();
-                                        if (listType.IsGenericType || listType.IsArray)
+                                        if (pawnBodySize < minSize)
                                         {
-                                            bool foundMatch = false;
-                                            foreach (var item in (System.Collections.IEnumerable)supportedSizes)
-                                            {
-                                                if (item != null && float.TryParse(item.ToString(), out float size))
-                                                {
-                                                    if (Math.Abs(size - pawn.BodySize) < 0.01f)
-                                                    {
-                                                        foundMatch = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            if (!foundMatch)
-                                            {
-                                                reason = $"Body size {pawn.BodySize:F2} not supported";
-                                                return false;
-                                            }
+                                            reason = $"Body size too small ({pawnBodySize:F2} < {minSize:F2})";
+                                            return false;
                                         }
                                     }
                                 }
-                                catch { }
                             }
-                        }
-
-                        // Also check for any validation method in the extension
-                        var canEquipMethod = type.GetMethod("CanEquip") ??
-                                           type.GetMethod("CanBeEquippedBy") ??
-                                           type.GetMethod("IsValidFor") ??
-                                           type.GetMethod("CanPawnEquip");
-
-                        if (canEquipMethod != null)
-                        {
-                            try
-                            {
-                                var parameters = canEquipMethod.GetParameters();
-                                object result = null;
-
-                                if (parameters.Length == 1 && parameters[0].ParameterType == typeof(Pawn))
-                                {
-                                    result = canEquipMethod.Invoke(extension, new object[] { pawn });
-                                }
-                                else if (parameters.Length == 2 && parameters[1].ParameterType == typeof(Pawn))
-                                {
-                                    result = canEquipMethod.Invoke(extension, new object[] { weapon, pawn });
-                                }
-
-                                if (result is bool canEquip && !canEquip)
-                                {
-                                    reason = "Mod-specific equipment restriction";
-                                    return false;
-                                }
-                            }
-                            catch { }
                         }
                     }
                 }
             }
 
-            // Forbidden check
+            // Forbidden check - NEVER skip this (player-controlled restriction)
+            // CRITICAL: If a player forbids an item, NO pawn should pick it up, even if unarmed
+            // WARNING: Do NOT add emergency/unarmed exceptions here - forbidden means forbidden!
             if (!TestRunner.IsRunningTests && weapon.IsForbidden(pawn))
             {
                 reason = "Forbidden";
+                // Log for debugging if pawn is unarmed and being blocked by forbidden status
+                if (isUnarmed && AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: Forbidden (pawn is unarmed but respecting player restriction)");
+                }
                 return false;
             }
 
@@ -689,7 +585,7 @@ namespace AutoArm.Helpers
                     }
                 }
             }
-            
+
             // Note: Bonded weapons are handled separately in JobGiver_PickUpBetterWeapon
 
             return true;
@@ -708,11 +604,11 @@ namespace AutoArm.Helpers
                 // Direct colonist check
                 if (pawn.IsColonist)
                     return true;
-                    
+
                 // Slaves are also valid for auto-equip purposes
                 if (ModsConfig.IdeologyActive && pawn.IsSlaveOfColony)
                     return true;
-                    
+
                 return false;
             }
             catch (Exception ex)
@@ -742,14 +638,14 @@ namespace AutoArm.Helpers
         /// <summary>
         /// Check if pawn can use a specific weapon
         /// </summary>
-        public static bool CanPawnUseWeapon(Pawn pawn, ThingWithComps weapon, out string reason)
+        public static bool CanPawnUseWeapon(Pawn pawn, ThingWithComps weapon, out string reason, bool skipSimpleSidearmsCheck = false)
         {
             reason = "";
 
             if (!IsValidPawn(pawn, out reason))
                 return false;
 
-            if (!IsValidWeapon(weapon, pawn, out reason))
+            if (!IsValidWeapon(weapon, pawn, out reason, skipSimpleSidearmsCheck))
                 return false;
 
             // Trait checks
@@ -811,7 +707,7 @@ namespace AutoArm.Helpers
 
             return false;
         }
-        
+
         /// <summary>
         /// Clear storage type caches - called during cleanup or when switching saves
         /// </summary>
@@ -819,7 +715,7 @@ namespace AutoArm.Helpers
         {
             knownStorageTypes.Clear();
             knownNonStorageTypes.Clear();
-            
+
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmLogger.Debug("Cleared storage type caches");
@@ -858,15 +754,15 @@ namespace AutoArm.Helpers
 
             // Check if the lord job is a ritual-type job
             var lordJobType = lord.LordJob.GetType();
-            
+
             // Check the type hierarchy for ritual base classes
             var currentType = lordJobType;
             while (currentType != null && currentType != typeof(object))
             {
                 var typeName = currentType.Name;
-                
+
                 // Common ritual lord job patterns
-                if (typeName.Contains("Ritual") || 
+                if (typeName.Contains("Ritual") ||
                     typeName.Contains("Gathering") ||
                     typeName.Contains("Party") ||
                     typeName.Contains("Ceremony") ||
@@ -931,8 +827,23 @@ namespace AutoArm.Helpers
             return false;
         }
 
+        // Storage keywords organized by frequency of use
+        private static readonly string[] storageKeywords = new string[]
+        {
+            // Most common
+            "storage", "shelf", "rack", "locker", "container", "chest", "crate", "box",
+            // Kitchen/food storage
+            "fridge", "freezer", "refrigerator", "cooler", "cupboard",
+            // Clothing/equipment
+            "dresser", "wardrobe", "cabinet", "armoire", "closet",
+            // Industrial
+            "pallet", "barrel", "bin", "silo", "hopper", "skip", "tray", "dsu",
+            // Misc
+            "basket", "hamper", "vault", "safe", "hook", "meathook", "armory", "stockpile"
+        };
+
         /// <summary>
-        /// Consolidated storage container check (fixes #23)
+        /// Optimized storage container check that maintains mod compatibility
         /// </summary>
         internal static bool IsStorageContainer(IThingHolder holder)
         {
@@ -951,91 +862,46 @@ namespace AutoArm.Helpers
             // Check if it's a building with storage
             if (holder is Building building)
             {
+                // Primary check - has storage settings or slot group (fastest)
                 if (building.def.building?.fixedStorageSettings != null ||
                     building.GetSlotGroup() != null)
                 {
                     isStorage = true;
                 }
-                else if (string.Equals(building.def.thingClass?.Name, "Building_Storage", StringComparison.Ordinal) ||
-                                         building.def.defName.IndexOf("shelf", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("rack", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("crate", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("box", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("container", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("chest", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("storage", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("locker", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("cabinet", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("dresser", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("wardrobe", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("armoire", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("pallet", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("barrel", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("basket", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("hamper", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("bin", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("silo", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("hopper", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("skip", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("tray", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("dsu", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("fridge", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("freezer", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("refrigerator", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("cooler", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("cupboard", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("vault", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("safe", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("meathook", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("meat hook", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.defName.IndexOf("hook", StringComparison.OrdinalIgnoreCase) >= 0)
+                // Check for known storage class
+                else if (string.Equals(building.def.thingClass?.Name, "Building_Storage", StringComparison.Ordinal))
                 {
                     isStorage = true;
                 }
-                else if (building.def.label != null &&
-                                        (building.def.label.IndexOf("crate", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("box", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("container", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("chest", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("storage", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("shelf", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("rack", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("locker", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("cabinet", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("dresser", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("wardrobe", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("armoire", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("pallet", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("barrel", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("basket", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("hamper", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("bin", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("silo", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("hopper", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("skip", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("tray", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("fridge", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("freezer", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("refrigerator", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("cooler", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("cupboard", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("vault", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("safe", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("hook", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("armory", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         building.def.label.IndexOf("stockpile", StringComparison.OrdinalIgnoreCase) >= 0))
+                // Check for deep storage comp (common mod)
+                else if (building.AllComps?.Any(c => c?.GetType().Name == "CompDeepStorage") == true)
                 {
                     isStorage = true;
                 }
-                else
+                // Keyword check - optimized with early exit
+                else if (building.def.defName != null)
                 {
-                    // Check for deep storage comp
-                    foreach (var comp in building.AllComps)
+                    var defNameLower = building.def.defName.ToLowerInvariant();
+                    foreach (var keyword in storageKeywords)
                     {
-                        if (comp?.GetType().Name == "CompDeepStorage")
+                        if (defNameLower.Contains(keyword))
                         {
                             isStorage = true;
                             break;
+                        }
+                    }
+                    
+                    // Also check label if defName didn't match
+                    if (!isStorage && building.def.label != null)
+                    {
+                        var labelLower = building.def.label.ToLowerInvariant();
+                        foreach (var keyword in storageKeywords)
+                        {
+                            if (labelLower.Contains(keyword))
+                            {
+                                isStorage = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -1062,52 +928,38 @@ namespace AutoArm.Helpers
                 }
             }
 
-            // Check type name patterns
+            // Check type name patterns (for mod compatibility)
             if (!isStorage)
             {
-                var holderName = holderType.Name.ToLower();
-                var holderNamespace = holderType.Namespace?.ToLower() ?? "";
+                var holderName = holderType.Name.ToLowerInvariant();
+                var holderNamespace = holderType.Namespace?.ToLowerInvariant() ?? "";
 
-                isStorage = holderName.Contains("storage") ||
-                           holderName.Contains("rack") ||
-                           holderName.Contains("locker") ||
-                           holderName.Contains("cabinet") ||
-                           holderName.Contains("armory") ||
-                           holderName.Contains("shelf") ||
-                           holderName.Contains("crate") ||
-                           holderName.Contains("box") ||
-                           holderName.Contains("container") ||
-                           holderName.Contains("chest") ||
-                           holderName.Contains("dresser") ||
-                           holderName.Contains("wardrobe") ||
-                           holderName.Contains("armoire") ||
-                           holderName.Contains("pallet") ||
-                           holderName.Contains("barrel") ||
-                           holderName.Contains("basket") ||
-                           holderName.Contains("hamper") ||
-                           holderName.Contains("bin") ||
-                           holderName.Contains("silo") ||
-                           holderName.Contains("hopper") ||
-                           holderName.Contains("skip") ||
-                           holderName.Contains("tray") ||
-                           holderName.Contains("dsu") ||
-                           holderName.Contains("fridge") ||
-                           holderName.Contains("freezer") ||
-                           holderName.Contains("refrigerator") ||
-                           holderName.Contains("cooler") ||
-                           holderName.Contains("cupboard") ||
-                           holderName.Contains("vault") ||
-                           holderName.Contains("safe") ||
-                           holderName.Contains("hook") ||
-                           holderName.Contains("stockpile") ||
-                           holderNamespace.Contains("storage") ||
-                           holderNamespace.Contains("weaponstorage") ||
-                           holderNamespace.Contains("adaptive") ||
-                           holderNamespace.Contains("rimfridge") ||
-                           holderNamespace.Contains("lwm") ||
-                           holderNamespace.Contains("deepstorage") ||
-                           holderNamespace.Contains("extendedstorage") ||
-                           holderNamespace.Contains("projectrimfactory");
+                // Check holder type name against storage keywords
+                foreach (var keyword in storageKeywords)
+                {
+                    if (holderName.Contains(keyword))
+                    {
+                        isStorage = true;
+                        break;
+                    }
+                }
+                
+                // Check namespace for known storage mod patterns
+                if (!isStorage)
+                {
+                    string[] namespacePatterns = { "storage", "weaponstorage", "adaptive", 
+                                                   "rimfridge", "lwm", "deepstorage", 
+                                                   "extendedstorage", "projectrimfactory" };
+                    
+                    foreach (var pattern in namespacePatterns)
+                    {
+                        if (holderNamespace.Contains(pattern))
+                        {
+                            isStorage = true;
+                            break;
+                        }
+                    }
+                }
             }
 
             // Cache the result (with size limit to prevent unbounded growth)

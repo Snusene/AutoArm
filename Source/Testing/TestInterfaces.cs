@@ -1,24 +1,39 @@
-﻿// AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Test interfaces and result classes
-// Defines contracts for test scenarios and result reporting
-
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
 
 namespace AutoArm.Testing
 {
+    /// <summary>
+    /// Interface for all test scenarios
+    /// </summary>
     public interface ITestScenario
     {
+        /// <summary>
+        /// Name of the test scenario
+        /// </summary>
         string Name { get; }
 
+        /// <summary>
+        /// Set up test conditions
+        /// </summary>
         void Setup(Map map);
 
+        /// <summary>
+        /// Run the test and return results
+        /// </summary>
         TestResult Run();
 
+        /// <summary>
+        /// Clean up after test completion
+        /// </summary>
         void Cleanup();
     }
 
+    /// <summary>
+    /// Result from a single test
+    /// </summary>
     public class TestResult
     {
         public bool Success { get; set; }
@@ -27,12 +42,37 @@ namespace AutoArm.Testing
 
         public static TestResult Pass() => new TestResult { Success = true };
 
-        public static TestResult Failure(string reason) => new TestResult { Success = false, FailureReason = reason };
+        public static TestResult Failure(string reason) => new TestResult 
+        { 
+            Success = false, 
+            FailureReason = reason 
+        };
+
+        public TestResult WithData(string key, object value)
+        {
+            Data[key] = value;
+            return this;
+        }
+
+        public override string ToString()
+        {
+            if (Success)
+            {
+                return Data.Count > 0 ? 
+                    $"PASS (Data: {string.Join(", ", Data.Select(kvp => $"{kvp.Key}={kvp.Value}"))})" : 
+                    "PASS";
+            }
+            return $"FAIL: {FailureReason}";
+        }
     }
 
+    /// <summary>
+    /// Collection of test results from a test run
+    /// </summary>
     public class TestResults
     {
-        private Dictionary<string, TestResult> results = new Dictionary<string, TestResult>();
+        private readonly Dictionary<string, TestResult> results = new Dictionary<string, TestResult>();
+        private readonly Dictionary<string, TimeSpan> timings = new Dictionary<string, TimeSpan>();
 
         public int TotalTests => results.Count;
         public int PassedTests => results.Count(r => r.Value.Success);
@@ -41,7 +81,18 @@ namespace AutoArm.Testing
 
         public void AddResult(string testName, TestResult result)
         {
+            if (string.IsNullOrEmpty(testName))
+                throw new ArgumentNullException(nameof(testName));
+            
+            if (result == null)
+                throw new ArgumentNullException(nameof(result));
+
             results[testName] = result;
+        }
+
+        public void AddTiming(string testName, TimeSpan duration)
+        {
+            timings[testName] = duration;
         }
 
         public TestResult GetResult(string testName)
@@ -50,14 +101,113 @@ namespace AutoArm.Testing
             return result;
         }
 
+        public TimeSpan? GetTiming(string testName)
+        {
+            return timings.TryGetValue(testName, out var timing) ? timing : (TimeSpan?)null;
+        }
+
         public Dictionary<string, TestResult> GetFailedTests()
         {
-            return results.Where(r => !r.Value.Success).ToDictionary(r => r.Key, r => r.Value);
+            return results.Where(r => !r.Value.Success)
+                         .ToDictionary(r => r.Key, r => r.Value);
+        }
+
+        public Dictionary<string, TestResult> GetPassedTests()
+        {
+            return results.Where(r => r.Value.Success)
+                         .ToDictionary(r => r.Key, r => r.Value);
         }
 
         public Dictionary<string, TestResult> GetAllResults()
         {
             return new Dictionary<string, TestResult>(results);
         }
+
+        public void Clear()
+        {
+            results.Clear();
+            timings.Clear();
+        }
+
+        public override string ToString()
+        {
+            return $"TestResults: {PassedTests}/{TotalTests} passed ({SuccessRate:P0})";
+        }
+    }
+
+    /// <summary>
+    /// Base class for test scenarios with common functionality
+    /// </summary>
+    public abstract class TestScenarioBase : ITestScenario
+    {
+        public abstract string Name { get; }
+        
+        protected Map testMap;
+        protected List<Pawn> createdPawns = new List<Pawn>();
+        protected List<Thing> createdThings = new List<Thing>();
+
+        public virtual void Setup(Map map)
+        {
+            testMap = map;
+            createdPawns.Clear();
+            createdThings.Clear();
+        }
+
+        public abstract TestResult Run();
+
+        public virtual void Cleanup()
+        {
+            // Destroy all created things
+            foreach (var thing in createdThings)
+            {
+                if (thing != null && !thing.Destroyed)
+                {
+                    thing.Destroy();
+                }
+            }
+            createdThings.Clear();
+
+            // Destroy all created pawns
+            foreach (var pawn in createdPawns)
+            {
+                if (pawn != null && !pawn.Destroyed)
+                {
+                    pawn.jobs?.StopAll();
+                    pawn.equipment?.DestroyAllEquipment();
+                    pawn.Destroy();
+                }
+            }
+            createdPawns.Clear();
+        }
+
+        /// <summary>
+        /// Helper to track created pawns for cleanup
+        /// </summary>
+        protected T TrackPawn<T>(T pawn) where T : Pawn
+        {
+            if (pawn != null)
+                createdPawns.Add(pawn);
+            return pawn;
+        }
+
+        /// <summary>
+        /// Helper to track created things for cleanup
+        /// </summary>
+        protected T TrackThing<T>(T thing) where T : Thing
+        {
+            if (thing != null)
+                createdThings.Add(thing);
+            return thing;
+        }
+    }
+
+    /// <summary>
+    /// Exception thrown when a test encounters an unexpected condition
+    /// </summary>
+    public class TestException : Exception
+    {
+        public TestException() : base() { }
+        public TestException(string message) : base(message) { }
+        public TestException(string message, Exception innerException) : base(message, innerException) { }
     }
 }

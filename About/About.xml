@@ -35,9 +35,12 @@
 		<li>Infusion.Core</li>
 		<!-- Mods we check for in code -->
 		<li>Mehni.PickUpAndHaul</li>
+		<li>mehni.pickupandhaul</li>
 		<li>Fluffy.WorkTab</li>
 		<li>Uuugggg.SmartSpeed</li>
 		<li>oelsart.ChooseYourOutfit</li>
+		<!-- Pocket Sand - manual weapon switching mod that replaces JobDrivers -->
+		<li>reisen.pocketsand</li>
 	</loadAfter>
 	<loadBefore>
 		<!-- Equipment management mods that might conflict -->

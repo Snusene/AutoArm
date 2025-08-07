@@ -4,16 +4,14 @@
 // Uses: Cached base scores + pawn-specific modifiers
 // Critical: Performance-optimized scoring with ~66% fewer calculations
 
+using AutoArm.Definitions;
+using AutoArm.Logging;
+using AutoArm.Testing;
 using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using AutoArm.Testing;
-using AutoArm.Helpers;
-using AutoArm.Caching;
-using AutoArm.Logging;
-using AutoArm.Weapons;
 
 namespace AutoArm.Weapons
 {
@@ -30,12 +28,12 @@ namespace AutoArm.Weapons
         private static float MELEE_MULTIPLIER => AutoArmMod.GetMeleeMultiplier();
 
         // Power creep threshold
-        private const float POWER_CREEP_THRESHOLD = 30f;
+        public const float POWER_CREEP_THRESHOLD = Constants.PowerCreepThreshold;
 
-        // Cache for base weapon scores (weapon properties only, not pawn-specific)
-        private static Dictionary<string, float> weaponBaseScoreCache = new Dictionary<string, float>();
-
-        private const int MaxWeaponCacheSize = 1000;
+        // Cache for base weapon scores with LRU eviction
+        private static Dictionary<string, (float score, int lastAccess)> weaponBaseScoreCache = new Dictionary<string, (float, int)>();
+        private static int cacheAccessCounter = 0;
+        private const int MaxWeaponCacheSize = Constants.MaxWeaponCacheSize;
 
         /// <summary>
         /// Get the total score for a weapon/pawn combination
@@ -47,10 +45,12 @@ namespace AutoArm.Weapons
 
             float totalScore = 0f;
 
-            // Policy and restrictions (can return -1000 to reject)
+            // Policy and restrictions
             float policyScore = GetOutfitPolicyScore(pawn, weapon);
-            if (policyScore <= -1000f)
-                return policyScore;
+            // For currently equipped forbidden weapons, apply penalty but continue scoring
+            // This allows colonists to find better replacements
+            if (policyScore <= -1000f && pawn.equipment?.Primary != weapon)
+                return policyScore;  // Reject weapons we're not holding
             totalScore += policyScore;
 
             float personaScore = GetPersonaWeaponScore(pawn, weapon);
@@ -65,6 +65,33 @@ namespace AutoArm.Weapons
 
             // Weapon properties (base weapon scores)
             totalScore += GetWeaponPropertyScore(pawn, weapon);
+            
+            // Mod compatibility bonuses
+            // Infusion 2 - add bonus for infused weapons
+            if (InfusionCompat.IsLoaded())
+            {
+                float infusionBonus = InfusionCompat.GetInfusionScoreBonus(weapon);
+                if (infusionBonus > 0 && AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Infusion bonus for {weapon.Label}: +{infusionBonus}");
+                }
+                totalScore += infusionBonus;
+            }
+            
+            // Combat Extended - modify score based on ammo availability
+            if (CECompat.IsLoaded() && CECompat.ShouldCheckAmmo())
+            {
+                float ammoModifier = CECompat.GetAmmoScoreModifier(weapon, pawn);
+                if (ammoModifier != 1.0f)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] CE ammo modifier for {weapon.Label}: x{ammoModifier}");
+                    }
+                    // Apply modifier to the total score
+                    totalScore *= ammoModifier;
+                }
+            }
 
             return totalScore;
         }
@@ -82,10 +109,11 @@ namespace AutoArm.Weapons
             var quality = weapon.TryGetQuality(out QualityCategory qc) ? qc : QualityCategory.Normal;
             string cacheKey = $"{weapon.def.defName}_{quality}";
 
-            // Check cache first
-            if (weaponBaseScoreCache.TryGetValue(cacheKey, out float cachedScore))
+            // Check cache first with LRU tracking
+            if (weaponBaseScoreCache.TryGetValue(cacheKey, out var cached))
             {
-                return cachedScore;
+                weaponBaseScoreCache[cacheKey] = (cached.score, ++cacheAccessCounter);
+                return cached.score;
             }
 
             // Calculate base score if not cached
@@ -94,8 +122,8 @@ namespace AutoArm.Weapons
             // Check if it's a situational weapon first
             if (IsSituationalWeapon(weapon))
             {
-                // Cap situational weapons at ~80 points base
-                baseScore = 80f;
+                // Cap situational weapons
+                baseScore = Constants.SituationalWeaponCap;
             }
             else if (weapon.def.IsRangedWeapon)
             {
@@ -106,26 +134,32 @@ namespace AutoArm.Weapons
                 baseScore = GetMeleeWeaponScore(weapon);
             }
 
-            // Cache the result
-            weaponBaseScoreCache[cacheKey] = baseScore;
+            // Cache the result with access tracking
+            weaponBaseScoreCache[cacheKey] = (baseScore, ++cacheAccessCounter);
 
-            // Prevent unbounded cache growth
+            // LRU eviction when cache is full
             if (weaponBaseScoreCache.Count > MaxWeaponCacheSize)
             {
-                // Remove oldest half of entries
-                var keysToRemove = weaponBaseScoreCache.Keys.Take(weaponBaseScoreCache.Count / 2).ToList();
-                foreach (var key in keysToRemove)
+                // Remove least recently used entries (25% of cache)
+                int toRemove = MaxWeaponCacheSize / 4;
+                var lruKeys = weaponBaseScoreCache
+                    .OrderBy(kvp => kvp.Value.lastAccess)
+                    .Take(toRemove)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                
+                foreach (var key in lruKeys)
                 {
                     weaponBaseScoreCache.Remove(key);
                 }
-                AutoArmLogger.Log($"Trimmed weapon base score cache from {weaponBaseScoreCache.Count + keysToRemove.Count} to {weaponBaseScoreCache.Count} entries");
             }
 
             return baseScore;
         }
 
         /// <summary>
-        /// Detect if a weapon is situational (grenades, launchers, etc)
+        /// Detect if a weapon is situational (grenades, launchers, utility tools, etc)
+        /// These weapons are capped at SituationalWeaponCap (80) score
         /// </summary>
         private static bool IsSituationalWeapon(ThingWithComps weapon)
         {
@@ -135,12 +169,30 @@ namespace AutoArm.Weapons
             var verb = weapon.def.Verbs[0];
             var projectile = verb.defaultProjectile?.projectile;
 
-            // If it explodes OR doesn't do health damage OR has forced miss radius
+            // Explosive weapons (grenades, launchers)
             bool isExplosive = projectile?.explosionRadius > 0;
+            
+            // Non-lethal weapons (EMP, smoke)
             bool nonLethal = projectile?.damageDef?.harmsHealth == false;
+            
+            // Weapons with forced miss radius (mortars, etc)
             bool hasForcedMiss = verb.ForcedMissRadius > 0;
+            
+            // Firefighting tools (fire extinguishers, etc)
+            bool isFirefightingTool = projectile?.damageDef?.defName == "Extinguish";
+            
+            // Check melee tools for firefighting as well (firebeater)
+            if (!isFirefightingTool && weapon.def.IsMeleeWeapon && weapon.def.tools != null)
+            {
+                // Some mods might implement firebeater as special melee tool
+                // Check if weapon name suggests it's a firefighting tool
+                string defName = weapon.def.defName.ToLower();
+                isFirefightingTool = defName.Contains("firebeat") || 
+                                     defName.Contains("fire_beat") || 
+                                     defName.Contains("extinguish");
+            }
 
-            return isExplosive || nonLethal || hasForcedMiss;
+            return isExplosive || nonLethal || hasForcedMiss || isFirefightingTool;
         }
 
         /// <summary>
@@ -159,7 +211,7 @@ namespace AutoArm.Weapons
             if (dps > POWER_CREEP_THRESHOLD)
             {
                 float excess = dps - POWER_CREEP_THRESHOLD;
-                adjustedDPS = POWER_CREEP_THRESHOLD + (excess * 0.5f); // Half value above threshold
+                adjustedDPS = POWER_CREEP_THRESHOLD + (excess * Constants.PowerCreepExcessMultiplier);
             }
 
             float baseScore = adjustedDPS * RANGED_MULTIPLIER;
@@ -180,7 +232,7 @@ namespace AutoArm.Weapons
             // Simplified burst bonus (optimized)
             if (burstCount > 1)
             {
-                baseScore += 2.5f * (float)Math.Log(burstCount + 1);
+                baseScore += Constants.BurstBonusMultiplier * (float)Math.Log(burstCount + 1);
             }
 
             // Add armor penetration score
@@ -204,7 +256,7 @@ namespace AutoArm.Weapons
             if (dps > POWER_CREEP_THRESHOLD)
             {
                 float excess = dps - POWER_CREEP_THRESHOLD;
-                adjustedDPS = POWER_CREEP_THRESHOLD + (excess * 0.5f);
+                adjustedDPS = POWER_CREEP_THRESHOLD + (excess * Constants.PowerCreepExcessMultiplier);
             }
 
             float baseScore = adjustedDPS * MELEE_MULTIPLIER;
@@ -247,22 +299,22 @@ namespace AutoArm.Weapons
         /// </summary>
         private static (float multiplier, float bonus) GetCombinedRangeScore(float range)
         {
-            if (range < 10)
-                return (0.30f, 0f);
-            else if (range < 14)
-                return (0.55f, 0f);
-            else if (range < 18)
-                return (0.65f, 0f);
-            else if (range < 22)
-                return (0.90f, 2f);
-            else if (range < 25)
-                return (0.95f, 5f);
-            else if (range < 30)
-                return (1.0f, 10f);
-            else if (range < 35)
-                return (1.0f, 19f);
+            if (range < Constants.RangeVeryShort)
+                return (Constants.RangeMultiplierVeryShort, 0f);
+            else if (range < Constants.RangeShort)
+                return (Constants.RangeMultiplierShort, 0f);
+            else if (range < Constants.RangeMediumShort)
+                return (Constants.RangeMultiplierMediumShort, 0f);
+            else if (range < Constants.RangeMedium)
+                return (Constants.RangeMultiplierMedium, Constants.RangeBonusMedium);
+            else if (range < Constants.RangeMediumLong)
+                return (Constants.RangeMultiplierMediumLong, Constants.RangeBonusMediumLong);
+            else if (range < Constants.RangeLong)
+                return (Constants.RangeMultiplierLong, Constants.RangeBonusLong);
+            else if (range < Constants.RangeVeryLong)
+                return (Constants.RangeMultiplierLong, Constants.RangeBonusVeryLong);
             else
-                return (1.02f, 22f);
+                return (Constants.RangeMultiplierVeryLong, Constants.RangeBonusExtreme);
         }
 
         /// <summary>
@@ -309,18 +361,18 @@ namespace AutoArm.Weapons
             }
 
             // Apply thresholds (from web analyzer)
-            if (ap >= 0.75f) // Can penetrate marine armor
-                return 100f;
-            else if (ap >= 0.52f) // Can penetrate flak vest
-                return 70f;
-            else if (ap >= 0.40f) // Can penetrate recon armor
-                return 50f;
-            else if (ap >= 0.20f) // Can penetrate basic armor
-                return 30f;
-            else if (ap < 0.15f) // Very low AP weapons get heavily penalized
-                return ap * 20f; // Much lower multiplier
+            if (ap >= Constants.APMarineArmor)
+                return Constants.APScoreMarine;
+            else if (ap >= Constants.APFlakVest)
+                return Constants.APScoreFlak;
+            else if (ap >= Constants.APReconArmor)
+                return Constants.APScoreRecon;
+            else if (ap >= Constants.APBasicArmor)
+                return Constants.APScoreBasic;
+            else if (ap < Constants.APVeryLow)
+                return ap * Constants.APMultiplierVeryLow;
             else
-                return ap * 90f; // Normal multiplier for low AP
+                return ap * Constants.APMultiplierNormal;
         }
 
         /// <summary>
@@ -334,13 +386,13 @@ namespace AutoArm.Weapons
 
         private static float GetOutfitPolicyScore(Pawn pawn, ThingWithComps weapon)
         {
-            // During tests, bypass all outfit checks
-            if (TestRunner.IsRunningTests)
-                return 0f;
-                
+            // During tests, still check outfit policy but don't reject if null
             var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
             if (filter != null && !filter.Allows(weapon))
+            {
+                // Forbidden weapons always get -1000
                 return -1000f;
+            }
             return 0f;
         }
 
@@ -349,12 +401,8 @@ namespace AutoArm.Weapons
             var bladelinkComp = weapon.TryGetComp<CompBladelinkWeapon>();
             if (bladelinkComp != null)
             {
-                // Check SimpleSidearms AllowBlockedWeaponUse setting (skip during tests)
-                if (!TestRunner.IsRunningTests && SimpleSidearmsCompat.IsLoaded() && !SimpleSidearmsCompat.AllowBlockedWeaponUse())
-                {
-                    // SS doesn't allow blocked weapons - reject all persona weapons
-                    return -1000f;
-                }
+                // SimpleSidearmsCompat simplified - AllowBlockedWeaponUse removed
+                // Persona weapons handled normally
 
                 // Normal persona weapon logic (also skip during tests for simplicity)
                 if (!TestRunner.IsRunningTests && bladelinkComp.CodedPawn != null)
@@ -362,7 +410,7 @@ namespace AutoArm.Weapons
                     if (bladelinkComp.CodedPawn != pawn)
                         return -1000f;
                     else
-                        return 25f;
+                        return Constants.PersonaWeaponBonus;
                 }
             }
             return 0f;
@@ -373,7 +421,7 @@ namespace AutoArm.Weapons
             if (pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) == true)
             {
                 if (weapon.def.IsMeleeWeapon)
-                    return 500f; // Bonus for melee weapons only
+                    return Constants.BrawlerMeleeBonus; // Bonus for melee weapons only
             }
             return 0f;
         }
@@ -391,7 +439,7 @@ namespace AutoArm.Weapons
             if (isHunter && weapon.def.IsRangedWeapon)
             {
                 // Flat bonus for any ranged weapon
-                return 500f;
+                return Constants.HunterRangedBonus;
             }
             return 0f; // No penalty for melee weapons
         }
@@ -402,20 +450,26 @@ namespace AutoArm.Weapons
             float meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0f;
             float score = 0f;
 
+            // Debug logging
+            if (TestRunner.IsRunningTests)
+            {
+                AutoArmLogger.Log($"[TEST] GetSkillScore: {pawn.Name} - Shooting:{shootingSkill} Melee:{meleeSkill} Weapon:{weapon.Label} IsRanged:{weapon.def.IsRangedWeapon} IsMelee:{weapon.def.IsMeleeWeapon}");
+            }
+
             // Calculate skill difference
             float skillDifference = Math.Abs(shootingSkill - meleeSkill);
 
             if (skillDifference == 0)
                 return 0f; // No preference if skills are equal
 
-            // Start with base bonus of 30 for 1 level difference
-            // Increase by 15% for each additional level (exponential growth)
-            float baseBonus = 30f;
-            float growthRate = 1.15f;
+            // Start with base bonus for 1 level difference
+            // Increase by growth rate for each additional level (exponential growth)
+            float baseBonus = Constants.SkillBonusBase;
+            float growthRate = Constants.SkillBonusGrowthRate;
             float bonus = baseBonus * (float)Math.Pow(growthRate, skillDifference - 1);
 
             // Cap the bonus to prevent extreme values
-            if (bonus > 500f) bonus = 500f;
+            if (bonus > Constants.SkillBonusMax) bonus = Constants.SkillBonusMax;
 
             // Apply bonus or penalty based on weapon type
             if (weapon.def.IsRangedWeapon)
@@ -426,7 +480,7 @@ namespace AutoArm.Weapons
                 }
                 else
                 {
-                    score = -bonus * 0.5f; // Half penalty for wrong type
+                    score = -bonus * Constants.WrongWeaponTypePenalty; // Penalty for wrong type
                 }
             }
             else if (weapon.def.IsMeleeWeapon)
@@ -437,8 +491,14 @@ namespace AutoArm.Weapons
                 }
                 else
                 {
-                    score = -bonus * 0.5f; // Half penalty for wrong type
+                    score = -bonus * Constants.WrongWeaponTypePenalty; // Penalty for wrong type
                 }
+            }
+
+            // Debug logging
+            if (TestRunner.IsRunningTests)
+            {
+                AutoArmLogger.Log($"[TEST] GetSkillScore result: {score} for {pawn.Name} with {weapon.Label}");
             }
 
             return score;

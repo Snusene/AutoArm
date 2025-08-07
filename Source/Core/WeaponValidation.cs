@@ -2,20 +2,23 @@
 // This file: Weapon validation and filtering logic for modded content safety
 // Ensures weapons are proper, usable, and safe for auto-equip
 
+using AutoArm.Definitions;
+using AutoArm.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using RimWorld;
-using AutoArm.Logging;
+
 namespace AutoArm.Weapons
 {
     public static class WeaponValidation
     {
         // Cached weapon lists
         private static List<ThingDef> _rangedWeapons;
+
         private static List<ThingDef> _meleeWeapons;
         private static List<ThingDef> _allWeapons;
+
         // Comprehensive list of items that might return IsWeapon = true but shouldn't be auto-equipped
         private static readonly HashSet<string> ExcludedDefNames = new HashSet<string>
         {
@@ -131,6 +134,7 @@ namespace AutoArm.Weapons
                 // Each check is isolated to prevent one failure from breaking everything
 
                 // Check if it's a weapon (this commonly throws with modded items)
+                // Note: Exclusion check already done above, so wood/materials already filtered
                 if (!SafeCheckIsWeapon(def))
                     return false;
 
@@ -165,15 +169,72 @@ namespace AutoArm.Weapons
         /// </summary>
         private static bool SafeCheckIsWeapon(ThingDef def)
         {
+            // Null check first
+            if (def?.defName == null)
+                return false;
+
+            // CRITICAL: Check exclusion list BEFORE accessing IsWeapon
+            // This prevents NullReferenceExceptions on items like Beer, WoodLog, etc.
+            if (ExcludedDefNames.Contains(def.defName))
+                return false;
+
             try
             {
+                // Only access IsWeapon after exclusion check
                 return def.IsWeapon;
             }
             catch (Exception ex)
             {
-                // If IsWeapon property throws, log and assume it's not a standard weapon
-                // This is critical - always log when a weapon crashes the game
-                AutoArmLogger.Error($"Weapon def '{def?.defName ?? "unknown"}' from mod '{def?.modContentPack?.Name ?? "unknown"}' threw exception on IsWeapon check", ex);
+                // Log validation failure for debugging
+                LogWeaponValidationFailure(def, ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Safely checks if ThingDef.IsRangedWeapon without throwing
+        /// </summary>
+        private static bool SafeCheckIsRangedWeapon(ThingDef def)
+        {
+            // Null check first
+            if (def?.defName == null)
+                return false;
+
+            // Check exclusion list BEFORE accessing IsRangedWeapon
+            if (ExcludedDefNames.Contains(def.defName))
+                return false;
+
+            try
+            {
+                return def.IsRangedWeapon;
+            }
+            catch (Exception)
+            {
+                // If IsRangedWeapon throws, it's not a valid ranged weapon
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Safely checks if ThingDef.IsMeleeWeapon without throwing
+        /// </summary>
+        private static bool SafeCheckIsMeleeWeapon(ThingDef def)
+        {
+            // Null check first
+            if (def?.defName == null)
+                return false;
+
+            // Check exclusion list BEFORE accessing IsMeleeWeapon
+            if (ExcludedDefNames.Contains(def.defName))
+                return false;
+
+            try
+            {
+                return def.IsMeleeWeapon;
+            }
+            catch (Exception)
+            {
+                // If IsMeleeWeapon throws, it's not a valid melee weapon
                 return false;
             }
         }
@@ -259,6 +320,10 @@ namespace AutoArm.Weapons
         /// </summary>
         private static void LogWeaponValidationFailure(ThingDef def, Exception ex)
         {
+            // Skip logging for known problematic items that throw NullReferenceException
+            if (def?.defName != null && ExcludedDefNames.Contains(def.defName))
+                return;
+
             // Only log detailed validation failures in debug mode
             if (AutoArmMod.settings?.debugLogging == true)
             {
@@ -326,8 +391,11 @@ namespace AutoArm.Weapons
                 {
                     try
                     {
-                        _rangedWeapons = DefDatabase<ThingDef>.AllDefsListForReading
-                            .Where(td => td.IsRangedWeapon && IsProperWeapon(td))
+                        // Build weapon list with proper filtering
+                        var allDefs = DefDatabase<ThingDef>.AllDefsListForReading;
+                        var properWeapons = allDefs.Where(td => IsProperWeapon(td));
+                        _rangedWeapons = properWeapons
+                            .Where(td => SafeCheckIsRangedWeapon(td))
                             .OrderBy(td => td.techLevel)
                             .ThenBy(td => td.label)
                             .ToList();
@@ -354,8 +422,11 @@ namespace AutoArm.Weapons
                 {
                     try
                     {
-                        _meleeWeapons = DefDatabase<ThingDef>.AllDefsListForReading
-                            .Where(td => td.IsMeleeWeapon && IsProperWeapon(td))
+                        // Build weapon list with proper filtering
+                        var allDefs = DefDatabase<ThingDef>.AllDefsListForReading;
+                        var properWeapons = allDefs.Where(td => IsProperWeapon(td));
+                        _meleeWeapons = properWeapons
+                            .Where(td => SafeCheckIsMeleeWeapon(td))
                             .OrderBy(td => td.techLevel)
                             .ThenBy(td => td.label)
                             .ToList();
@@ -452,16 +523,16 @@ namespace AutoArm.Weapons
     {
         private static Dictionary<string, int> excludedCounts = new Dictionary<string, int>();
         private static int lastReportTick = 0;
-        private const int REPORT_INTERVAL = 3600; // Report every minute
+        private const int REPORT_INTERVAL = Constants.ExcludedItemReportInterval; // Report every minute
 
         public static void TrackExcludedItem(ThingDef def)
         {
             if (def?.defName == null) return;
-            
+
             if (!excludedCounts.ContainsKey(def.defName))
                 excludedCounts[def.defName] = 0;
             excludedCounts[def.defName]++;
-            
+
             // Report summary periodically
             int currentTick = Find.TickManager?.TicksGame ?? 0;
             if (currentTick - lastReportTick > REPORT_INTERVAL && excludedCounts.Count > 0)
@@ -471,7 +542,7 @@ namespace AutoArm.Weapons
                     .Take(5)
                     .Select(kvp => $"{kvp.Key}: {kvp.Value}")
                     .ToList();
-                    
+
                 AutoArmLogger.Debug($"Top excluded items (last minute): {string.Join(", ", topExcluded)}");
                 excludedCounts.Clear();
                 lastReportTick = currentTick;

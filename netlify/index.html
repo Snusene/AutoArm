@@ -308,7 +308,7 @@
     <script src="constants.js"></script>
 
     <script>
-        // Initialize weapon arrays
+    // Initialize weapon arrays
         let vanillaRangedWeapons = [];
         let vanillaMeleeWeapons = [];
         let moddedRangedWeapons = [];
@@ -540,7 +540,7 @@
             if (skillDifference > 0) {
                 // Use C# formula
                 let bonus = C.skillBaseBonus * Math.pow(C.skillGrowthRate, skillDifference - 1);
-                
+
                 // Apply C# cap
                 if (bonus > C.skillCap) bonus = C.skillCap;
 
@@ -610,7 +610,7 @@
 
         function calculateRangedScore(weapon, multiplier, qualityMult, shootingSkill, meleeSkill) {
             const C = window.C || { RANGED_MULTIPLIER: 10, POWER_CREEP_THRESHOLD: 30, situationalWeaponCap: 80, burstBonusMultiplier: 5 };
-            
+
             // Check cache first for base score
             const cacheKey = `${weapon.name}_ranged_${qualityMult}`;
             let baseScore = 0;
@@ -659,13 +659,13 @@
 
         function calculateRangedBaseScore(weapon, multiplier, qualityMult) {
             const C = window.C || { POWER_CREEP_THRESHOLD: 30, situationalWeaponCap: 80, burstBonusMultiplier: 5 };
-            
+
             // Debug multiplier
             if (typeof multiplier !== 'number' || isNaN(multiplier)) {
                 console.error('Invalid multiplier:', multiplier, 'C object:', C);
                 multiplier = 10; // fallback
             }
-            
+
             // Apply situational weapon penalty
             if (weapon.situational) {
                 return C.situationalWeaponCap; // From C#
@@ -705,7 +705,7 @@
             }
             baseScore *= rangeScore.multiplier;
             baseScore += rangeScore.bonus;
-            
+
             if (isNaN(baseScore)) {
                 console.error('NaN after range calculation:', weapon.name, 'baseScore:', baseScore, 'rangeScore:', rangeScore);
                 return NaN;
@@ -719,7 +719,7 @@
                 }
                 baseScore += burstBonus;
             }
-            
+
             if (isNaN(baseScore)) {
                 console.error('NaN after burst calculation:', weapon.name, 'baseScore:', baseScore);
                 return NaN;
@@ -733,7 +733,7 @@
                 console.error('NaN AP score:', weapon.name, 'weaponAP:', weaponAP, 'apScore:', apScore);
             }
             baseScore += apScore;
-            
+
             if (isNaN(baseScore)) {
                 console.error('NaN after AP calculation:', weapon.name, 'final baseScore:', baseScore);
             }
@@ -748,7 +748,7 @@
                 console.error('Invalid range value:', range);
                 return { multiplier: 1, bonus: 0 };
             }
-            
+
             // Use C# values if available
             if (window.C && window.C.getCombinedRangeScore) {
                 const result = window.C.getCombinedRangeScore(range);
@@ -803,7 +803,7 @@
 
         function calculateMeleeBaseScore(weapon, multiplier, qualityMult) {
             const C = window.C || { POWER_CREEP_THRESHOLD: 30 };
-            
+
             // Apply quality to DPS
             let qualityDPS = weapon.dps * (weapon.noQuality ? 1 : qualityMult);
 
@@ -898,8 +898,8 @@
                     const weaponDisplay = weapon.noQuality ?
                         `${weaponName} <span style="color: #888; font-size: 0.8em;">[Natural]</span>` :
                         weapon.hasPersona ?
-                        `${weaponName} <span style="color: #9b59b6; font-size: 0.8em;">[Persona]</span>` :
-                        weaponName;
+                            `${weaponName} <span style="color: #9b59b6; font-size: 0.8em;">[Persona]</span>` :
+                            weaponName;
 
                     // Display accuracy as "-" since it's not used in scoring
                     const accuracyDisplay = '-';
@@ -938,14 +938,14 @@
                             `<span class="score">${scores.total.toFixed(1)}</span>`);
 
                     tableHTML += `<tr class="${rowClasses}">
-                                                <td>${weaponDisplay}</td>
-                                                <td>${dpsDisplay}</td>
-                                                <td class="acc-value">${accuracyDisplay}</td>
-                                                <td>${burstText}</td>
-                                                <td>${weapon.range}</td>
-                                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                                <td>${totalScoreDisplay}</td>
-                                            </tr>`;
+                                                    <td>${weaponDisplay}</td>
+                                                    <td>${dpsDisplay}</td>
+                                                    <td class="acc-value">${accuracyDisplay}</td>
+                                                    <td>${burstText}</td>
+                                                    <td>${weapon.range}</td>
+                                                    <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                                    <td>${totalScoreDisplay}</td>
+                                                </tr>`;
                 });
 
                 // Set all HTML at once
@@ -1009,8 +1009,8 @@
                     const weaponDisplay = weapon.noQuality ?
                         `${weaponName} <span style="color: #888; font-size: 0.8em;">[Natural]</span>` :
                         weapon.hasPersona ?
-                        `${weaponName} <span style="color: #9b59b6; font-size: 0.8em;">[Persona]</span>` :
-                        weaponName;
+                            `${weaponName} <span style="color: #9b59b6; font-size: 0.8em;">[Persona]</span>` :
+                            weaponName;
 
                     // Add tier classification based on dynamic thresholds
                     let tierClass = '';
@@ -1034,11 +1034,11 @@
                         `<span class="score">${scores.total.toFixed(1)}</span>`;
 
                     tableHTML += `<tr class="${rowClasses}">
-                                                <td>${weaponDisplay}</td>
-                                                <td>${dpsDisplay}</td>
-                                                <td class="ap-value">${scores.ap.toFixed(3)}</td>
-                                                <td>${totalScoreDisplay}</td>
-                                            </tr>`;
+                                                    <td>${weaponDisplay}</td>
+                                                    <td>${dpsDisplay}</td>
+                                                    <td class="ap-value">${scores.ap.toFixed(3)}</td>
+                                                    <td>${totalScoreDisplay}</td>
+                                                </tr>`;
                 });
 
                 // Set all HTML at once
@@ -1107,17 +1107,16 @@
             const filterNote = '';
 
             document.getElementById('balanceInfo').innerHTML = `
-                                    <div class="balance-summary">
-                                        ${filterNote}
-                                        ${skillPref}
-                                        <div class="score-averages">
-                                            <span><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</span>
-                                            <span class="separator">•</span>
-                                            <span><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</span>
+                                        <div class="balance-summary">
+                                            ${filterNote}
+                                            ${skillPref}
+                                            <div class="score-averages">
+                                                <span><strong>Average Ranged Score:</strong> ${avgRangedScore.toFixed(1)}</span>
+                                                <span class="separator">•</span>
+                                                <span><strong>Average Melee Score:</strong> ${avgMeleeScore.toFixed(1)}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    `;
-        }
-    </script>
+                                        `;
+        }</script>
 </body>
 </html>

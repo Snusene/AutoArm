@@ -2,14 +2,17 @@
 // This file: Harmony patches for equipment management
 // Handles weapon equipping, dropping, and forced weapon tracking
 
+using AutoArm.Definitions;
+using AutoArm.Helpers;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 using HarmonyLib;
 using RimWorld;
 using System;
 using System.Linq;
 using Verse;
 using Verse.AI;
-using AutoArm.Helpers; using AutoArm.Logging;
-using AutoArm.Weapons;
 
 namespace AutoArm
 {
@@ -24,11 +27,11 @@ namespace AutoArm
         [HarmonyPrefix]
         public static void Prefix(Job newJob, Pawn ___pawn)
         {
-            if (newJob == null || ___pawn == null)
+            // Check if mod is enabled - FIRST CHECK
+            if (AutoArmMod.settings?.modEnabled != true)
                 return;
 
-            // Check if mod is enabled
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (newJob == null || ___pawn == null)
                 return;
 
             if (!___pawn.IsColonist || ___pawn.Destroyed)
@@ -38,50 +41,36 @@ namespace AutoArm
             {
                 if (targetWeapon != null && WeaponValidation.IsProperWeapon(targetWeapon))
                 {
-                    // Check if this is interrupting a sidearm upgrade
-                    if (SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
-                    {
-                        var upgradeInfo = SimpleSidearmsCompat.GetPendingUpgrade(___pawn);
-                        if (upgradeInfo != null && upgradeInfo.newWeapon != null && targetWeapon != upgradeInfo.newWeapon && newJob.playerForced)
-                        {
-                            // Player is manually forcing a different weapon during upgrade
-                            SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
-
-                            // Cancelling sidearm upgrade
-                        }
-                    }
+                    // SimpleSidearmsCompat simplified - pending upgrade tracking removed
 
                     // Debug logging to track all equip jobs - only if debug logging is enabled
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        AutoArmLogger.LogWeapon(___pawn, targetWeapon, $"Starting equip job:\n  - playerForced: {newJob.playerForced}\n  - interaction: {newJob.interaction}");
+                        AutoArmLogger.LogPawnWeapon(___pawn, targetWeapon, $"Starting equip job [playerForced: {newJob.playerForced}, interaction: {newJob.interaction}]");
                     }
 
                     // Only mark as forced if player explicitly forced it via right-click
                     // But skip if this is part of a sidearm upgrade
-                    // FIXED: More precise check - only skip if this is ACTUALLY part of a sidearm upgrade
+                    // SimpleSidearmsCompat simplified - use job context to detect sidearm upgrades
                     bool isPartOfSidearmUpgrade = false;
                     if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
                     {
-                        // Check if pawn has a pending upgrade and this job is targeting the upgrade weapon
-                        if (SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
-                        {
-                            var upgradeInfo = SimpleSidearmsCompat.GetPendingUpgrade(___pawn);
-                            if (upgradeInfo != null && upgradeInfo.newWeapon == targetWeapon)
-                            {
-                                isPartOfSidearmUpgrade = true;
-                                // Sidearm upgrade job detected
-                            }
-                        }
+                        // Check if this is an auto-equip job (not player forced)
+                        isPartOfSidearmUpgrade = !newJob.playerForced && AutoEquipTracker.IsAutoEquip(newJob);
                     }
 
                     if (newJob.playerForced && !isPartOfSidearmUpgrade)
                     {
-                        ForcedWeaponHelper.SetForced(___pawn, targetWeapon);
-
-                        if (AutoArmMod.settings?.debugLogging == true)
+                        // Only track as forced in AutoArm's system
+                        // Don't automatically sync with SimpleSidearms - let SS manage its own forcing
+                        if (!SimpleSidearmsCompat.IsLoaded())
                         {
-                            AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced weapon - {targetWeapon.Label}");
+                            ForcedWeaponHelper.SetForced(___pawn, targetWeapon);
+
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced weapon - {targetWeapon.Label}");
+                            }
                         }
                     }
                     else if (isPartOfSidearmUpgrade)
@@ -91,18 +80,35 @@ namespace AutoArm
                 }
             }
             else if (SimpleSidearmsCompat.IsLoaded() &&
-                     newJob.def?.defName == "EquipSecondary" &&
+                     (newJob.def?.defName == "EquipSecondary" ||
+                      newJob.def?.defName == "ReequipSecondary" ||
+                      newJob.def?.defName == "ReequipSecondaryCombat") &&
                      newJob.targetA.Thing is ThingWithComps sidearmWeapon &&
                      WeaponValidation.IsProperWeapon(sidearmWeapon))
             {
+                // Debug logging for SimpleSidearms jobs
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.LogPawnWeapon(___pawn, sidearmWeapon,
+                        $"Starting SimpleSidearms job ({newJob.def.defName}):\n" +
+                        $"  - playerForced: {newJob.playerForced}\n" +
+                        $"  - interaction: {newJob.interaction}\n" +
+                        $"  - Source: {(newJob.playerForced ? "Player" : "SimpleSidearms AI")}");
+                }
+
                 // Only mark as forced if player explicitly forced it
                 if (newJob.playerForced)
                 {
-                    ForcedWeaponHelper.AddForcedDef(___pawn, sidearmWeapon.def);
-
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    // Don't auto-sync with SimpleSidearms
+                    // Players should use SS's UI to force sidearms
+                    if (!SimpleSidearmsCompat.IsLoaded())
                     {
-                        AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced sidearm - {sidearmWeapon.Label}");
+                        ForcedWeaponHelper.AddForcedSidearm(___pawn, sidearmWeapon);
+
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced sidearm - {sidearmWeapon.Label}");
+                        }
                     }
                 }
             }
@@ -111,6 +117,10 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Job newJob, Pawn ___pawn)
         {
+            // Check if mod is enabled - FIRST CHECK
+            if (AutoArmMod.settings?.modEnabled != true)
+                return;
+
             if (newJob == null || ___pawn == null)
                 return;
 
@@ -127,116 +137,37 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(bool __result, Pawn ___pawn, ThingWithComps resultingEq)
         {
-            if (!__result || ___pawn == null || !___pawn.IsColonist || resultingEq == null)
+            // Check if mod is enabled - FIRST CHECK
+            if (AutoArmMod.settings?.modEnabled != true)
                 return;
 
-            // Check if mod is enabled
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (!__result || ___pawn == null || !___pawn.IsColonist || resultingEq == null)
                 return;
 
             try
             {
-                // Check if this is a same-type weapon upgrade (should never happen if forced)
+                // Check if this is a same-type weapon upgrade
                 bool isSameTypeUpgrade = DroppedItemTracker.IsPendingSameTypeUpgrade(resultingEq);
 
-                // Always clear forced status when weapon is dropped (downed, manual drop, etc.)
-                // The only exception is SimpleSidearms swaps which aren't real drops
-                bool isSimpleSidearmsSwap = false;
-                if (SimpleSidearmsCompat.IsLoaded())
+                // Track dropped forced weapons with a timer instead of complex SimpleSidearms detection
+                // This handles SimpleSidearms swaps and any other mod interactions gracefully
+                if (ForcedWeaponHelper.IsForced(___pawn, resultingEq))
                 {
-                    // Check if this is a remembered sidearm being dropped
-                    isSimpleSidearmsSwap = SimpleSidearmsCompat.IsRememberedSidearm(___pawn, resultingEq);
+                    // Mark this forced weapon as dropped with the pawn who dropped it
+                    // It will be cleared after 60 ticks (1 second) if not picked back up
+                    ForcedWeaponTracker.MarkForcedWeaponDropped(___pawn, resultingEq);
 
-                    // ALSO check if pawn is currently doing a SimpleSidearms job
-                    if (!isSimpleSidearmsSwap && ___pawn.CurJob != null)
+                    if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        // Check for EquipSecondary job (SimpleSidearms swap)
-                        isSimpleSidearmsSwap = ___pawn.CurJob.def?.defName == "EquipSecondary";
-
-                        if (isSimpleSidearmsSwap)
-                        {
-                            // SimpleSidearms job detected
-                        }
-                    }
-
-                    // ALSO check if this is part of a pending sidearm upgrade
-                    if (!isSimpleSidearmsSwap && SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
-                    {
-                        isSimpleSidearmsSwap = true;
-                        // Pending upgrade detected
-                    }
-
-                    // ALSO check if SimpleSidearms swap is in progress (covers UI swaps)
-                    if (!isSimpleSidearmsSwap && DroppedItemTracker.IsSimpleSidearmsSwapInProgress(___pawn))
-                    {
-                        isSimpleSidearmsSwap = true;
-                        // Swap in progress
+                        AutoArmLogger.Debug($"[{___pawn.LabelShort}] Dropped forced weapon {resultingEq.Label} - will clear forced status in 1 second if not re-equipped");
                     }
                 }
 
-                if (!isSimpleSidearmsSwap)
-                {
-                    // Weapon was dropped (leaves pawn's possession) - clear forced status for THIS weapon only
-                    if (ForcedWeaponHelper.GetForcedPrimary(___pawn) == resultingEq)
-                    {
-                        // Only clear the primary forced weapon reference, don't clear all forced defs
-                        ForcedWeaponHelper.ClearForcedPrimary(___pawn);
-                        // Primary dropped - clear forced
-                    }
-
-                    // If this weapon type is no longer carried, remove it from forced defs
-                    if (ForcedWeaponHelper.IsWeaponDefForced(___pawn, resultingEq.def))
-                    {
-                        // Check if pawn still has any weapons of this type
-                        bool stillHasThisType = false;
-
-                        // Check primary (after drop it would be null or different)
-                        if (___pawn.equipment?.Primary?.def == resultingEq.def)
-                            stillHasThisType = true;
-
-                        // Check inventory
-                        if (!stillHasThisType)
-                        {
-                            foreach (var item in ___pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
-                            {
-                                if (item is ThingWithComps invWeapon && invWeapon.def == resultingEq.def)
-                                {
-                                    stillHasThisType = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!stillHasThisType)
-                        {
-                            ForcedWeaponHelper.RemoveForcedDef(___pawn, resultingEq.def);
-                            // Last of type - remove from forced
-                        }
-                    }
-                }
-                else
-                {
-                    // SimpleSidearms swap - weapon stays in inventory, maintain forced status
-                    // SimpleSidearms swap - maintain forced
-
-                    // Extra check: if this was a forced weapon, ensure it stays forced
-                    if (ForcedWeaponHelper.GetForcedPrimary(___pawn) == resultingEq)
-                    {
-                        // Forced weapon swap confirmed
-                    }
-                }
-
-                // Handle same-type upgrades (shouldn't happen with forced weapons)
+                // Handle same-type upgrades
                 if (isSameTypeUpgrade)
                 {
                     DroppedItemTracker.ClearPendingUpgrade(resultingEq);
-                    // Same-type upgrade drop
                     DroppedItemTracker.MarkAsDropped(resultingEq, 1200);
-
-                    if (SimpleSidearmsCompat.IsLoaded())
-                    {
-                        SimpleSidearmsCompat.InformOfDroppedSidearm(___pawn, resultingEq);
-                    }
                 }
             }
             catch (Exception e)
@@ -252,11 +183,11 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Pawn ___pawn)
         {
-            if (___pawn == null || !___pawn.IsColonist)
+            // Check if mod is enabled - FIRST CHECK
+            if (AutoArmMod.settings?.modEnabled != true)
                 return;
 
-            // Check if mod is enabled
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (___pawn == null || !___pawn.IsColonist)
                 return;
 
             ForcedWeaponHelper.ClearForced(___pawn);
@@ -269,6 +200,10 @@ namespace AutoArm
         [HarmonyPrefix]
         public static bool Prefix(ThingWithComps newEq, Pawn ___pawn)
         {
+            // Always allow normal game operations if mod disabled
+            if (AutoArmMod.settings?.modEnabled != true)
+                return true;
+
             if (newEq == null || ___pawn == null)
                 return true;
 
@@ -286,40 +221,125 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(ThingWithComps newEq, Pawn ___pawn)
         {
+            // Check if mod is enabled - FIRST CHECK
+            if (AutoArmMod.settings?.modEnabled != true)
+                return;
+
             if (newEq == null || ___pawn == null || !___pawn.IsColonist)
                 return;
 
-            // Auto-force bonded weapons when "Respect weapon bonds" is enabled
+            // Notify tracker that weapon was picked up (cancels forced status timer)
+            ForcedWeaponTracker.WeaponPickedUp(newEq);
+
+            // Check if we had a weapon that couldn't move to inventory
+            // The vanilla Equip job has now swapped it at the target location
+            var weaponCouldntMove = AutoEquipTracker.GetWeaponCannotMoveToInventory(___pawn);
+            if (weaponCouldntMove != null && AutoArmMod.settings?.modEnabled == true)
+            {
+                // The weapon has been swapped - it's now on the ground where the new weapon was
+                // Find it and mark it as dropped so we don't immediately pick it up again
+                var droppedWeapon = newEq.Position.GetThingList(___pawn.Map)
+                    .OfType<ThingWithComps>()
+                    .FirstOrDefault(t => t == weaponCouldntMove);
+
+                if (droppedWeapon != null)
+                {
+                    DroppedItemTracker.MarkAsDropped(droppedWeapon, Constants.LongDropCooldownTicks);
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{___pawn.LabelShort}] Weapon {droppedWeapon.Label} was swapped at target location and marked as dropped");
+                    }
+                }
+
+                // Clear the tracking
+                AutoEquipTracker.ClearWeaponCannotMoveToInventory(___pawn);
+            }
+
+            // Check if this weapon should be forced (from forced weapon upgrade)
             if (AutoArmMod.settings?.modEnabled == true &&
-                AutoArmMod.settings?.respectWeaponBonds == true && 
-                ModsConfig.RoyaltyActive && 
+                AutoEquipTracker.ShouldForceWeapon(___pawn, newEq))
+            {
+                // Transfer forced status to the upgraded weapon
+                ForcedWeaponHelper.SetForced(___pawn, newEq);
+                AutoEquipTracker.ClearWeaponToForce(___pawn);
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Transferred forced status to upgraded weapon {newEq.Label}");
+                }
+            }
+            // Auto-force bonded weapons when "Respect weapon bonds" is enabled
+            else if (AutoArmMod.settings?.modEnabled == true &&
+                AutoArmMod.settings?.respectWeaponBonds == true &&
+                ModsConfig.RoyaltyActive &&
                 ValidationHelper.IsWeaponBondedToPawn(newEq, ___pawn))
             {
-                // Automatically mark bonded weapons as forced
-                ForcedWeaponHelper.SetForced(___pawn, newEq);
+                // For bonded weapons, we DO want to sync with SimpleSidearms
+                // because bonded weapons should always be forced
+                if (SimpleSidearmsCompat.IsLoaded())
+                {
+                    // Use the special method for bonded weapons
+                    ForcedWeaponHelper.ForceBondedWeaponInSimpleSidearms(___pawn, newEq);
+                }
+                else
+                {
+                    // When SS is not loaded, use normal forcing
+                    ForcedWeaponHelper.SetForced(___pawn, newEq);
+                }
+
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     AutoArmLogger.Debug($"{___pawn.LabelShort}: Bonded weapon {newEq.Label} auto-forced");
                 }
             }
             // Check if this weapon type was already forced as a sidearm
-            else if (AutoArmMod.settings?.modEnabled == true && 
-                     ForcedWeaponHelper.IsWeaponDefForced(___pawn, newEq.def))
+            else if (AutoArmMod.settings?.modEnabled == true && !SimpleSidearmsCompat.IsLoaded())
             {
-                // Maintain forced status when sidearm becomes primary
-                ForcedWeaponHelper.SetForced(___pawn, newEq);
-                // Sidearm to primary - maintain forced
+                // Only do this when SimpleSidearms is NOT loaded
+                // When SS is loaded, it manages its own forcing
+                bool hasForcedOfSameType = false;
+                // Check primary
+                if (___pawn.equipment?.Primary != null && ___pawn.equipment.Primary.def == newEq.def &&
+                    ForcedWeaponHelper.IsForced(___pawn, ___pawn.equipment.Primary))
+                {
+                    hasForcedOfSameType = true;
+                }
+                // Check inventory
+                if (!hasForcedOfSameType && ___pawn.inventory?.innerContainer != null)
+                {
+                    foreach (var item in ___pawn.inventory.innerContainer)
+                    {
+                        if (item is ThingWithComps weapon && weapon.def == newEq.def &&
+                            ForcedWeaponHelper.IsForced(___pawn, weapon))
+                        {
+                            hasForcedOfSameType = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasForcedOfSameType)
+                {
+                    // Maintain forced status when sidearm becomes primary
+                    ForcedWeaponHelper.SetForced(___pawn, newEq);
+                    // Sidearm to primary - maintain forced
+                }
             }
             // Only mark as forced if this is completing a player-forced equip job
             else if (AutoArmMod.settings?.modEnabled == true &&
-                     ___pawn.CurJob?.def == JobDefOf.Equip && ___pawn.CurJob.playerForced)
+                     ___pawn.CurJob?.def == JobDefOf.Equip && ___pawn.CurJob.playerForced &&
+                     !AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
             {
-                // This was a manual equip - mark as forced
-                ForcedWeaponHelper.SetForced(___pawn, newEq);
-
-                if (AutoArmMod.settings?.debugLogging == true)
+                // This was a manual equip
+                // Only mark as forced in AutoArm when SimpleSidearms is NOT loaded
+                // Let SimpleSidearms manage its own forcing through its UI
+                if (!SimpleSidearmsCompat.IsLoaded())
                 {
-                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Manually equipped {newEq.Label} - forced");
+                    ForcedWeaponHelper.SetForced(___pawn, newEq);
+
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"{___pawn.LabelShort}: Manually equipped {newEq.Label} - forced");
+                    }
                 }
             }
 
@@ -327,12 +347,9 @@ namespace AutoArm
             if (AutoArmMod.settings?.modEnabled == true &&
                 ___pawn.CurJob?.def == JobDefOf.Equip && AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
             {
-                // Inform SimpleSidearms if it's loaded
-                if (SimpleSidearmsCompat.IsLoaded())
-                {
-                    SimpleSidearmsCompat.InformOfAddedSidearm(___pawn, newEq);
-                }
-                
+                // Don't inform SimpleSidearms about primary weapon equips
+                // This was causing SimpleSidearms to "remember" primary weapons as sidearms
+
                 if (PawnUtility.ShouldSendNotificationAbout(___pawn) &&
                     AutoArmMod.settings?.showNotifications == true)
                 {
@@ -358,10 +375,70 @@ namespace AutoArm
                 AutoEquipTracker.Clear(___pawn.CurJob);
                 AutoEquipTracker.ClearPreviousWeapon(___pawn);
 
+                // Cooldown functionality removed - no longer needed
+
                 // Only log success if debug logging is enabled
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmLogger.LogWeapon(___pawn, newEq, "Successfully equipped, clearing job tracking");
+                    AutoArmLogger.LogPawnWeapon(___pawn, newEq, "Successfully equipped, clearing job tracking");
+                }
+
+                // STREAMLINED: After equipping, let SimpleSidearms know about sidearm changes
+                // But DON'T trigger reordering for primary weapons to avoid duplication issues
+                if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
+                {
+                    try
+                    {
+                        // Check if this was a sidearm upgrade (same type weapon was dropped)
+                        var droppedWeapons = DroppedItemTracker.GetRecentlyDroppedWeapons();
+                        ThingWithComps droppedSameType = null;
+                        bool wasSidearmUpgrade = false;
+
+                        foreach (var dropped in droppedWeapons)
+                        {
+                            if (dropped != null && dropped.def == newEq.def &&
+                                dropped.Position.InHorDistOf(___pawn.Position, 10f))
+                            {
+                                droppedSameType = dropped;
+                                // Check if the dropped weapon was in inventory (sidearm)
+                                wasSidearmUpgrade = true; // Assume it was a sidearm if same type was dropped
+                                break;
+                            }
+                        }
+
+                        if (droppedSameType != null && wasSidearmUpgrade)
+                        {
+                            // This was a sidearm upgrade - inform SimpleSidearms
+                            SimpleSidearmsCompat.InformOfDroppedSidearm(___pawn, droppedSameType);
+                            SimpleSidearmsCompat.InformOfAddedSidearm(___pawn, newEq);
+
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{___pawn.LabelShort}] SS memory updated for sidearm upgrade: forgot {droppedSameType.Label}, added {newEq.Label}");
+                            }
+                            
+                            // Only reorder for sidearm upgrades
+                            SimpleSidearmsCompat.ReorderWeaponsAfterEquip(___pawn);
+                            
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{___pawn.LabelShort}] SimpleSidearms reordered weapons after sidearm upgrade");
+                            }
+                        }
+                        else
+                        {
+                            // Primary weapon equip - DON'T inform SS and DON'T reorder
+                            // This prevents SS from trying to pick up same-type weapons as sidearms
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{___pawn.LabelShort}] Primary weapon {newEq.Label} equipped - skipping SimpleSidearms integration to prevent duplication");
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        AutoArmLogger.Warn($"Failed to handle SimpleSidearms integration: {e.Message}");
+                    }
                 }
             }
         }
@@ -373,11 +450,11 @@ namespace AutoArm
         [HarmonyPrefix]
         public static void Prefix(Pawn ___pawn, JobCondition condition, Job ___curJob)
         {
-            if (___pawn == null || ___curJob == null)
+            // Check if mod is enabled - FIRST CHECK
+            if (AutoArmMod.settings?.modEnabled != true)
                 return;
 
-            // Check if mod is enabled
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (___pawn == null || ___curJob == null)
                 return;
 
             // Check for failed equip jobs due to mod restrictions
@@ -389,29 +466,17 @@ namespace AutoArm
                     // Check if this was an auto-equip job that failed
                     if (AutoEquipTracker.IsAutoEquip(___curJob))
                     {
-                        // When auto-equip jobs fail, it's usually due to mod restrictions
-                        string errorReason = "mod restriction";
-
-                        // Check the weapon name for hints about the restriction
-                        if (weapon.def.defName.Contains("Mech") ||
-                            weapon.def.defName.Contains("Marine") ||
-                            weapon.def.defName.Contains("Power") ||
-                            weapon.def.defName.Contains("Heavy") ||
-                            weapon.def.defName.Contains("Exo") ||
-                            weapon.GetStatValue(StatDefOf.Mass) > 5.0f)
+                        // When auto-equip jobs fail, blacklist the weapon to prevent loops
+                        // Body size restrictions ARE blacklisted - the blacklist clears periodically
+                        // and when pawn's body size changes (e.g., equipping power armor)
+                        string errorReason = "failed to equip - mod restriction";
+                        
+                        // Always blacklist failed weapons to prevent equip loops
+                        WeaponBlacklist.AddToBlacklist(weapon.def, ___pawn, errorReason);
+                        
+                        if (AutoArmMod.settings?.debugLogging == true)
                         {
-                            // Don't blacklist body size restrictions - pawn might get power armor later
-                            errorReason = "probable body size restriction";
-                            // Body size restriction - don't blacklist
-                        }
-                        else
-                        {
-                            // Blacklist this weapon for this pawn
-                            WeaponBlacklist.AddToBlacklist(weapon.def, ___pawn, errorReason);
-                            if (AutoArmMod.settings?.debugLogging == true)
-                            {
-                                AutoArmLogger.Debug($"{___pawn.LabelShort}: Blacklisted {weapon.Label} - {errorReason}");
-                            }
+                            AutoArmLogger.Debug($"{___pawn.LabelShort}: Blacklisted {weapon.Label} - {errorReason} (job condition: {condition})");
                         }
                     }
                 }
@@ -434,22 +499,7 @@ namespace AutoArm
                 }
             }
 
-            // Check if this was part of a sidearm upgrade
-            if (___curJob.def == JobDefOf.Equip && SimpleSidearmsCompat.HasPendingUpgrade(___pawn))
-            {
-                if (condition == JobCondition.Succeeded)
-                {
-                    // Upgrade completed successfully
-                    SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
-                }
-                else if (condition != JobCondition.Ongoing)
-                {
-                    // Upgrade failed, clean up
-                    SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
-
-                    // Sidearm upgrade failed
-                }
-            }
+            // SimpleSidearmsCompat simplified - pending upgrade tracking removed
         }
     }
 }

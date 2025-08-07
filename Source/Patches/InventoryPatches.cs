@@ -2,13 +2,14 @@
 // This file: Harmony patches for inventory management
 // Handles weapon movement between equipment and inventory
 
+using AutoArm.Helpers;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 using HarmonyLib;
 using RimWorld;
-using System;
 using System.Linq;
 using Verse;
-using AutoArm.Helpers; using AutoArm.Logging;
-using AutoArm.Weapons;
 
 namespace AutoArm
 {
@@ -29,34 +30,16 @@ namespace AutoArm
             if (weapon == null || !WeaponValidation.IsProperWeapon(weapon))
                 return;
 
-            // SimpleSidearms compatibility - maintain forced status during swaps
-            bool isSimpleSidearmsSwap = SimpleSidearmsCompat.IsLoaded() &&
-                                        SimpleSidearmsCompat.IsRememberedSidearm(___pawn, weapon);
+            // SimpleSidearmsCompat simplified - can't check if remembered sidearm
+            bool isSimpleSidearmsSwap = false;
 
             if (!isSimpleSidearmsSwap)
             {
-                // Weapon removed from inventory - clear forced status if it's the last one
-                if (ForcedWeaponHelper.IsWeaponDefForced(___pawn, weapon.def))
+                // Check if this specific weapon instance is forced
+                if (ForcedWeaponHelper.IsForced(___pawn, weapon))
                 {
-                    // Count remaining weapons of this type
-                    int sameTypeCount = 0;
-
-                    // Check primary
-                    if (___pawn.equipment?.Primary?.def == weapon.def)
-                        sameTypeCount++;
-
-                    // Check inventory (excluding the one being removed)
-                    foreach (var invItem in ___pawn.inventory?.innerContainer ?? Enumerable.Empty<Thing>())
-                    {
-                        if (invItem != weapon && invItem is ThingWithComps invWeapon && invWeapon.def == weapon.def)
-                            sameTypeCount++;
-                    }
-
-                    if (sameTypeCount == 0)
-                    {
-                        ForcedWeaponHelper.RemoveForcedDef(___pawn, weapon.def);
-                        // Last forced weapon removed
-                    }
+                    // Remove this specific weapon from forced list
+                    ForcedWeaponHelper.RemoveForcedWeapon(___pawn, weapon);
                 }
             }
         }
@@ -102,17 +85,31 @@ namespace AutoArm
             if (!___pawn.inventory.innerContainer.Contains(item))
                 return;
 
-            // Clear any pending upgrade flag
-            SimpleSidearmsCompat.CancelPendingUpgrade(___pawn);
+            // Notify tracker that weapon was picked up (cancels forced status timer)
+            ForcedWeaponTracker.WeaponPickedUp(weapon);
 
-            // Auto-force bonded weapons when "Respect weapon bonds" is enabled
+            // SimpleSidearmsCompat simplified - pending upgrade tracking removed
+
+            // Check if this weapon should be forced (from forced weapon upgrade)
             if (AutoArmMod.settings?.modEnabled == true &&
-                AutoArmMod.settings?.respectWeaponBonds == true && 
-                ModsConfig.RoyaltyActive && 
+                AutoEquipTracker.ShouldForceWeapon(___pawn, weapon))
+            {
+                // Transfer forced status to the upgraded sidearm
+                ForcedWeaponHelper.AddForcedSidearm(___pawn, weapon);
+                AutoEquipTracker.ClearWeaponToForce(___pawn);
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"{___pawn.LabelShort}: Transferred forced status to upgraded sidearm {weapon.Label}");
+                }
+            }
+            // Auto-force bonded weapons when "Respect weapon bonds" is enabled
+            else if (AutoArmMod.settings?.modEnabled == true &&
+                AutoArmMod.settings?.respectWeaponBonds == true &&
+                ModsConfig.RoyaltyActive &&
                 ValidationHelper.IsWeaponBondedToPawn(weapon, ___pawn))
             {
                 // Automatically mark bonded weapons as forced
-                ForcedWeaponHelper.AddForcedDef(___pawn, weapon.def);
+                ForcedWeaponHelper.AddForcedSidearm(___pawn, weapon);
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     AutoArmLogger.Debug($"{___pawn.LabelShort}: Bonded weapon {weapon.Label} in inventory - auto-forced");
@@ -122,12 +119,14 @@ namespace AutoArm
             else if (___pawn.jobs?.curDriver?.job?.playerForced == true &&
                 ___pawn.jobs.curDriver.job.def?.defName == "EquipSecondary")
             {
-                ForcedWeaponHelper.AddForcedDef(___pawn, weapon.def);
+                ForcedWeaponHelper.AddForcedSidearm(___pawn, weapon);
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
                     AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced sidearm pickup - {weapon.Label}");
                 }
             }
+
+            // SimpleSidearmsCompat simplified - auto-equipped sidearm tracking removed
 
             if (___pawn.CurJob?.def?.defName == "EquipSecondary" &&
                 AutoArmMod.settings?.showNotifications == true &&

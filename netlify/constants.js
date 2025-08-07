@@ -1,9 +1,10 @@
-﻿// Auto-generated from WeaponScoringHelper.cs - 2025-08-03 03:37
+﻿// Auto-generated from WeaponConstants.cs - 2025-08-07 02:19
 // Run extract-constants.ps1 to regenerate
 
 window.C = {
     // Core multipliers
     POWER_CREEP_THRESHOLD: 30,
+    POWER_CREEP_EXCESS_MULTIPLIER: 0.5,
     RANGED_MULTIPLIER: 10,  // From AutoArmMod.GetRangedMultiplier()
     MELEE_MULTIPLIER: 8,    // From AutoArmMod.GetMeleeMultiplier()
     
@@ -19,13 +20,26 @@ window.C = {
     skillBaseBonus: 30,
     skillGrowthRate: 1.15,
     skillCap: 500,
-    skillPenaltyMultiplier: 0.5, // Half penalty for wrong type
+    skillPenaltyMultiplier: 0.5,
     
     // Situational weapons
     situationalWeaponCap: 80,
     
     // Burst bonus
     burstBonusMultiplier: 2.5,
+    
+    // Quality scoring
+    qualityScoreFactor: 0.05,
+    qualityScoreBase: 0.95,
+    
+    // Sidearm bonuses
+    firstRangedBonus: 1.5,
+    firstMeleeBonus: 1.5,
+    duplicateWeaponPenalty: 0.1,
+    
+    // Odyssey unique weapons
+    odysseyUniqueBaseBonus: 50,
+    odysseyUniqueTraitBonus: 100,
     
     // Range scoring (multiplier, bonus)
     rangeScores: [
@@ -45,7 +59,8 @@ window.C = {
     { threshold: 0.52, score: 70 },
     { threshold: 0.40, score: 50 },
     { threshold: 0.20, score: 30 },
-    { threshold: 0.15, multiplier: 20, isLowAP: true }
+    { threshold: 0.15, multiplier: 20, isLowAP: true },
+    { threshold: 0, multiplier: 90, isDefault: true }
     ],
     
     // DPS calculation constants
@@ -81,4 +96,19 @@ window.C.calculateArmorPenetrationScore = function(ap) {
 window.C.calculateRangedDPS = function(damage, warmup, cooldown, burstCount, burstDelay) {
     const timePerBurst = warmup + cooldown + (burstCount - 1) * burstDelay;
     return (damage * burstCount) / timePerBurst;
+};
+
+// Power creep adjustment matching C# logic
+window.C.adjustForPowerCreep = function(dps) {
+    if (dps <= C.POWER_CREEP_THRESHOLD) {
+        return dps;
+    }
+    const excess = dps - C.POWER_CREEP_THRESHOLD;
+    return C.POWER_CREEP_THRESHOLD + (excess * C.POWER_CREEP_EXCESS_MULTIPLIER);
+};
+
+// Quality score calculation
+window.C.getQualityMultiplier = function(qualityLevel) {
+    // qualityLevel: 0=Awful, 1=Poor, 2=Normal, 3=Good, 4=Excellent, 5=Masterwork, 6=Legendary
+    return C.qualityScoreBase + (qualityLevel * C.qualityScoreFactor);
 };

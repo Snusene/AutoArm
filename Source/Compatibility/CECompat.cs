@@ -2,6 +2,7 @@
 // This file: Combat Extended compatibility for ammo-based weapon scoring
 // Integrates CE ammo requirements into weapon selection logic
 
+using AutoArm.Logging;
 using RimWorld;
 using System;
 using System.Collections;
@@ -10,7 +11,6 @@ using System.Linq;
 using System.Reflection;
 using Verse;
 using Verse.AI;
-using AutoArm.Logging;
 
 namespace AutoArm
 {
@@ -89,69 +89,69 @@ namespace AutoArm
 
                 _initialized = true;
 
-            try
-            {
-                var ceTypes = GenTypes.AllTypes.Where(t =>
-                    t.Namespace == "CombatExtended" ||
-                    t.FullName?.StartsWith("CombatExtended.") == true).ToList();
-
-                if (AutoArmMod.settings?.debugLogging == true)
+                try
                 {
-                    AutoArmLogger.Debug($"CECompat: Found {ceTypes.Count} Combat Extended types");
-                }
+                    var ceTypes = GenTypes.AllTypes.Where(t =>
+                        t.Namespace == "CombatExtended" ||
+                        t.FullName?.StartsWith("CombatExtended.") == true).ToList();
 
-                compPropertiesAmmoUserType = ceTypes.FirstOrDefault(t => t.Name == "CompProperties_AmmoUser");
-                if (compPropertiesAmmoUserType == null)
-                {
-                    AutoArmLogger.Warn("CECompat: Could not find CompProperties_AmmoUser type");
-                    return;
-                }
-
-                ammoLinkType = ceTypes.FirstOrDefault(t => t.Name == "AmmoLink");
-                if (ammoLinkType == null)
-                {
-                    AutoArmLogger.Warn("CECompat: Could not find AmmoLink type");
-                    return;
-                }
-
-                ammoSetField = compPropertiesAmmoUserType.GetField("ammoSet");
-                if (ammoSetField == null)
-                {
-                    AutoArmLogger.Warn("CECompat: Could not find ammoSet field");
-                    return;
-                }
-
-                ammoField = ammoLinkType.GetField("ammo");
-                if (ammoField == null)
-                {
-                    AutoArmLogger.Warn("CECompat: Could not find ammo field in AmmoLink");
-                    return;
-                }
-
-                controllerType = ceTypes.FirstOrDefault(t => t.Name == "Controller");
-                if (controllerType != null)
-                {
-                    var settingsField = controllerType.GetField("settings", BindingFlags.Public | BindingFlags.Static);
-                    if (settingsField != null)
+                    if (AutoArmMod.settings?.debugLogging == true)
                     {
-                        var settingsInstance = settingsField.GetValue(null);
-                        if (settingsInstance != null)
+                        AutoArmLogger.Debug($"CECompat: Found {ceTypes.Count} Combat Extended types");
+                    }
+
+                    compPropertiesAmmoUserType = ceTypes.FirstOrDefault(t => t.Name == "CompProperties_AmmoUser");
+                    if (compPropertiesAmmoUserType == null)
+                    {
+                        AutoArmLogger.Warn("CECompat: Could not find CompProperties_AmmoUser type");
+                        return;
+                    }
+
+                    ammoLinkType = ceTypes.FirstOrDefault(t => t.Name == "AmmoLink");
+                    if (ammoLinkType == null)
+                    {
+                        AutoArmLogger.Warn("CECompat: Could not find AmmoLink type");
+                        return;
+                    }
+
+                    ammoSetField = compPropertiesAmmoUserType.GetField("ammoSet");
+                    if (ammoSetField == null)
+                    {
+                        AutoArmLogger.Warn("CECompat: Could not find ammoSet field");
+                        return;
+                    }
+
+                    ammoField = ammoLinkType.GetField("ammo");
+                    if (ammoField == null)
+                    {
+                        AutoArmLogger.Warn("CECompat: Could not find ammo field in AmmoLink");
+                        return;
+                    }
+
+                    controllerType = ceTypes.FirstOrDefault(t => t.Name == "Controller");
+                    if (controllerType != null)
+                    {
+                        var settingsField = controllerType.GetField("settings", BindingFlags.Public | BindingFlags.Static);
+                        if (settingsField != null)
                         {
-                            settingsType = settingsInstance.GetType();
-                            enableAmmoSystemProperty = settingsType.GetProperty("EnableAmmoSystem");
+                            var settingsInstance = settingsField.GetValue(null);
+                            if (settingsInstance != null)
+                            {
+                                settingsType = settingsInstance.GetType();
+                                enableAmmoSystemProperty = settingsType.GetProperty("EnableAmmoSystem");
+                            }
                         }
                     }
-                }
 
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug("CECompat: Combat Extended compatibility initialized successfully");
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug("CECompat: Combat Extended compatibility initialized successfully");
+                    }
                 }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.Error("Failed to initialize Combat Extended compatibility", e);
-            }
+                catch (Exception e)
+                {
+                    AutoArmLogger.Error("Failed to initialize Combat Extended compatibility", e);
+                }
             }
         }
 
@@ -259,7 +259,7 @@ namespace AutoArm
                     {
                         _loggedWeapons.Clear();
                     }
-                    
+
                     if (AutoArmMod.settings?.debugLogging == true)
                     {
                         string ammoTypeNames = string.Join(", ", ammoTypes.Select(a => a.defName));
@@ -431,6 +431,26 @@ namespace AutoArm
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Check if a weapon is ranged (helper method for compatibility)
+        /// </summary>
+        public static bool IsRangedWeapon(ThingWithComps weapon)
+        {
+            return weapon?.def?.IsRangedWeapon ?? false;
+        }
+
+        /// <summary>
+        /// Check if pawn has ammo for weapon (helper method for compatibility)
+        /// </summary>
+        public static bool HasAmmoForWeapon(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded() || weapon == null || pawn == null)
+                return true; // Default to true if CE not loaded
+                
+            // Inverse of ShouldSkipWeaponForCE
+            return !ShouldSkipWeaponForCE(weapon, pawn);
         }
 
         /// <summary>

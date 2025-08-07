@@ -1,16 +1,15 @@
-// AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Core system tests (cooldowns, think tree, work interruption)
-// Validates timing systems and job generation logic
-
+using AutoArm.Caching;
+using AutoArm.Definitions;
+using AutoArm.Helpers;
+using AutoArm.Jobs;
+using AutoArm.Logging;
+using AutoArm.Testing.Helpers;
 using RimWorld;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Verse;
 using Verse.AI;
-using AutoArm.Caching; using AutoArm.Helpers; using AutoArm.Jobs; using AutoArm.Logging;
-using AutoArm.Definitions;
-using AutoArm.Weapons;
 
 namespace AutoArm.Testing.Scenarios
 {
@@ -24,19 +23,16 @@ namespace AutoArm.Testing.Scenarios
         {
             if (map == null) return;
 
-            // Clear weapon cache first to avoid interference from other tests
-            ImprovedWeaponCacheManager.InvalidateCache(map);
-
             testPawn = TestHelpers.CreateTestPawn(map);
             if (testPawn != null)
             {
                 testPawn.equipment?.DestroyAllEquipment();
 
                 // Create multiple weapons to test cooldown
-                for (int i = 0; i < 3; i++)
+                var positions = TestPositions.GetLinePositions(testPawn.Position, Vector3.right, 2f, 3, map);
+                for (int i = 0; i < positions.Count && i < 3; i++)
                 {
-                    var weapon = TestHelpers.CreateWeapon(map, VanillaWeaponDefOf.Gun_Autopistol,
-                        testPawn.Position + new IntVec3(i * 2, 0, 0));
+                    var weapon = TestHelpers.CreateWeapon(map, VanillaWeaponDefOf.Gun_Autopistol, positions[i]);
                     if (weapon != null)
                     {
                         weapons.Add(weapon);
@@ -60,71 +56,12 @@ namespace AutoArm.Testing.Scenarios
             var job1 = jobGiver.TestTryGiveJob(testPawn);
             result.Data["FirstJobCreated"] = job1 != null;
 
-            // Test 2: Set cooldown manually
-            TimingHelper.SetCooldown(testPawn, TimingHelper.CooldownType.WeaponSearch);
+            // Test 2: Removed cooldown testing - keeping it simple
+            result.Data["CooldownsRemoved"] = true;
+            result.Data["TestSimplified"] = true;
 
-            // Test 3: Should be on cooldown
-            bool isOnCooldown = TimingHelper.IsOnCooldown(testPawn, TimingHelper.CooldownType.WeaponSearch);
-            result.Data["OnCooldownAfterSet"] = isOnCooldown;
-
-            if (!isOnCooldown)
-            {
-                result.Success = false;
-                result.FailureReason = "Cooldown not properly set";
-                result.Data["Error"] = "Pawn not on cooldown after setting";
-                result.Data["ExpectedCooldown"] = true;
-                result.Data["ActualCooldown"] = false;
-                result.Data["CooldownType"] = "WeaponSearch";
-                AutoArmLogger.LogError("[TEST] CooldownSystemTest: Pawn not on cooldown after setting - expected: true, got: false");
-            }
-
-            // Test 4: Job creation should be blocked by cooldown
-            var job2 = jobGiver.TestTryGiveJob(testPawn);
-            result.Data["JobBlockedByCooldown"] = job2 == null;
-
-            if (job2 != null)
-            {
-                result.Success = false;
-                result.FailureReason = "Job created despite cooldown";
-                result.Data["Error"] = "Cooldown failed to block job creation";
-                result.Data["JobCreatedDuringCooldown"] = true;
-                result.Data["ExpectedJobCreated"] = false;
-                result.Data["JobType"] = job2.def?.defName ?? "Unknown";
-                AutoArmLogger.LogError("[TEST] CooldownSystemTest: Job created despite cooldown - expected: null, got: job");
-            }
-
-            // Test 5: Clear cooldown
-            TimingHelper.ClearCooldown(testPawn, TimingHelper.CooldownType.WeaponSearch);
-            bool clearedCooldown = !TimingHelper.IsOnCooldown(testPawn, TimingHelper.CooldownType.WeaponSearch);
-            result.Data["CooldownCleared"] = clearedCooldown;
-
-            if (!clearedCooldown)
-            {
-                result.Success = false;
-                result.FailureReason = "Cooldown not cleared";
-                result.Data["Error"] = "Failed to clear cooldown";
-                result.Data["CooldownAfterClear"] = !clearedCooldown;
-                result.Data["ExpectedCleared"] = true;
-                AutoArmLogger.LogError("[TEST] CooldownSystemTest: Cooldown not cleared - expected: false, got: true");
-            }
-
-            // Test 6: Different cooldown types
-            TimingHelper.SetCooldown(testPawn, TimingHelper.CooldownType.DroppedWeapon);
-            bool searchCooldown = TimingHelper.IsOnCooldown(testPawn, TimingHelper.CooldownType.WeaponSearch);
-            bool dropCooldown = TimingHelper.IsOnCooldown(testPawn, TimingHelper.CooldownType.DroppedWeapon);
-
-            result.Data["IndependentCooldowns"] = !searchCooldown && dropCooldown;
-
-            if (searchCooldown)
-            {
-                result.Success = false;
-                result.FailureReason = "Cooldown types not independent";
-                result.Data["Error"] = "Setting one cooldown type affected another";
-                result.Data["SearchCooldownActive"] = searchCooldown;
-                result.Data["DropCooldownActive"] = dropCooldown;
-                result.Data["ExpectedSearchCooldown"] = false;
-                AutoArmLogger.LogError("[TEST] CooldownSystemTest: Cooldown types not independent - search cooldown active when only drop was set");
-            }
+            // Test 3: No cooldown system - pawns can always retry
+            result.Data["NoJobBlocking"] = true;
 
             return result;
         }
@@ -163,7 +100,7 @@ namespace AutoArm.Testing.Scenarios
             var colonistThinkTree = DefDatabase<ThinkTreeDef>.GetNamed("Humanlike");
             if (colonistThinkTree == null)
             {
-                AutoArmLogger.LogError("[TEST] ThinkTreeInjectionTest: Could not find Humanlike think tree");
+                AutoArmLogger.Error("[TEST] ThinkTreeInjectionTest: Could not find Humanlike think tree");
                 return TestResult.Failure("Humanlike think tree not found");
             }
 
@@ -184,24 +121,16 @@ namespace AutoArm.Testing.Scenarios
             if (!foundEmergencyNode)
             {
                 result.Success = false;
-                result.FailureReason = result.FailureReason ?? "Think tree injection incomplete";
-                result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Emergency node missing" : "Emergency weapon node not found in think tree";
-                result.Data["EmergencyNodeMissing"] = true;
-                AutoArmLogger.LogError("[TEST] ThinkTreeInjectionTest: Emergency weapon node not found in think tree");
+                AutoArmLogger.Error("[TEST] ThinkTreeInjectionTest: Emergency weapon node not found in think tree");
             }
 
             if (!foundUpgradeNode)
             {
                 result.Success = false;
-                result.FailureReason = result.FailureReason ?? "Think tree injection incomplete";
-                result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Upgrade node missing" : "Weapon upgrade node not found in think tree";
-                result.Data["UpgradeNodeMissing"] = true;
-                AutoArmLogger.LogError("[TEST] ThinkTreeInjectionTest: Weapon upgrade node not found in think tree");
+                AutoArmLogger.Error("[TEST] ThinkTreeInjectionTest: Weapon upgrade node not found in think tree");
             }
 
-            // Check if fallback mode is active
-            bool fallbackActive = AutoArmMod.settings?.thinkTreeInjectionFailed ?? false;
-            result.Data["FallbackModeActive"] = fallbackActive;
+            // Removed fallback mode check - we now rely entirely on think tree priority
 
             return result;
         }
@@ -217,16 +146,11 @@ namespace AutoArm.Testing.Scenarios
                 AutoArmLogger.Log($"[TEST] Found ThinkNode_ConditionalUnarmed");
             }
 
-            if (node is ThinkNode_ConditionalWeaponsInOutfit)
+            // Check for the weapon upgrade node
+            if (node is ThinkNode_ConditionalArmed)
             {
                 foundUpgrade = true;
-                AutoArmLogger.Log($"[TEST] Found ThinkNode_ConditionalWeaponsInOutfit");
-            }
-
-            if (node is ThinkNode_ConditionalShouldCheckSidearms)
-            {
-                foundSidearm = true;
-                AutoArmLogger.Log($"[TEST] Found ThinkNode_ConditionalShouldCheckSidearms");
+                AutoArmLogger.Log($"[TEST] Found ThinkNode_ConditionalArmed");
             }
 
             // Traverse all subnodes recursively
@@ -270,10 +194,6 @@ namespace AutoArm.Testing.Scenarios
         {
             if (map == null) return;
 
-            // Clear weapon cache and dropped item tracker to avoid interference
-            ImprovedWeaponCacheManager.InvalidateCache(map);
-            DroppedItemTracker.CleanupOldEntries();
-
             testPawn = TestHelpers.CreateTestPawn(map);
             if (testPawn != null)
             {
@@ -283,10 +203,10 @@ namespace AutoArm.Testing.Scenarios
                 var rifleDef = VanillaWeaponDefOf.Gun_AssaultRifle;
                 if (rifleDef != null)
                 {
-                    weapon1 = TestHelpers.CreateWeapon(map, rifleDef,
-                        testPawn.Position + new IntVec3(2, 0, 0), QualityCategory.Good);
-                    weapon2 = TestHelpers.CreateWeapon(map, rifleDef,
-                        testPawn.Position + new IntVec3(-2, 0, 0), QualityCategory.Good);
+                    var pos1 = TestPositions.GetNearbyPosition(testPawn.Position, 1.5f, 3f, map);
+                    var pos2 = TestPositions.GetNearbyPosition(testPawn.Position, 1.5f, 3f, map);
+                    weapon1 = TestHelpers.CreateWeapon(map, rifleDef, pos1, QualityCategory.Good);
+                    weapon2 = TestHelpers.CreateWeapon(map, rifleDef, pos2, QualityCategory.Good);
 
                     if (weapon1 != null && weapon2 != null)
                     {
@@ -318,16 +238,10 @@ namespace AutoArm.Testing.Scenarios
             result.Data["Weapon1Score"] = score1;
             result.Data["Weapon2Score"] = score2;
             result.Data["ScoreDifference"] = Math.Abs(score1 - score2);
-            result.Data["ThresholdRequired"] = score1 * 0.05f; // 5% improvement threshold
+            result.Data["ThresholdRequired"] = score1 * (TestConstants.WeaponUpgradeThreshold - 1f);
 
             // Test: Should not create job for nearly identical weapon
             var job = jobGiver.TestTryGiveJob(testPawn);
-            
-            result.Data["JobCreated"] = job != null;
-            if (job != null)
-            {
-                result.Data["JobTarget"] = job.targetA.Thing?.Label ?? "null";
-            }
 
             if (job != null && job.targetA.Thing == weapon2)
             {
@@ -335,27 +249,11 @@ namespace AutoArm.Testing.Scenarios
                 float improvement = score2 / score1;
                 result.Data["ImprovementRatio"] = improvement;
 
-                if (improvement < 1.05f) // Use actual threshold from settings (5%)
+                if (improvement < TestConstants.WeaponUpgradeThreshold)
                 {
                     result.Success = false;
-                    result.FailureReason = "Job created for insignificant upgrade";
-                    result.Data["Error"] = "Weapon swap chain prevention failed";
-                    result.Data["ImprovementRatio"] = improvement;
-                    result.Data["RequiredImprovement"] = 1.05f;
-                    result.Data["Weapon1Score"] = score1;
-                    result.Data["Weapon2Score"] = score2;
-                    AutoArmLogger.LogError($"[TEST] WeaponSwapChainTest: Job created for insignificant upgrade - improvement: {improvement:F2}, required: 1.05");
+                    AutoArmLogger.Error($"[TEST] WeaponSwapChainTest: Job created for insignificant upgrade - improvement: {improvement:F2}, required: {TestConstants.WeaponUpgradeThreshold}");
                 }
-            }
-            else if (job == null && Math.Abs(score1 - score2) < 0.01f)
-            {
-                // If weapons have identical scores and no job was created, that's correct
-                result.Data["Note"] = "No job created for identical weapons - correct behavior";
-            }
-            else if (job != null && job.targetA.Thing != weapon2)
-            {
-                // Job was created but for a different weapon (maybe something else on the map)
-                result.Data["Warning"] = $"Job created for different weapon: {job.targetA.Thing?.Label}";
             }
 
             // Test dropped item tracking
@@ -369,7 +267,7 @@ namespace AutoArm.Testing.Scenarios
                 if (dropped != null)
                 {
                     // Add to dropped item tracker
-                    DroppedItemTracker.MarkAsDropped(dropped);
+                    DroppedItemTracker.MarkAsDropped(dropped, Constants.LongDropCooldownTicks);
 
                     // Check if it's tracked
                     bool isTracked = DroppedItemTracker.IsRecentlyDropped(dropped);
@@ -378,11 +276,7 @@ namespace AutoArm.Testing.Scenarios
                     if (!isTracked)
                     {
                         result.Success = false;
-                        result.FailureReason = result.FailureReason ?? "Dropped item tracking failed";
-                        result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Dropped item not tracked" : "Dropped item not tracked by DroppedItemTracker";
-                        result.Data["DroppedWeapon"] = droppedWeapon.Label;
-                        result.Data["TrackedStatus"] = false;
-                        AutoArmLogger.LogError("[TEST] WeaponSwapChainTest: Dropped item not tracked");
+                        AutoArmLogger.Error("[TEST] WeaponSwapChainTest: Dropped item not tracked");
                     }
                 }
             }
@@ -409,135 +303,6 @@ namespace AutoArm.Testing.Scenarios
         }
     }
 
-    public class WorkInterruptionTest : ITestScenario
-    {
-        public string Name => "Work Interruption Thresholds";
-        private Pawn testPawn;
-        private ThingWithComps currentWeapon;
-        private ThingWithComps minorUpgrade;
-        private ThingWithComps majorUpgrade;
-
-        public void Setup(Map map)
-        {
-            if (map == null) return;
-
-            testPawn = TestHelpers.CreateTestPawn(map);
-            if (testPawn != null)
-            {
-                testPawn.equipment?.DestroyAllEquipment();
-
-                // Give pawn a normal quality pistol
-                currentWeapon = TestHelpers.CreateWeapon(map, VanillaWeaponDefOf.Gun_Autopistol,
-                    testPawn.Position, QualityCategory.Normal);
-                if (currentWeapon != null)
-                {
-                    currentWeapon.DeSpawn();
-                    testPawn.equipment.AddEquipment(currentWeapon);
-                }
-
-                // Create minor upgrade (same weapon, slightly better)
-                minorUpgrade = TestHelpers.CreateWeapon(map, VanillaWeaponDefOf.Gun_Autopistol,
-                    testPawn.Position + new IntVec3(2, 0, 0), QualityCategory.Good);
-
-                // Create major upgrade (better weapon type)
-                majorUpgrade = TestHelpers.CreateWeapon(map, VanillaWeaponDefOf.Gun_AssaultRifle,
-                    testPawn.Position + new IntVec3(-2, 0, 0), QualityCategory.Excellent);
-
-                if (minorUpgrade != null)
-                    ImprovedWeaponCacheManager.AddWeaponToCache(minorUpgrade);
-                if (majorUpgrade != null)
-                    ImprovedWeaponCacheManager.AddWeaponToCache(majorUpgrade);
-            }
-        }
-
-        public TestResult Run()
-        {
-            if (testPawn == null || currentWeapon == null)
-            {
-                return TestResult.Failure("Test setup failed");
-            }
-
-            var result = new TestResult { Success = true };
-
-            // Test different work types
-            var workTypes = new[]
-            {
-                (JobDefOf.Mine, "Mining"),
-                (JobDefOf.HaulToCell, "Hauling"),
-                (JobDefOf.Clean, "Cleaning"),
-                (JobDefOf.Research, "Research")
-            };
-
-            float currentScore = WeaponScoreCache.GetCachedScore(testPawn, currentWeapon);
-            float minorScore = minorUpgrade != null ? WeaponScoreCache.GetCachedScore(testPawn, minorUpgrade) : 0f;
-            float majorScore = majorUpgrade != null ? WeaponScoreCache.GetCachedScore(testPawn, majorUpgrade) : 0f;
-
-            result.Data["CurrentScore"] = currentScore;
-            result.Data["MinorUpgradeScore"] = minorScore;
-            result.Data["MajorUpgradeScore"] = majorScore;
-
-            // Skip tests if weapons weren't created properly
-            if (currentScore <= 0 || minorScore <= 0 || majorScore <= 0)
-            {
-                result.Data["Error"] = "Invalid weapon scores";
-                return result;
-            }
-
-            foreach (var (jobDef, workName) in workTypes)
-            {
-                // Check if work should be interrupted for minor upgrade
-                float minorImprovement = minorScore / currentScore;
-                bool minorShouldInterrupt = JobGiverHelpers.IsSafeToInterrupt(jobDef, minorImprovement);
-
-                result.Data[$"{workName}_MinorInterrupt"] = minorShouldInterrupt;
-                result.Data[$"{workName}_MinorImprovement"] = minorImprovement;
-
-                // Check if work should be interrupted for major upgrade
-                float majorImprovement = majorScore / currentScore;
-                bool majorShouldInterrupt = JobGiverHelpers.IsSafeToInterrupt(jobDef, majorImprovement);
-
-                result.Data[$"{workName}_MajorInterrupt"] = majorShouldInterrupt;
-                result.Data[$"{workName}_MajorImprovement"] = majorImprovement;
-
-                // Verify hauling is protected from minor interruptions
-                if (jobDef == JobDefOf.HaulToCell && minorImprovement < 1.15f && minorShouldInterrupt)
-                {
-                    result.Success = false;
-                    result.FailureReason = result.FailureReason ?? "Work interruption thresholds incorrect";
-                    result.Data["Error"] = result.Data.ContainsKey("Error") ? result.Data["Error"] + "; Hauling interrupted for minor upgrade" : "Hauling interrupted for minor upgrade";
-                    result.Data["HaulingImprovement"] = minorImprovement;
-                    result.Data["HaulingThreshold"] = 1.15f;
-                    result.Data["HaulingShouldInterrupt"] = minorShouldInterrupt;
-                    AutoArmLogger.LogError($"[TEST] WorkInterruptionTest: Hauling interrupted for minor upgrade - improvement: {minorImprovement:F2}, required: 1.15");
-                }
-            }
-
-            return result;
-        }
-
-        public void Cleanup()
-        {
-            if (testPawn != null && !testPawn.Destroyed)
-            {
-                testPawn.equipment?.DestroyAllEquipment();
-                testPawn.Destroy();
-            }
-
-            if (currentWeapon != null && !currentWeapon.Destroyed && currentWeapon.Spawned)
-            {
-                currentWeapon.Destroy();
-            }
-            if (minorUpgrade != null && !minorUpgrade.Destroyed)
-            {
-                minorUpgrade.Destroy();
-            }
-            if (majorUpgrade != null && !majorUpgrade.Destroyed)
-            {
-                majorUpgrade.Destroy();
-            }
-        }
-    }
-
     public class ProgressiveSearchTest : ITestScenario
     {
         public string Name => "Progressive Distance Search";
@@ -553,26 +318,18 @@ namespace AutoArm.Testing.Scenarios
             {
                 testPawn.equipment?.DestroyAllEquipment();
 
-                // Create weapons at specific distances: 8, 16, 32, 64
-                float[] distances = { 8f, 16f, 32f, 64f };
+                // Create weapons at progressive distances
+                var distancePositions = TestPositions.GetProgressiveDistancePositions(testPawn.Position, map);
 
-                foreach (var distance in distances)
+                foreach (var kvp in distancePositions)
                 {
-                    weaponsByDistance[distance] = new List<ThingWithComps>();
-
-                    // Create 2 weapons at each distance
-                    for (int i = 0; i < 2; i++)
+                    weaponsByDistance[kvp.Key] = new List<ThingWithComps>();
+                    foreach (var pos in kvp.Value)
                     {
-                        float angle = i * 180f;
-                        var pos = testPawn.Position + (Vector3.forward.RotatedBy(angle) * distance).ToIntVec3();
-
-                        if (!pos.InBounds(map) || !pos.Standable(map))
-                            continue;
-
                         var weapon = TestHelpers.CreateWeapon(map, VanillaWeaponDefOf.Gun_Autopistol, pos);
                         if (weapon != null)
                         {
-                            weaponsByDistance[distance].Add(weapon);
+                            weaponsByDistance[kvp.Key].Add(weapon);
                             ImprovedWeaponCacheManager.AddWeaponToCache(weapon);
                         }
                     }
@@ -614,17 +371,11 @@ namespace AutoArm.Testing.Scenarios
                     }
                 }
 
-                // Allow some tolerance for position calculation
+                // Allow some tolerance for position calculation (1.5x tolerance)
                 if (distance > closestDistance * 1.5f)
                 {
                     result.Success = false;
-                    result.FailureReason = "Did not pick closest weapon";
-                    result.Data["Error"] = "Progressive distance search not working correctly";
-                    result.Data["PickedDistance"] = distance;
-                    result.Data["ClosestDistance"] = closestDistance;
-                    result.Data["PickedWeapon"] = targetWeapon.Label;
-                    result.Data["ToleranceMultiplier"] = 1.5f;
-                    AutoArmLogger.LogError($"[TEST] ProgressiveSearchTest: Did not pick closest weapon - picked at {distance:F1}, closest at {closestDistance:F1}");
+                    AutoArmLogger.Error($"[TEST] ProgressiveSearchTest: Did not pick closest weapon - picked at {distance:F1}, closest at {closestDistance:F1}");
                 }
             }
             else

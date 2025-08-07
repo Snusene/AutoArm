@@ -2,16 +2,13 @@
 // This file: Shared job generation utilities and pawn validation
 // Common functions used by multiple job generators
 
+using AutoArm.Helpers;
+using AutoArm.Logging;
 using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using Verse.AI;
-using AutoArm.Helpers;
-using AutoArm.Logging;
-using AutoArm.Jobs;
-using AutoArm.Caching;
 
 namespace AutoArm.Jobs
 {
@@ -26,19 +23,20 @@ namespace AutoArm.Jobs
             "Lodger", "Temporary", "Visitor", "Guest", "Shuttle", "Helper",
             "OnDuty", "Defender", "Wardens", "OnLoan", "Lend", "Borrowed"
         };
-        
+
         // Quest tag patterns that indicate permanent joiners
         private static readonly HashSet<string> PermanentQuestTags = new HashSet<string>
         {
             "RitualReward", "JoinPermanent", "WandererJoins", "RefugeeJoins",
             "AcceptJoiner", "Ambassador", "BeggarsJoin"
         };
-        
+
         // Quest def names that indicate temporary colonists
         private static readonly HashSet<string> TemporaryQuestDefs = new HashSet<string>
         {
             "Hospitality", "Lodgers", "Helpers", "PawnLend", "ShuttleCrash_Rescue", "RefugeeBetrayal"
         };
+
         /// <summary>
         /// Check if a pawn is a temporary colonist (quest lodger, borrowed, etc)
         /// </summary>
@@ -105,7 +103,7 @@ namespace AutoArm.Jobs
                             break;
                         }
                     }
-                    
+
                     // Special case for refugee departure
                     if (quest.root?.defName?.Contains("RefugeePodCrash") == true && quest.name.Contains("depart"))
                     {
@@ -135,7 +133,7 @@ namespace AutoArm.Jobs
                         }
                     }
                     if (hasPermanentTag) break;
-                    
+
                     // Special case: QuestReward without Temporary
                     if (tag.Contains("QuestReward") && !tag.Contains("Temporary"))
                     {
@@ -143,7 +141,7 @@ namespace AutoArm.Jobs
                         break;
                     }
                 }
-                
+
                 if (hasPermanentTag)
                 {
                     // Permanent joiner
@@ -204,7 +202,7 @@ namespace AutoArm.Jobs
             string reason;
             return ValidationHelper.IsValidPawn(pawn, out reason);
         }
-        
+
         /// <summary>
         /// Check if a pawn is valid for auto-equip with reason
         /// </summary>
@@ -221,7 +219,7 @@ namespace AutoArm.Jobs
             string reason;
             return ValidationHelper.IsValidWeapon(weapon, pawn, out reason);
         }
-        
+
         /// <summary>
         /// Check if a weapon is a valid candidate with reason
         /// </summary>
@@ -238,39 +236,7 @@ namespace AutoArm.Jobs
             return JobHelper.IsCriticalJob(pawn);
         }
 
-        /// <summary>
-        /// Check if it's safe to interrupt current job (wrapper for compatibility)
-        /// </summary>
-        public static bool IsSafeToInterrupt(Pawn pawn)
-        {
-            if (pawn?.CurJob == null)
-                return true;
-            
-            return JobHelper.IsSafeToInterrupt(pawn.CurJob);
-        }
-        
-        /// <summary>
-        /// Check if it's safe to interrupt with upgrade percentage
-        /// </summary>
-        public static bool IsSafeToInterrupt(Pawn pawn, float upgradePercentage)
-        {
-            if (pawn?.CurJob == null)
-                return true;
-                
-            return JobHelper.IsSafeToInterrupt(pawn.CurJob, upgradePercentage);
-        }
-        
-        /// <summary>
-        /// Check if it's safe to interrupt a specific job def
-        /// </summary>
-        public static bool IsSafeToInterrupt(JobDef jobDef, float upgradePercentage = 0f)
-        {
-            if (jobDef == null)
-                return true;
-                
-            var tempJob = new Job(jobDef);
-            return JobHelper.IsSafeToInterrupt(tempJob, upgradePercentage);
-        }
+        // Removed IsSafeToInterrupt wrappers - we rely entirely on think tree priority
 
         /// <summary>
         /// Check if pawn is doing low priority work (wrapper for compatibility)
@@ -295,7 +261,7 @@ namespace AutoArm.Jobs
                 {
                     if (verb.defaultProjectile?.projectile?.explosionRadius > 0)
                         return true;
-                        
+
                     if (verb.defaultProjectile?.projectile?.damageDef?.defName?.Contains("Bomb") == true ||
                         verb.defaultProjectile?.projectile?.damageDef?.defName?.Contains("Explosion") == true)
                         return true;
@@ -305,7 +271,7 @@ namespace AutoArm.Jobs
             // Check weapon name patterns
             var defName = weaponDef.defName.ToLower();
             var label = weaponDef.label?.ToLower() ?? "";
-            
+
             if (defName.Contains("grenade") || label.Contains("grenade") ||
                 defName.Contains("rocket") || label.Contains("rocket") ||
                 defName.Contains("launcher") || label.Contains("launcher") ||
@@ -337,10 +303,10 @@ namespace AutoArm.Jobs
         {
             if (pawn?.CurJob == null)
                 return false;
-                
+
             var jobDef = pawn.CurJob.def;
             var jobDefName = jobDef?.defName;
-            
+
             return jobDef == JobDefOf.HaulToCell ||
                    jobDef == JobDefOf.HaulToContainer ||
                    jobDefName?.Contains("Haul") == true ||

@@ -4,10 +4,12 @@
 // Uses: Time-based blacklisting with automatic expiry
 // Note: Body-size restricted weapons can be retried if pawn equips power armor
 
+using AutoArm.Definitions;
+using AutoArm.Logging;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using AutoArm.Logging;
+
 namespace AutoArm.Weapons
 {
     /// <summary>
@@ -21,9 +23,6 @@ namespace AutoArm.Weapons
 
         // Track when weapons were blacklisted for cleanup
         private static Dictionary<Pawn, Dictionary<ThingDef, int>> blacklistTimestamps = new Dictionary<Pawn, Dictionary<ThingDef, int>>();
-
-        // How long to keep weapons blacklisted (1 minute in-game)
-        private const int BLACKLIST_DURATION = 3600; // 60 seconds * 60 ticks/second
 
         /// <summary>
         /// Check if a weapon def is blacklisted for a pawn
@@ -103,7 +102,7 @@ namespace AutoArm.Weapons
             if (blacklistedWeapons.ContainsKey(pawn) && blacklistedWeapons[pawn].Any())
             {
                 int count = blacklistedWeapons[pawn].Count;
-                AutoArmLogger.Info($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared weapon blacklist ({count} weapons)");
+                AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared weapon blacklist ({count} weapons)");
             }
 
             blacklistedWeapons.Remove(pawn);
@@ -135,7 +134,7 @@ namespace AutoArm.Weapons
                     continue;
 
                 var expiredWeapons = blacklistTimestamps[pawn]
-                    .Where(kvp => currentTick - kvp.Value > BLACKLIST_DURATION)
+                    .Where(kvp => currentTick - kvp.Value > Constants.WeaponBlacklistDuration)
                     .Select(kvp => kvp.Key)
                     .ToList();
 
@@ -181,6 +180,43 @@ namespace AutoArm.Weapons
             }
 
             return info.ToString();
+        }
+
+        // ========== Test-specific method overloads ==========
+
+        /// <summary>
+        /// Check if a weapon is blacklisted (overload for tests)
+        /// </summary>
+        public static bool IsBlacklisted(Thing weapon, Pawn pawn)
+        {
+            return weapon != null && IsBlacklisted(weapon.def, pawn);
+        }
+
+        /// <summary>
+        /// Add a weapon to the blacklist (overload for tests)
+        /// </summary>
+        public static void AddToBlacklist(Thing weapon, Pawn pawn, string reason = null)
+        {
+            if (weapon != null)
+                AddToBlacklist(weapon.def, pawn, reason);
+        }
+
+        /// <summary>
+        /// Remove a weapon from the blacklist (overload for tests)
+        /// </summary>
+        public static void RemoveFromBlacklist(Thing weapon, Pawn pawn)
+        {
+            if (weapon != null)
+                RemoveFromBlacklist(weapon.def, pawn);
+        }
+
+        /// <summary>
+        /// Clear all blacklists (test method)
+        /// </summary>
+        public static void ClearAll()
+        {
+            blacklistedWeapons.Clear();
+            blacklistTimestamps.Clear();
         }
     }
 }

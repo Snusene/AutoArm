@@ -307,23 +307,23 @@
         moddedMelee: moddedMeleeWeapons.length
     });
 
-    /* 
+    /*
      * SPECIAL WEAPONS NOTE:
-     * 
+     *
      * Many weapons in RimWorld have special effects beyond raw damage that make them situationally powerful:
-     * 
+     *
      * - EMP weapons (EMP Launcher, EMP Grenades): Stun mechanoids and break shields - invaluable against mech clusters
      * - Fire weapons (Incendiary Launcher, Molotov Cocktails, Flamebow, Incinerator): Create area denial and heat
      * - Toxic weapons (Toxbomb Launcher, Tox Grenades): Create lasting toxic clouds - great for chokepoints
      * - Smoke weapons (Smoke Launcher): Block turret targeting and reduce shooting accuracy
      * - Explosive weapons (Frag Grenades, Rocket Launchers): Area damage and structure destruction
-     * 
+     *
      * In AutoArm, these weapons receive special scoring bonuses based on the tactical situation:
      * - vs Mechanoids: EMP weapons get major score bonuses
-     * - vs Infestations: Fire weapons are heavily favored 
+     * - vs Infestations: Fire weapons are heavily favored
      * - Defensive positions: Smoke/toxic weapons score higher
      * - vs Structures: Explosive weapons receive bonuses
-     * 
+     *
      * The 'situational' flag on these weapons indicates they should be evaluated differently than
      * standard DPS-focused weapons. Their true value comes from utility, not raw damage output.
      */

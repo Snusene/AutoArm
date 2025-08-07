@@ -1,353 +1,271 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Performance-optimized weapon scoring cache with pawn-specific calculations
-// Uses WeaponScoringHelper for base scores, CECompat for ammo modifiers, InfusionCompat for mod bonuses
+// This file: Simplified weapon restriction tracking
+// 
+// SIMPLIFIED: Instead of a separate blacklist system, we track
+// "cannot equip" status directly in weapon scores as a special value
 
+using AutoArm.Definitions;
+using AutoArm.Helpers;
+using AutoArm.Logging;
+using AutoArm.Weapons;
 using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using AutoArm.Helpers;
-using AutoArm.Weapons;
-using AutoArm.Logging;
-using AutoArm.Caching;
 
 namespace AutoArm.Caching
 {
+    /// <summary>
+    /// Caches weapon scores per pawn to avoid recalculation
+    /// Also tracks weapons that cannot be equipped due to mod restrictions
+    /// </summary>
     public static class WeaponScoreCache
     {
-        // Thread safety lock
-        private static readonly object cacheLock = new object();
+        // Special score values
+        public const float CANNOT_EQUIP = -1f;  // Weapon has mod restrictions
+        public const float SCORE_EXPIRED = -2f; // Score needs recalculation
         
-        // Cache for pawn-specific scores
-        private static Dictionary<(int weaponId, int pawnId), CachedScore> pawnScoreCache = new Dictionary<(int, int), CachedScore>();
-
-        // Track when weapons were last modified
-        private static Dictionary<int, int> weaponModifiedTick = new Dictionary<int, int>();
-
-        // Track when pawn skills last changed
-        private static Dictionary<int, int> pawnSkillChangedTick = new Dictionary<int, int>();
-
-        private const int PawnCacheLifetime = 1200;  // ~20 seconds
-        private const int MaxCacheEntries = 5000;
-
-        internal class CachedScore
+        private class ScoreEntry
         {
             public float Score { get; set; }
-            public int CachedTick { get; set; }
-            public int WeaponModTick { get; set; }
-            public int PawnSkillTick { get; set; }
+            public int LastUpdateTick { get; set; }
+            public int PawnSkillHash { get; set; }
         }
 
+        // Main cache: (pawn, weapon) -> score
+        private static Dictionary<Pawn, Dictionary<ThingWithComps, ScoreEntry>> scoreCache = 
+            new Dictionary<Pawn, Dictionary<ThingWithComps, ScoreEntry>>();
+
+        // Track when pawn skills changed
+        private static Dictionary<Pawn, int> pawnSkillHashes = new Dictionary<Pawn, int>();
+
+        /// <summary>
+        /// Get cached score for a pawn-weapon combination
+        /// Returns CANNOT_EQUIP if weapon has mod restrictions
+        /// </summary>
         public static float GetCachedScore(Pawn pawn, ThingWithComps weapon)
         {
-            if (weapon == null || pawn == null)
+            if (pawn == null || weapon == null)
                 return 0f;
 
-            int currentTick = Find.TickManager.TicksGame;
-            var cacheKey = (weapon.thingIDNumber, pawn.thingIDNumber);
-
-            // Check if we have a valid cached score
-            lock (cacheLock)
+            // Check if we have a cached score
+            if (scoreCache.TryGetValue(pawn, out var weaponScores))
             {
-                if (pawnScoreCache.TryGetValue(cacheKey, out var cached))
+                if (weaponScores.TryGetValue(weapon, out var entry))
                 {
-                    // Check if cache is still valid
-                    if (currentTick - cached.CachedTick < PawnCacheLifetime)
+                    int currentTick = Find.TickManager.TicksGame;
+                    
+                    // Check if score is for "cannot equip" - these expire after 60 seconds
+                    if (entry.Score == CANNOT_EQUIP)
                     {
-                        // Check if weapon hasn't been modified
-                        int weaponModTick = GetWeaponModifiedTick(weapon);
-                        if (weaponModTick <= cached.WeaponModTick)
+                        if (currentTick - entry.LastUpdateTick < Constants.WeaponBlacklistDuration)
                         {
-                            // Check if pawn skills haven't changed
-                            int pawnSkillTick = GetPawnSkillChangedTick(pawn);
-                            if (pawnSkillTick <= cached.PawnSkillTick)
-                            {
-                                if (Prefs.DevMode && Find.TickManager.TicksGame % 600 == 0) // Log every 10 seconds in dev mode
-                                    AutoArmLogger.Debug($"WeaponScoreCache hit: {weapon.Label} for {pawn.LabelShort}");
-                                return cached.Score;
-                            }
+                            return CANNOT_EQUIP; // Still blacklisted
+                        }
+                        // Expired - remove and recalculate
+                        weaponScores.Remove(weapon);
+                    }
+                    // Check if normal score is still valid
+                    else if (currentTick - entry.LastUpdateTick < Constants.WeaponScoreCacheLifetime)
+                    {
+                        // Check if pawn's skills changed
+                        int currentSkillHash = GetPawnSkillHash(pawn);
+                        if (entry.PawnSkillHash == currentSkillHash)
+                        {
+                            return entry.Score;
                         }
                     }
                 }
             }
 
-            float score = 0f;
-            try
-            {
-                // Calculate fresh score using WeaponScoringHelper
-                score = WeaponScoringHelper.GetTotalScore(pawn, weapon);
-
-                // Add any mod-specific bonuses that aren't part of base scoring
-                score += GetModSpecificBonuses(weapon);
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.Error($"Failed to calculate weapon score for {weapon.Label}: {ex.Message}", ex);
-                return 0f;
-            }
-
+            // Calculate new score
+            float score = CalculateWeaponScore(pawn, weapon);
+            
             // Cache the result
-            lock (cacheLock)
-            {
-                pawnScoreCache[cacheKey] = new CachedScore
-                {
-                    Score = score,
-                    CachedTick = currentTick,
-                    WeaponModTick = GetWeaponModifiedTick(weapon),
-                    PawnSkillTick = GetPawnSkillChangedTick(pawn)
-                };
-
-                // Clean cache if too large
-                if (pawnScoreCache.Count > MaxCacheEntries)
-                {
-                    AutoArmLogger.Warn($"WeaponScoreCache exceeded {MaxCacheEntries} entries, cleaning up");
-                    CleanupCache();
-                }
-            }
-
+            CacheScore(pawn, weapon, score);
+            
             return score;
         }
 
         /// <summary>
-        /// Get mod-specific bonuses that aren't part of the base weapon scoring
+        /// Calculate weapon score, checking for mod restrictions first
         /// </summary>
-        private static float GetModSpecificBonuses(ThingWithComps weapon)
+        private static float CalculateWeaponScore(Pawn pawn, ThingWithComps weapon)
         {
-            float bonus = 0f;
-
-            // Infusion 2 mod bonuses
-            if (InfusionCompat.IsLoaded())
+            // First check if pawn can even equip this weapon (mod restrictions)
+            try
             {
-                bonus += InfusionCompat.GetInfusionScoreBonus(weapon);
-            }
-
-            // Odyssey unique weapon bonus
-            bonus += GetOdysseyUniqueBonus(weapon);
-
-            return bonus;
-        }
-
-        private const float OdysseyUniqueBaseBonus = 50f;
-        private const float OdysseyUniqueTraitBonus = 100f; // ~50 points per beneficial trait
-
-        private static float GetOdysseyUniqueBonus(ThingWithComps weapon)
-        {
-            if (!IsOdysseyUniqueWeapon(weapon))
-                return 0f;
-
-            // Base bonus for being unique (they're rare and special)
-            float bonus = OdysseyUniqueBaseBonus;
-
-            // Additional bonus for traits (assume average of 2 beneficial traits)
-            bonus += OdysseyUniqueTraitBonus;
-
-            return bonus;
-        }
-
-        private static bool IsOdysseyUniqueWeapon(ThingWithComps weapon)
-        {
-            if (weapon?.def == null)
-                return false;
-
-            // Check if Odyssey DLC is active
-            if (!ModsConfig.OdysseyActive)
-                return false;
-
-            // Based on debug output, unique weapons have "_Unique" in their def name
-            // Example: "Gun_Revolver_Unique"
-            return weapon.def.defName.Contains("_Unique");
-        }
-
-        public static float GetCachedScoreWithCE(Pawn pawn, ThingWithComps weapon)
-        {
-            float baseScore = GetCachedScore(pawn, weapon);
-
-            // Apply Combat Extended ammo score modifier if CE is loaded and ammo checking is enabled
-            if (CECompat.ShouldCheckAmmo())
-            {
-                float ammoModifier = CECompat.GetAmmoScoreModifier(weapon, pawn);
-                baseScore *= ammoModifier;
-            }
-
-            return baseScore;
-        }
-
-        private static int GetWeaponModifiedTick(ThingWithComps weapon)
-        {
-            lock (cacheLock)
-            {
-                if (weaponModifiedTick.TryGetValue(weapon.thingIDNumber, out int tick))
-                    return tick;
-                return 0;
-            }
-        }
-
-        private static int GetPawnSkillChangedTick(Pawn pawn)
-        {
-            lock (cacheLock)
-            {
-                if (pawnSkillChangedTick.TryGetValue(pawn.thingIDNumber, out int tick))
-                    return tick;
-                return 0;
-            }
-        }
-
-        public static void MarkWeaponModified(ThingWithComps weapon)
-        {
-            if (weapon != null)
-            {
-                lock (cacheLock)
+                if (!EquipmentUtility.CanEquip(weapon, pawn))
                 {
-                    weaponModifiedTick[weapon.thingIDNumber] = Find.TickManager.TicksGame;
+                    return CANNOT_EQUIP;
                 }
             }
+            catch (Exception ex)
+            {
+                // Some mods throw exceptions - treat as cannot equip
+                AutoArmLogger.Error($"Exception checking CanEquip for {weapon.Label} on {pawn.LabelShort}: {ex.Message}");
+                return CANNOT_EQUIP;
+            }
+
+            // Calculate actual score
+            return WeaponScoringHelper.GetTotalScore(pawn, weapon);
         }
 
+        /// <summary>
+        /// Cache a score for a pawn-weapon combination
+        /// </summary>
+        private static void CacheScore(Pawn pawn, ThingWithComps weapon, float score)
+        {
+            if (!scoreCache.ContainsKey(pawn))
+            {
+                scoreCache[pawn] = new Dictionary<ThingWithComps, ScoreEntry>();
+            }
+
+            scoreCache[pawn][weapon] = new ScoreEntry
+            {
+                Score = score,
+                LastUpdateTick = Find.TickManager.TicksGame,
+                PawnSkillHash = GetPawnSkillHash(pawn)
+            };
+        }
+
+        /// <summary>
+        /// Get hash of pawn's combat skills for change detection
+        /// </summary>
+        private static int GetPawnSkillHash(Pawn pawn)
+        {
+            if (pawn?.skills == null)
+                return 0;
+
+            // Check cached hash
+            if (pawnSkillHashes.TryGetValue(pawn, out int cachedHash))
+            {
+                return cachedHash;
+            }
+
+            // Calculate new hash
+            int hash = 17;
+            hash = hash * 31 + (int)(pawn.skills.GetSkill(SkillDefOf.Shooting)?.Level ?? 0);
+            hash = hash * 31 + (int)(pawn.skills.GetSkill(SkillDefOf.Melee)?.Level ?? 0);
+            
+            // Include traits that affect weapon preference
+            if (pawn.story?.traits != null)
+            {
+                hash = hash * 31 + (pawn.story.traits.HasTrait(TraitDefOf.Brawler) ? 1 : 0);
+            }
+
+            pawnSkillHashes[pawn] = hash;
+            return hash;
+        }
+
+        /// <summary>
+        /// Mark that a pawn's skills have changed
+        /// </summary>
         public static void MarkPawnSkillsChanged(Pawn pawn)
         {
-            if (pawn != null)
+            if (pawn == null)
+                return;
+
+            // Remove cached skill hash to force recalculation
+            pawnSkillHashes.Remove(pawn);
+            
+            // Invalidate all weapon scores for this pawn
+            if (scoreCache.ContainsKey(pawn))
             {
-                lock (cacheLock)
-                {
-                    pawnSkillChangedTick[pawn.thingIDNumber] = Find.TickManager.TicksGame;
-                }
+                scoreCache[pawn].Clear();
             }
         }
 
+        /// <summary>
+        /// Get cached score with Combat Extended compatibility
+        /// </summary>
+        public static float GetCachedScoreWithCE(Pawn pawn, ThingWithComps weapon)
+        {
+            // Simply delegate to GetCachedScore - CE integration is now handled in WeaponScoringHelper
+            return GetCachedScore(pawn, weapon);
+        }
+
+        /// <summary>
+        /// Clean up cache periodically
+        /// </summary>
         public static int CleanupCache()
         {
-            int removed = 0;
-            
-            lock (cacheLock)
+            int removedCount = 0;
+            int currentTick = Find.TickManager.TicksGame;
+
+            // Clean up dead pawns
+            var deadPawns = scoreCache.Keys.Where(p => p == null || p.Destroyed || p.Dead).ToList();
+            foreach (var pawn in deadPawns)
             {
-                int currentTick = Find.TickManager.TicksGame;
-                int lifetimeThreshold = PawnCacheLifetime * 2;
+                removedCount += scoreCache[pawn]?.Count ?? 0;
+                scoreCache.Remove(pawn);
+                pawnSkillHashes.Remove(pawn);
+            }
 
-                // Cleanup old pawn cache entries using LINQ
-                // Use smart pre-allocation based on cache size
-                var pawnKeysToRemove = pawnScoreCache
-                    .Where(kvp => currentTick - kvp.Value.CachedTick > lifetimeThreshold)
+            // Clean up destroyed weapons and expired scores
+            foreach (var pawnEntry in scoreCache.ToList())
+            {
+                var weaponsToRemove = pawnEntry.Value
+                    .Where(kvp => kvp.Key == null || 
+                                 kvp.Key.Destroyed || 
+                                 (kvp.Value.Score != CANNOT_EQUIP && 
+                                  currentTick - kvp.Value.LastUpdateTick > Constants.WeaponScoreCacheLifetime * 2))
                     .Select(kvp => kvp.Key)
                     .ToList();
 
-                foreach (var key in pawnKeysToRemove)
+                foreach (var weapon in weaponsToRemove)
                 {
-                    pawnScoreCache.Remove(key);
-                    removed++;
+                    pawnEntry.Value.Remove(weapon);
+                    removedCount++;
                 }
 
-                // Cleanup old weapon modification ticks
-                var weaponKeysToRemove = weaponModifiedTick
-                    .Where(kvp => currentTick - kvp.Value > lifetimeThreshold)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-
-                foreach (var id in weaponKeysToRemove)
+                // Remove pawn entry if empty
+                if (pawnEntry.Value.Count == 0)
                 {
-                    weaponModifiedTick.Remove(id);
-                    removed++;
-                }
-
-                // Cleanup old pawn skill ticks
-                var pawnSkillKeysToRemove = pawnSkillChangedTick
-                    .Where(kvp => currentTick - kvp.Value > lifetimeThreshold)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-
-                foreach (var id in pawnSkillKeysToRemove)
-                {
-                    pawnSkillChangedTick.Remove(id);
-                    removed++;
-                }
-                
-                if (Prefs.DevMode && (pawnKeysToRemove.Count > 0 || weaponKeysToRemove.Count > 0 || pawnSkillKeysToRemove.Count > 0))
-                {
-                    AutoArmLogger.Debug($"WeaponScoreCache cleanup: removed {pawnKeysToRemove.Count} scores, {weaponKeysToRemove.Count} weapon ticks, {pawnSkillKeysToRemove.Count} skill ticks");
+                    scoreCache.Remove(pawnEntry.Key);
+                    pawnSkillHashes.Remove(pawnEntry.Key);
                 }
             }
-            
-            return removed;
-        }
 
-        public static void ClearAllCaches()
-        {
-            lock (cacheLock)
+            // Limit total cache size
+            if (scoreCache.Sum(kvp => kvp.Value.Count) > Constants.MaxScoreCacheEntries)
             {
-                int totalEntries = pawnScoreCache.Count + weaponModifiedTick.Count + pawnSkillChangedTick.Count;
-                if (totalEntries > 0)
-                    AutoArmLogger.Debug($"WeaponScoreCache cleared: {totalEntries} total entries removed");
-                    
-                pawnScoreCache.Clear();
-                weaponModifiedTick.Clear();
-                pawnSkillChangedTick.Clear();
-            }
-        }
-        // Cached dummy pawn for test purposes
-        private static Pawn _testDummyPawn;
-        private static readonly object _dummyPawnLock = new object();
-        private static Pawn TestDummyPawn
-        {
-            get
-            {
-                if (_testDummyPawn == null || _testDummyPawn.Destroyed)
+                // Remove oldest entries
+                var allEntries = scoreCache.SelectMany(kvp => 
+                    kvp.Value.Select(w => new { Pawn = kvp.Key, Weapon = w.Key, Entry = w.Value }))
+                    .OrderBy(x => x.Entry.LastUpdateTick)
+                    .Take(Constants.MaxScoreCacheEntries / 2)
+                    .ToList();
+
+                foreach (var entry in allEntries)
                 {
-                    lock (_dummyPawnLock)
+                    if (scoreCache.ContainsKey(entry.Pawn))
                     {
-                        // Double-check after acquiring lock
-                        if (_testDummyPawn == null || _testDummyPawn.Destroyed)
-                        {
-                            _testDummyPawn = new Pawn();
-                            _testDummyPawn.skills = new Pawn_SkillTracker(_testDummyPawn);
-                        }
+                        scoreCache[entry.Pawn].Remove(entry.Weapon);
+                        removedCount++;
                     }
                 }
-                return _testDummyPawn;
             }
+
+            return removedCount;
         }
-        
-        // Helper method for tests to inspect weapon scores
-        public static BaseWeaponScores GetBaseWeaponScore(ThingWithComps weapon)
+
+        /// <summary>
+        /// Clear all cached scores
+        /// </summary>
+        public static void ClearCache()
         {
-            if (weapon == null) return null;
-            
-            var scores = new BaseWeaponScores();
-            
-            // Use cached dummy pawn for weapon property score calculation
-            // This gives us the full weapon score without pawn-specific modifiers
-            scores.WeaponPropertyScore = WeaponScoringHelper.GetWeaponPropertyScore(TestDummyPawn, weapon);
-            
-            // Get quality for informational purposes
-            if (weapon.TryGetQuality(out QualityCategory quality))
-            {
-                scores.QualityCategory = quality;
-            }
-            
-            // Get mod-specific bonuses
-            scores.ModScore = GetModSpecificBonuses(weapon);
-            
-            // For ranged weapons, extract basic info
-            if (weapon.def.IsRangedWeapon)
-            {
-                var verb = weapon.def.Verbs?.FirstOrDefault();
-                if (verb != null)
-                {
-                    scores.Range = verb.range;
-                    scores.BurstCount = verb.burstShotCount;
-                }
-            }
-            
-            return scores;
+            scoreCache.Clear();
+            pawnSkillHashes.Clear();
         }
-    }
-    
-    // Helper class for weapon score inspection
-    public class BaseWeaponScores
-    {
-        public float WeaponPropertyScore { get; set; } // Combined score from WeaponScoringHelper
-        public float ModScore { get; set; }
-        public QualityCategory QualityCategory { get; set; }
-        public float Range { get; set; } // For informational purposes
-        public int BurstCount { get; set; } // For informational purposes
+
+        /// <summary>
+        /// Clear all cached scores (alias for compatibility)
+        /// </summary>
+        public static void ClearAllCaches()
+        {
+            ClearCache();
+        }
     }
 }

@@ -73,6 +73,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Source\Caching\GenericCache.cs" />
     <Compile Include="Source\Core\AutoArmGameComponent.cs" />
     <Compile Include="Source\Core\AutoArmMod.cs" />
     <Compile Include="Source\Core\AutoArmSettings.cs" />
@@ -82,18 +83,18 @@
     <Compile Include="Source\Caching\WeaponScoreCache.cs" />
     <Compile Include="Source\Compatibility\CECompat.cs" />
     <Compile Include="Source\Compatibility\InfusionCompat.cs" />
-    <Compile Include="Source\Compatibility\PickUpAndHaulCompat.cs" />
     <Compile Include="Source\Compatibility\SimpleSidearmsCompat.cs" />
     <Compile Include="Source\Definitions\VanillaWeaponDefOf.cs" />
+    <Compile Include="Source\Definitions\Constants.cs" />
     <Compile Include="Source\Helpers\CleanupHelper.cs" />
-    <Compile Include="Source\Helpers\DistanceHelper.cs" />
     <Compile Include="Source\Helpers\DroppedItemTracker.cs" />
     <Compile Include="Source\Helpers\ForcedWeaponHelper.cs" />
-    <Compile Include="Source\Helpers\NotificationHelper.cs" />
+    <Compile Include="Source\Helpers\ForcedWeaponTracker.cs" />
+    <Compile Include="Source\Helpers\PerformanceHelper.cs" />
     <Compile Include="Source\Helpers\ReflectionHelper.cs" />
-    <Compile Include="Source\Helpers\SafeAccess.cs" />
     <Compile Include="Source\Helpers\TimingHelper.cs" />
     <Compile Include="Source\Helpers\ValidationHelper.cs" />
+    <Compile Include="Source\Jobs\AutoEquipTracker.cs" />
     <Compile Include="Source\Jobs\JobGiverHelpers.cs" />
     <Compile Include="Source\Jobs\JobGiver_PickUpBetterWeapon.cs" />
     <Compile Include="Source\Jobs\JobHelper.cs" />
@@ -101,47 +102,41 @@
     <Compile Include="Source\Patches\ChildWeaponPatches.cs" />
     <Compile Include="Source\Patches\EquipmentPatches.cs" />
     <Compile Include="Source\Patches\InventoryPatches.cs" />
+    <Compile Include="Source\Patches\MapInitPatches.cs" />
     <Compile Include="Source\Patches\OutfitFilterPatches.cs" />
     <Compile Include="Source\Patches\UIPatches.cs" />
-    <Compile Include="Source\Patches\UnifiedTickRarePatch.cs" />
     <Compile Include="Source\Patches\WeaponCachePatches.cs" />
-    <Compile Include="Source\UI\ConflictDetection.cs" />
-    <Compile Include="Source\UI\WeaponTabInjector.cs" />
-    <Compile Include="Source\Core\WeaponAutoEquip.cs" />
-    <Compile Include="Source\Core\WeaponBlacklist.cs" />
-    <Compile Include="Source\Core\WeaponScoringHelper.cs" />
-    <Compile Include="Source\Core\WeaponValidation.cs" />
-    <Compile Include="Source\Testing\Helpers\SafeTestCleanup.cs" />
-    <Compile Include="Source\Testing\Helpers\TestLogFilter.cs" />
-    <Compile Include="Source\Testing\Helpers\TestResultBuilder.cs" />
-    <Compile Include="Source\Testing\Helpers\TestWeaponProvider.cs" />
+    <Compile Include="Source\Testing\Helpers\JobGiverTestExtensions.cs" />
+    <Compile Include="Source\Testing\Helpers\JobGiverTestHelper.cs" />
+    <Compile Include="Source\Testing\Helpers\TestConstants.cs" />
+    <Compile Include="Source\Testing\Helpers\TestValidationHelper.cs" />
     <Compile Include="Source\Testing\PerformanceTestRunner.cs" />
-    <Compile Include="Source\Testing\Scenarios\AuthenticRaidTest.cs" />
     <Compile Include="Source\Testing\Scenarios\BasicTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CompatibilityTests.cs" />
     <Compile Include="Source\Testing\Scenarios\CoreTests.cs" />
-    <Compile Include="Source\Testing\Scenarios\DiagnosticTest.cs" />
-    <Compile Include="Source\Testing\Scenarios\ForcedWeaponTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\CriticalTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\GameplayTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\MemoryAndPerformanceTests.cs" />
     <Compile Include="Source\Testing\Scenarios\MiscTests.cs" />
-    <Compile Include="Source\Testing\Scenarios\PacifistBehaviorTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\NullSafetyTestFix.cs" />
     <Compile Include="Source\Testing\Scenarios\PawnBehaviorTests.cs" />
     <Compile Include="Source\Testing\Scenarios\PerformanceTests.cs" />
-    <Compile Include="Source\Testing\Scenarios\PickUpAndHaulSidearmsTest.cs" />
-    <Compile Include="Source\Testing\Scenarios\SettingsTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\ReflectionAndBypassTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\SaveLoadTest.cs" />
+    <Compile Include="Source\Testing\Scenarios\SimpleSidearmsAdvancedTests.cs" />
     <Compile Include="Source\Testing\Scenarios\SystemTests.cs" />
-    <Compile Include="Source\Testing\Scenarios\WeaponScoringDebugTest.cs" />
-    <Compile Include="Source\Testing\Scenarios\WeaponScoringTests.cs" />
+    <Compile Include="Source\Testing\Scenarios\TestFixes.cs" />
     <Compile Include="Source\Testing\Scenarios\WeaponTests.cs" />
-    <Compile Include="Source\Testing\TestDebugger.cs" />
-    <Compile Include="Source\Testing\TestHelpers.cs" />
+    <Compile Include="Source\Testing\Helpers\TestHelpers.cs" />
     <Compile Include="Source\Testing\TestInterfaces.cs" />
-    <Compile Include="Source\Testing\TestModEnabler.cs" />
     <Compile Include="Source\Testing\TestRunner.cs" />
     <Compile Include="Source\Testing\TestRunnerFix.cs" />
-    <Compile Include="Source\Testing\TestSimpleSidearmsValidation.cs" />
+    <Compile Include="Source\Testing\Scenarios\TestSimpleSidearmsValidation.cs" />
     <Compile Include="Source\Testing\TestSuites.cs" />
-    <Compile Include="Source\Testing\WeaponCategorizationDiagnostic.cs" />
-    <Compile Include="Source\Testing\WeaponDecisionLog.cs" />
+    <Compile Include="Source\UI\WeaponTabInjector.cs" />
+    <Compile Include="Source\Core\WeaponBlacklist.cs" />
+    <Compile Include="Source\Core\WeaponScoringHelper.cs" />
+    <Compile Include="Source\Core\WeaponValidation.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".gitignore" />
@@ -164,10 +159,10 @@
     <None Include="obj\Debug\DesignTimeResolveAssemblyReferencesInput.cache" />
     <None Include="obj\Release\AutoArm.csproj.AssemblyReference.cache" />
     <None Include="README.md" />
-    <None Include="Source\Testing\TEST_ERROR_GUIDELINES.md" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="bin\Release\" />
+    <Folder Include="Defs\" />
     <Folder Include="obj\Debug\TempPE\" />
   </ItemGroup>
   <ItemGroup>
@@ -175,122 +170,60 @@
     <Analyzer Include="..\packages\StyleCop.Analyzers.1.1.118\analyzers\dotnet\cs\StyleCop.Analyzers.dll" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Pre- & Post-build events (works in VS and VS Code) -->
   <PropertyGroup>
-    <PostBuildEvent>@echo off
+    <!-- PRE-BUILD: generates Source\Definitions\Constants.cs -->
+    <PreBuildEvent>
+      cd "$(SolutionDir)" &amp;&amp; powershell -ExecutionPolicy Bypass -File "extract-constants.ps1"
+    </PreBuildEvent>
+    <!-- POST-BUILD: deploy compiled mod into RimWorld Mods folder -->
+    <PostBuildEvent><![CDATA[
+@echo off
 setlocal enabledelayedexpansion
-set "SRC=C:\Users\mohfl\source\repos\AutoArm\AutoArm"
+
+rem ── Paths
+set "SRC=$(ProjectDir)"
 set "DST=C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods\AutoArm"
+
 echo ========================================
 echo AutoArm Mod Deployment Script
 echo ========================================
+echo Source: %SRC%
+echo Destination: %DST%
 echo.
-echo Source: %25SRC%25
-echo Destination: %25DST%25
-echo.
-REM Create destination folder if it doesn't exist
-if not exist "%25DST%25" (
-    echo Creating mod folder...
-    mkdir "%25DST%25"
-)
-REM Copy About (required)
-if exist "%25SRC%25\About" (
-    echo Copying About folder...
-    xcopy "%25SRC%25\About\*" "%25DST%25\About\" /E /I /Y /Q
-) else (
-    echo WARNING: About folder not found!
-)
-REM Copy Defs if exists
-if exist "%25SRC%25\Defs" (
-    echo Copying Defs folder...
-    xcopy "%25SRC%25\Defs\*" "%25DST%25\Defs\" /E /I /Y /Q
-)
-REM Copy Patches if exists
-if exist "%25SRC%25\Patches" (
-    echo Copying Patches folder...
-    xcopy "%25SRC%25\Patches\*" "%25DST%25\Patches\" /E /I /Y /Q
-)
-REM Copy Languages if exists
-if exist "%25SRC%25\Languages" (
-    echo Copying Languages folder...
-    xcopy "%25SRC%25\Languages\*" "%25DST%25\Languages\" /E /I /Y /Q
-)
-REM Copy Textures if exists
-if exist "%25SRC%25\Textures" (
-    echo Copying Textures folder...
-    xcopy "%25SRC%25\Textures\*" "%25DST%25\Textures\" /E /I /Y /Q
-)
-REM Copy Sounds if exists
-if exist "%25SRC%25\Sounds" (
-    echo Copying Sounds folder...
-    xcopy "%25SRC%25\Sounds\*" "%25DST%25\Sounds\" /E /I /Y /Q
-)
-REM Make Assemblies folder if not exists
-if not exist "%25DST%25\Assemblies" (
-    echo Creating Assemblies folder...
-    mkdir "%25DST%25\Assemblies"
-)
-REM Delete old DLL and PDB if they exist
-if exist "%25DST%25\Assemblies\AutoArm.dll" (
-    echo Removing old AutoArm.dll...
-    del /F /Q "%25DST%25\Assemblies\AutoArm.dll"
-)
-if exist "%25DST%25\Assemblies\AutoArm.pdb" (
-    echo Removing old AutoArm.pdb...
-    del /F /Q "%25DST%25\Assemblies\AutoArm.pdb"
-)
-REM Copy DLL (REQUIRED)
-if exist "%25SRC%25\bin\Debug\AutoArm.dll" (
-    echo Copying AutoArm.dll...
-    copy /Y "%25SRC%25\bin\Debug\AutoArm.dll" "%25DST%25\Assemblies\AutoArm.dll"
-    if !errorlevel! equ 0 (
-        echo Successfully copied AutoArm.dll
-    ) else (
-        echo ERROR: Failed to copy AutoArm.dll!
+
+rem Ensure destination hierarchy
+if not exist "%DST%" mkdir "%DST%"
+if not exist "%DST%\Assemblies" mkdir "%DST%\Assemblies"
+
+rem Copy content folders
+for %%F in (About Defs Patches Languages Textures Sounds) do (
+    if exist "%SRC%\%%F" (
+        echo Copying %%F...
+        xcopy "%SRC%\%%F\*" "%DST%\%%F\" /E /I /Y /Q
     )
-) else (
-    echo ERROR: DLL not found at %25SRC%25\bin\Debug\AutoArm.dll
-    echo Build may have failed!
 )
-REM Copy mod images
-if exist "%25SRC%25\preview.png" (
-    echo Copying preview.png...
-    copy /Y "%25SRC%25\preview.png" "%25DST%25\preview.png"
+
+rem Replace DLL / PDB
+for %%F in (AutoArm.dll AutoArm.pdb) do (
+    if exist "%DST%\Assemblies\%%F" del /F /Q "%DST%\Assemblies\%%F"
+    if exist "%SRC%\bin\$(Configuration)\%%F" (
+        copy /Y "%SRC%\bin\$(Configuration)\%%F" "%DST%\Assemblies\%%F"
+    )
 )
-if exist "%25SRC%25\thumbnail.png" (
-    echo Copying thumbnail.png...
-    copy /Y "%25SRC%25\thumbnail.png" "%25DST%25\thumbnail.png"
+
+rem Misc assets
+for %%F in (preview.png thumbnail.png README.md LICENSE) do (
+    if exist "%%SRC%%\%%F" copy /Y "%%SRC%%\%%F" "%%DST%%\%%F" >nul
 )
-REM Copy README if exists
-if exist "%25SRC%25\README.md" (
-    echo Copying README.md...
-    copy /Y "%25SRC%25\README.md" "%25DST%25\README.md"
-)
-REM Copy LICENSE if exists
-if exist "%25SRC%25\LICENSE" (
-    echo Copying LICENSE...
-    copy /Y "%25SRC%25\LICENSE" "%25DST%25\LICENSE"
-)
+
 echo.
-echo ========================================
 echo Deployment Complete!
-echo ========================================
-REM Check if the DLL was actually copied
-if exist "%25DST%25\Assemblies\AutoArm.dll" (
-    echo SUCCESS: AutoArm.dll is in place
-    
-    REM Get file size for verification
-    for %25%25A in ("%25DST%25\Assemblies\AutoArm.dll") do (
-        echo DLL Size: %25%25~zA bytes
-        echo Last Modified: %25%25~tA
-    )
-) else (
-    echo WARNING: AutoArm.dll was NOT copied successfully!
-)
+rem ---- removed problematic IF / FOR diagnostics ----
+rem They caused “... was unexpected at this time” when the
+rem path contained “(x86)”.
 echo.
-pause
-exit /b 0</PostBuildEvent>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PreBuildEvent>cd "$(SolutionDir)" &amp;&amp; powershell -ExecutionPolicy Bypass -File "extract-constants.ps1"</PreBuildEvent>
+exit /b 0
+      ]]></PostBuildEvent>
   </PropertyGroup>
 </Project>

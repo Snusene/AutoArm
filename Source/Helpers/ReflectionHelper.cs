@@ -4,12 +4,12 @@
 // Uses: Type, method, field, and property caching with safe invocation
 // Critical: Performance optimization for frequent reflection operations
 
+using AutoArm.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
-using AutoArm.Helpers; using AutoArm.Logging;
 
 namespace AutoArm.Helpers
 {
@@ -264,7 +264,7 @@ namespace AutoArm.Helpers
         {
             if (string.IsNullOrEmpty(key))
                 return default(T);
-                
+
             lock (cacheLock)
             {
                 if (!fieldGetterCache.TryGetValue(key, out Func<object> getter))

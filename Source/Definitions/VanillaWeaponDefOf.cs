@@ -4,6 +4,7 @@
 // Note: Uses GetNamedSilentFail to handle missing/modded weapon scenarios
 
 using Verse;
+
 namespace AutoArm.Definitions
 {
     public static class VanillaWeaponDefOf
@@ -20,7 +21,6 @@ namespace AutoArm.Definitions
         public static ThingDef Gun_HeavySMG => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_HeavySMG");
         public static ThingDef Gun_LMG => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_LMG");
         public static ThingDef Gun_Minigun => DefDatabase<ThingDef>.GetNamedSilentFail("Gun_Minigun");
-
         public static ThingDef MeleeWeapon_Knife => DefDatabase<ThingDef>.GetNamedSilentFail("MeleeWeapon_Knife");
         public static ThingDef MeleeWeapon_Club => DefDatabase<ThingDef>.GetNamedSilentFail("MeleeWeapon_Club");
         public static ThingDef MeleeWeapon_Mace => DefDatabase<ThingDef>.GetNamedSilentFail("MeleeWeapon_Mace");

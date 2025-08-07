@@ -4,10 +4,11 @@
 // Uses: Outfit changes, weapon upgrades, SimpleSidearms integration
 // Critical: Prevents infinite drop/pickup loops that break pawn behavior
 
+using AutoArm.Definitions;
+using AutoArm.Logging;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
-using AutoArm.Logging;
 
 namespace AutoArm.Helpers
 {
@@ -20,12 +21,12 @@ namespace AutoArm.Helpers
         private static Dictionary<Thing, int> recentlyDroppedItems = new Dictionary<Thing, int>();
         private static HashSet<Thing> pendingUpgradeDrops = new HashSet<Thing>();
         private static HashSet<Pawn> pawnsWithSimpleSidearmsSwapInProgress = new HashSet<Pawn>();
-        private const int DefaultIgnoreTicks = 300; // 5 seconds
         
-        // Tracking for summary logging
-        private static int itemsMarkedThisSession = 0;
-        private static int lastSummaryTick = 0;
-        private const int SummaryInterval = 6000; // Report every 100 seconds
+        public const int DefaultIgnoreTicks = Constants.DefaultDropIgnoreTicks;
+        public const int LongCooldownTicks = Constants.LongDropCooldownTicks;
+        
+        private static int lastCleanupTick = 0;
+        private const int CleanupInterval = 600; // Cleanup every 10 seconds
 
         /// <summary>
         /// Mark an item as recently dropped
@@ -36,20 +37,10 @@ namespace AutoArm.Helpers
                 return;
 
             recentlyDroppedItems[item] = Find.TickManager.TicksGame + ignoreTicks;
-            itemsMarkedThisSession++;
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmLogger.Debug($"Marked {item.Label} as recently dropped - will ignore for {ignoreTicks} ticks");
-            }
-            
-            // Report summary periodically
-            int currentTick = Find.TickManager.TicksGame;
-            if (currentTick - lastSummaryTick > SummaryInterval && itemsMarkedThisSession > 0)
-            {
-                AutoArmLogger.Debug($"Dropped item tracking: {itemsMarkedThisSession} items marked in last {SummaryInterval} ticks");
-                itemsMarkedThisSession = 0;
-                lastSummaryTick = currentTick;
             }
         }
 
@@ -61,16 +52,16 @@ namespace AutoArm.Helpers
             if (item == null)
                 return false;
 
-            CleanupOldEntries();
-            
-            // Clean up periodically without logging
-
-            if (recentlyDroppedItems.TryGetValue(item, out int expireTick))
+            // Periodic cleanup
+            int currentTick = Find.TickManager.TicksGame;
+            if (currentTick - lastCleanupTick > CleanupInterval)
             {
-                return Find.TickManager.TicksGame < expireTick;
+                CleanupOldEntries();
+                lastCleanupTick = currentTick;
             }
 
-            return false;
+            return recentlyDroppedItems.TryGetValue(item, out int expireTick) && 
+                   currentTick < expireTick;
         }
 
         /// <summary>
@@ -89,42 +80,31 @@ namespace AutoArm.Helpers
         /// </summary>
         public static int CleanupOldEntries()
         {
-            int removed = 0;
             int currentTick = Find.TickManager.TicksGame;
+            int removed = 0;
 
-            var toRemove = recentlyDroppedItems
-                .Where(kvp => currentTick >= kvp.Value || kvp.Key.Destroyed)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var item in toRemove)
+            // Clean expired or destroyed items
+            var expiredItems = new List<Thing>();
+            foreach (var kvp in recentlyDroppedItems)
+            {
+                if (currentTick >= kvp.Value || kvp.Key?.Destroyed != false)
+                {
+                    expiredItems.Add(kvp.Key);
+                }
+            }
+            
+            foreach (var item in expiredItems)
             {
                 recentlyDroppedItems.Remove(item);
                 removed++;
             }
 
-            // Also clean up destroyed pending upgrades
-            var destroyedUpgrades = pendingUpgradeDrops
-                .Where(weapon => weapon.Destroyed)
-                .ToList();
+            // Clean destroyed pending upgrades
+            pendingUpgradeDrops.RemoveWhere(weapon => weapon?.Destroyed != false);
 
-            foreach (var weapon in destroyedUpgrades)
-            {
-                pendingUpgradeDrops.Remove(weapon);
-                removed++;
-            }
+            // Clean dead/destroyed pawns
+            pawnsWithSimpleSidearmsSwapInProgress.RemoveWhere(p => p?.Destroyed != false || p.Dead);
 
-            // Clean up dead/destroyed pawns from swap tracking
-            var deadPawns = pawnsWithSimpleSidearmsSwapInProgress
-                .Where(p => p.Destroyed || p.Dead)
-                .ToList();
-
-            foreach (var pawn in deadPawns)
-            {
-                pawnsWithSimpleSidearmsSwapInProgress.Remove(pawn);
-                removed++;
-            }
-            
             return removed;
         }
 
@@ -143,7 +123,16 @@ namespace AutoArm.Helpers
         /// </summary>
         public static int TrackedItemCount => recentlyDroppedItems.Count;
 
-
+        /// <summary>
+        /// Get recently dropped weapons (for SimpleSidearms upgrade detection)
+        /// </summary>
+        public static IEnumerable<ThingWithComps> GetRecentlyDroppedWeapons()
+        {
+            CleanupOldEntries();
+            return recentlyDroppedItems.Keys
+                .OfType<ThingWithComps>()
+                .Where(t => t != null && !t.Destroyed && t.def.IsWeapon);
+        }
 
         /// <summary>
         /// Mark a weapon as pending drop for same-type upgrade
@@ -190,19 +179,14 @@ namespace AutoArm.Helpers
 
         /// <summary>
         /// Check if a weapon was dropped as part of a primary weapon upgrade
-        /// These should have a longer cooldown before being picked up as sidearms
         /// </summary>
         public static bool WasDroppedFromPrimaryUpgrade(Thing weapon)
         {
-            // If it's marked as recently dropped with the longer cooldown (1200 ticks),
-            // it was likely a primary weapon upgrade
-            if (weapon != null && recentlyDroppedItems.TryGetValue(weapon, out int expireTick))
-            {
-                int remainingTicks = expireTick - Find.TickManager.TicksGame;
-                // If it has more than 600 ticks remaining, it was probably dropped with the longer cooldown
-                return remainingTicks > 600;
-            }
-            return false;
+            if (weapon == null || !recentlyDroppedItems.TryGetValue(weapon, out int expireTick))
+                return false;
+                
+            int remainingTicks = expireTick - Find.TickManager.TicksGame;
+            return remainingTicks > LongCooldownTicks;
         }
 
         /// <summary>
@@ -214,7 +198,7 @@ namespace AutoArm.Helpers
             if (weapon != null)
             {
                 // Mark it as dropped with a longer cooldown to ensure it's ignored during the job sequence
-                MarkAsDropped(weapon, 600); // 10 seconds
+                MarkAsDropped(weapon, LongCooldownTicks);
                 // Debug log already handled by MarkAsDropped
             }
         }

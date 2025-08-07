@@ -1,92 +1,133 @@
-// AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Harmony patches for child weapon restrictions
-// Allows children to equip weapons based on mod settings
-
+using AutoArm.Definitions;
+using AutoArm.Logging;
 using HarmonyLib;
 using RimWorld;
+using System;
 using Verse;
+using Verse.AI;
 
-namespace AutoArm
+namespace AutoArm.Source.Patches
 {
-    // ============================================================================
-    // CHILD WEAPON RESTRICTION PATCHES
-    // ============================================================================
-
-    /// <summary>
-    /// Patches to allow children to use weapons based on mod settings
-    /// </summary>
-    [HarmonyPatch(typeof(Pawn))]
-    [HarmonyPatch("WorkTagIsDisabled")]
-    public static class Patch_Pawn_WorkTagIsDisabled
+    // Manual patches to allow children to pick up weapons for AutoArm
+    // These are applied manually to avoid conflicts with automatic patching
+    public static class ChildWeaponPatches
     {
-        [HarmonyPostfix]
-        public static void Postfix(ref bool __result, WorkTags w, Pawn __instance)
+        private static bool patchesApplied = false;
+
+        public static void ApplyPatches(Harmony harmony)
         {
-            // Only modify weapon-related work tags for colonists
-            if (!__result || !w.HasFlag(WorkTags.Violent) || !__instance.IsColonist)
+            if (patchesApplied)
                 return;
 
-            // Check if mod is enabled and allows children
-            if (!AutoArmMod.settings?.modEnabled ?? true)
-                return;
-            
-            if (!AutoArmMod.settings?.allowChildrenToEquipWeapons ?? true)
-                return;
-
-            // Check if pawn is within our allowed age range
-            int pawnAge = __instance.ageTracker?.AgeBiologicalYears ?? 0;
-            int minAge = AutoArmMod.settings?.childrenMinAge ?? 13;
-
-            if (pawnAge >= minAge && pawnAge < 13)
+            try
             {
-                // Override the restriction if they're old enough by our settings but not by vanilla
-                __result = false;
+                // Patch EquipmentUtility.CanEquip
+                var canEquipMethod = AccessTools.Method(typeof(EquipmentUtility), "CanEquip",
+                    new Type[] { typeof(Thing), typeof(Pawn), typeof(string).MakeByRefType(), typeof(bool) });
+
+                if (canEquipMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(ChildWeaponPatches), nameof(CanEquip_Postfix));
+                    harmony.Patch(canEquipMethod, postfix: new HarmonyMethod(postfix));
+                    AutoArmLogger.Debug("Patched EquipmentUtility.CanEquip for child weapon restrictions");
+                }
+
+                // Patch JobGiver_PickUpOpportunisticWeapon.ShouldEquipWeapon
+                var shouldEquipMethod = AccessTools.Method(typeof(JobGiver_PickUpOpportunisticWeapon), "ShouldEquipWeapon",
+                    new Type[] { typeof(Thing), typeof(Pawn) });
+                if (shouldEquipMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(ChildWeaponPatches), nameof(ShouldEquipWeapon_Postfix));
+                    harmony.Patch(shouldEquipMethod, postfix: new HarmonyMethod(postfix));
+                    AutoArmLogger.Debug("Patched JobGiver_PickUpOpportunisticWeapon.ShouldEquipWeapon for child weapon restrictions");
+                }
+
+                // Patch JobGiver_OptimizeApparel.TryGiveJob
+                var tryGiveJobMethod = AccessTools.Method(typeof(JobGiver_OptimizeApparel), "TryGiveJob",
+                    new Type[] { typeof(Pawn) });
+                if (tryGiveJobMethod != null)
+                {
+                    var postfix = AccessTools.Method(typeof(ChildWeaponPatches), nameof(OptimizeApparel_TryGiveJob_Postfix));
+                    harmony.Patch(tryGiveJobMethod, postfix: new HarmonyMethod(postfix));
+                    AutoArmLogger.Debug("Patched JobGiver_OptimizeApparel.TryGiveJob for child weapon restrictions");
+                }
+
+                patchesApplied = true;
+            }
+            catch (Exception ex)
+            {
+                AutoArmLogger.Error($"Failed to apply child weapon patches: {ex.Message}", ex);
             }
         }
-    }
 
-    /// <summary>
-    /// Patch equipment tracker to allow children to equip weapons
-    /// NOTE: Disabled - CanEquip method doesn't exist in RimWorld 1.5/1.6
-    /// </summary>
-    /*
-    [HarmonyPatch(typeof(Pawn_EquipmentTracker))]
-    [HarmonyPatch("CanEquip")]
-    public static class Patch_EquipmentTracker_CanEquip
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ref bool __result, Thing thing, Pawn ___pawn, ref string cantReason)
+        // Postfix for EquipmentUtility.CanEquip
+        private static void CanEquip_Postfix(Thing thing, Pawn pawn, ref bool __result, ref string cantReason)
         {
-            // If already allowed, don't change
-            if (__result)
-                return;
-
-            // Check if it's a weapon
-            if (!thing.def.IsWeapon)
-                return;
-
-            // Check mod settings
-            if (!AutoArmMod.settings?.modEnabled ?? true)
-                return;
-            
-            if (!AutoArmMod.settings?.allowChildrenToEquipWeapons ?? true)
-                return;
-
-            // Check age
-            int pawnAge = ___pawn.ageTracker?.AgeBiologicalYears ?? 0;
-            int minAge = AutoArmMod.settings?.childrenMinAge ?? 13;
-
-            // If pawn is between our min age and 13, and the only reason they can't equip is age
-            if (pawnAge >= minAge && pawnAge < 13)
+            // Only modify result if it was false and it's a weapon
+            if (!__result && thing != null && thing.def.IsWeapon && pawn?.ageTracker != null)
             {
-                // Check if the reason is age-related
-                if (cantReason != null && cantReason.Contains("ChildNoEquip"))
+                // Check if pawn is within our allowed age range
+                int biologicalAge = pawn.ageTracker.AgeBiologicalYears;
+                var settings = AutoArmMod.settings;
+
+                if (settings != null &&
+                    settings.allowChildrenToEquipWeapons &&
+                    biologicalAge >= settings.childrenMinAge &&
+                    biologicalAge < Constants.ChildMaxAgeLimit)
                 {
+                    // Check if the reason was due to age/violence restriction
+                    if (pawn.WorkTagIsDisabled(WorkTags.Violent))
+                    {
+                        // Allow weapon equipping for children in our age range
+                        __result = true;
+                        cantReason = null;
+                    }
+                }
+            }
+        }
+
+        // Postfix for JobGiver_PickUpOpportunisticWeapon.ShouldEquipWeapon
+        // IMPORTANT: The parameter name must match exactly - it's "newWep" not "weapon"
+        private static void ShouldEquipWeapon_Postfix(Thing newWep, Pawn pawn, ref bool __result)
+        {
+            // Only modify if result was false and pawn is a child
+            if (!__result && newWep != null && newWep.def.IsWeapon && pawn?.ageTracker != null)
+            {
+                int biologicalAge = pawn.ageTracker.AgeBiologicalYears;
+                var settings = AutoArmMod.settings;
+
+                if (settings != null &&
+                    settings.allowChildrenToEquipWeapons &&
+                    biologicalAge >= settings.childrenMinAge &&
+                    biologicalAge < Constants.ChildMaxAgeLimit)
+                {
+                    // Allow opportunistic weapon pickup for children in our age range
                     __result = true;
-                    cantReason = null;
+                }
+            }
+        }
+
+        // Postfix for JobGiver_OptimizeApparel.TryGiveJob
+        private static void OptimizeApparel_TryGiveJob_Postfix(Pawn pawn, ref Job __result)
+        {
+            // If the pawn is a child within our age range and they're trying to equip a weapon
+            if (__result != null &&
+                __result.def == JobDefOf.Wear &&
+                __result.targetA.Thing?.def.IsWeapon == true &&
+                pawn?.ageTracker != null)
+            {
+                int biologicalAge = pawn.ageTracker.AgeBiologicalYears;
+                var settings = AutoArmMod.settings;
+
+                if (settings != null &&
+                    settings.allowChildrenToEquipWeapons &&
+                    biologicalAge >= settings.childrenMinAge &&
+                    biologicalAge < Constants.ChildMaxAgeLimit)
+                {
+                    // The job is already created, so we don't need to modify it
+                    // This patch just ensures children can execute weapon equip jobs
                 }
             }
         }
     }
-    */
 }
