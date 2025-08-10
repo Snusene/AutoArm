@@ -24,8 +24,7 @@ namespace AutoArm.Testing
 
             try
             {
-                // Clear timing cooldowns
-                TimingHelper.ClearAllCooldowns();
+                // TimingHelper removed - it only had empty methods
                 
                 // Clear from blacklist
                 WeaponBlacklist.ClearBlacklist(pawn);
@@ -48,7 +47,7 @@ namespace AutoArm.Testing
         {
             try
             {
-                TimingHelper.ClearAllCooldowns();
+                // TimingHelper removed - it only had empty methods
                 WeaponScoreCache.ClearAllCaches();
                 DroppedItemTracker.ClearAll();
                 AutoArmLogger.Debug("[TEST] Cleared all global cooldowns and caches");

@@ -4,10 +4,12 @@
 // Uses: AutoArmSettings, SimpleSidearmsCompat
 // Note: Pre-injection validation ensures compatibility with other mods
 
+using AutoArm.Caching;
 using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
 using AutoArm.Logging;
+using AutoArm.Patches;
 using AutoArm.Weapons;
 using HarmonyLib;
 using RimWorld;
@@ -31,20 +33,61 @@ namespace AutoArm
         static AutoArmInit()
         {
             harmonyInstance = new Harmony("Snues.AutoArm");
-            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+
+            // Apply patches with better error handling
+            try
+            {
+                harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+            }
+            catch (HarmonyException hex)
+            {
+                // Log specific harmony exception but continue
+                if (hex.Message.Contains("AllowedToAutomaticallyDrop"))
+                {
+                    // Expected in some versions - not critical
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Message("[AutoArm] OutfitForcedHandler patch skipped (expected in some RimWorld versions)");
+                    }
+                }
+                else
+                {
+                    Log.Warning($"[AutoArm] Some patches may have failed: {hex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but continue - some patches might have succeeded
+                Log.Warning($"[AutoArm] Some patches failed during initialization: {ex.Message}");
+            }
+
+            // Log initialization first
+            Log.Message("<color=#4287f5>[AutoArm]</color> Initialized successfully");
 
             // Apply manual patches for child weapon restrictions
             try
             {
                 AutoArm.Source.Patches.ChildWeaponPatches.ApplyPatches(harmonyInstance);
-                Log.Message("<color=#4287f5>[AutoArm]</color> Weapon patches applied successfully");
             }
             catch (Exception ex)
             {
-                Log.Error($"[AutoArm] Failed to apply weapon patches: {ex.Message}");
+                Log.Error($"[AutoArm] Failed to apply child weapon patches: {ex.Message}");
             }
 
-            Log.Message("<color=#4287f5>[AutoArm]</color> Initialized successfully");
+            // Outfit filter patches are now applied via HarmonyPatch attributes
+            // No manual patching needed for the new vanilla-style approach
+            Log.Message("<color=#4287f5>[AutoArm]</color> Apparel filter patched");
+
+            // Count and report available weapons
+            try
+            {
+                int weaponCount = WeaponValidation.AllWeapons.Count;
+                Log.Message($"<color=#4287f5>[AutoArm]</color> {weaponCount} weapons ready for auto-equip");
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"[AutoArm] Failed to count weapons: {ex.Message}");
+            }
 
             // Initialize debug logging if enabled
             if (AutoArmMod.settings?.debugLogging == true)
@@ -177,6 +220,9 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix()
         {
+            // Clear ALL caches to ensure fresh calculations
+            ClearAllCachesOnStartup();
+
             // Add GameComponent for save/load support
             if (Current.Game != null && !Current.Game.components.Any(c => c is AutoArmGameComponent))
             {
@@ -699,6 +745,53 @@ namespace AutoArm
                 AutoArmLogger.Debug($"[THINK TREE] Error checking harmony patches: {e.Message}");
             }
         }
+
+        /// <summary>
+        /// Clear all caches on game startup or save load
+        /// </summary>
+        internal static void ClearAllCachesOnStartup()
+        {
+            try
+            {
+                // Clear weapon scoring caches
+                WeaponScoringHelper.ClearWeaponScoreCache();  // Base weapon scores
+                WeaponScoreCache.ClearCache();                // Pawn-weapon combinations
+
+                // Clear validation caches
+                PawnValidationCache.ClearCache();             // Pawn validation & lord jobs
+                ValidationHelper.ClearStorageTypeCaches();    // Storage type caches
+
+                // Clear generic cache
+                GenericCache.ClearAll();
+
+                // Clear TEMPORARY tracking systems only
+                DroppedItemTracker.ClearAll();                // Recently dropped (10-60 sec)
+                ForcedWeaponTracker.Clear();                  // 1-second grace period tracker
+                AutoEquipTracker.Cleanup();                   // Recent auto-equip jobs
+                WeaponBlacklist.ClearAll();                   // 60-second blacklist
+
+                // DO NOT CLEAR ForcedWeaponHelper - it stores player's manual choices!
+                // ForcedWeaponHelper data is loaded from save and must persist
+
+                // Mark weapon location caches as changed (they'll rebuild from world state)
+                if (Find.Maps != null)
+                {
+                    foreach (var map in Find.Maps)
+                    {
+                        ImprovedWeaponCacheManager.MarkCacheAsChanged(map);
+                    }
+                }
+
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug("Cleared temporary caches on startup/load - preserved player forced weapons");
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Error("Failed to clear caches on startup", e);
+            }
+        }
     }
 
     [HarmonyPatch(typeof(Game), "LoadGame")]
@@ -708,6 +801,9 @@ namespace AutoArm
         public static void Postfix()
         {
             AutoArmInit.retryAttempts = 0;
+
+            // Clear ALL caches when loading a save
+            Game_FinalizeInit_InjectThinkTree_Patch.ClearAllCachesOnStartup();
 
             // Only inject think tree if it's not already injected
             // This prevents duplicate nodes when loading saves
@@ -751,57 +847,6 @@ namespace AutoArm
         }
     }
 
-    public class ThinkNode_PriorityAutoArm : ThinkNode
-    {
-        public override ThinkResult TryIssueJobPackage(Pawn pawn, JobIssueParams jobParams)
-        {
-            if (subNodes == null || subNodes.Count == 0)
-                return ThinkResult.NoJob;
-
-            return subNodes[0].TryIssueJobPackage(pawn, jobParams);
-        }
-
-        public override float GetPriority(Pawn pawn)
-        {
-            if (subNodes != null && subNodes.Count > 0 && subNodes[0] is ThinkNode_Conditional conditional)
-            {
-                try
-                {
-                    var satisfiedMethod = typeof(ThinkNode_Conditional).GetMethod("Satisfied",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (satisfiedMethod != null)
-                    {
-                        bool satisfied = (bool)satisfiedMethod.Invoke(conditional, new object[] { pawn });
-                        return satisfied ? GetBasePriority() : 0f;
-                    }
-                }
-                catch { }
-            }
-            return GetBasePriority();
-        }
-
-        private float GetBasePriority()
-        {
-            var priorityField = typeof(ThinkNode).GetField("priority", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (priorityField != null)
-            {
-                var value = priorityField.GetValue(this);
-                if (value is float f)
-                    return f;
-            }
-            return 1f;
-        }
-
-        public void SetPriority(float value)
-        {
-            var priorityField = typeof(ThinkNode).GetField("priority", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (priorityField != null)
-            {
-                priorityField.SetValue(this, value);
-            }
-        }
-    }
-
     /// <summary>
     /// Unified ThinkNode for weapon status checks - handles both armed and unarmed colonists
     /// Priority: Configurable (6.9 for unarmed, 5.6 for armed)
@@ -811,9 +856,6 @@ namespace AutoArm
         public bool requireArmed = false;  // Set when creating the node
         public new float priority = 5.6f;   // Set when creating the node - 'new' to hide base class field
 
-        // Track pawns we've already interrupted once for idle jobs
-        private static HashSet<int> interruptedPawns = new HashSet<int>();
-
         // Track evaluation failures for problematic pawns
         private static Dictionary<Pawn, int> pawnEvaluationFailures = new Dictionary<Pawn, int>();
 
@@ -821,222 +863,98 @@ namespace AutoArm
 
         protected override bool Satisfied(Pawn pawn)
         {
+            // Keep try/catch for safety - this is too critical to risk
             try
             {
-                // Mod disabled check - VERY FIRST thing we check
-                if (AutoArmMod.settings?.modEnabled != true)
+                // OPTIMIZATION: Cache settings & flags locally (reduces repeated property access)
+                var settings = AutoArmMod.settings;
+                if (settings == null || settings.modEnabled != true)
                     return false;
 
-                // Performance kill-switch - check second
-                if (AutoArmMod.settings?.disableDuringRaids == true && ModInit.IsLargeRaidActive)
-                    return false;
+                bool debug = settings.debugLogging == true;
+                bool disableDuringRaids = settings.disableDuringRaids == true;
 
-                // All validation checks
+                if (disableDuringRaids)
+                {
+                    // cache raid state in a local
+                    bool raidActive = ModInit.IsLargeRaidActive;
+                    if (raidActive)
+                    {
+                        if (debug && pawn.IsHashIntervalTick(600))
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Skipping - raid active");
+                        }
+                        return false;
+                    }
+                }
+
+                // ALWAYS validate first (preserves original behavior)
                 if (!CanConsiderWeapons(pawn))
                     return false;
 
-                bool isArmed = pawn.equipment?.Primary?.def.IsWeapon == true;
+                // OPTIMIZATION: Cache Primary reference (small but helps)
+                var primary = pawn.equipment?.Primary;
+                bool isArmed = primary?.def?.IsWeapon == true;  // Safe null handling
 
-                // Check if we match the requirement
                 bool matchesRequirement = requireArmed ? isArmed : !isArmed;
 
-                // One-time idle interruption for matching pawns (more aggressive early game)
-                // Early game: Colonists repeatedly check for weapons while wandering to quickly arm themselves
-                // Later: One-time interruption to avoid performance impact
-                if (matchesRequirement &&
-                    IsIdleJob(pawn.CurJob?.def))
+                // Debug logging only when needed
+                if (debug && !isArmed && !requireArmed && pawn.IsHashIntervalTick(300))
                 {
-                    // Always interrupt in first 5 minutes of game (aggressive weapon acquisition)
-                    if (Find.TickManager.TicksGame < Constants.EarlyGameDuration) // 5 minutes = 300 seconds
-                    {
-                        if (AutoArmMod.settings?.debugLogging == true)
-                        {
-                            string status = requireArmed ? "Armed" : "Unarmed";
-                            AutoArmLogger.Debug($"[{pawn.LabelShort}] {status} and idle (early game, tick {Find.TickManager.TicksGame}), interrupting to find weapon");
-                        }
-                        pawn.jobs.EndCurrentJob(JobCondition.InterruptForced);
-                        return false; // Let interrupt process
-                    }
-
-                    // After early game, use one-time interruption system
-                    if (!interruptedPawns.Contains(pawn.thingIDNumber))
-                    {
-                        if (AutoArmMod.settings?.debugLogging == true)
-                        {
-                            string status = requireArmed ? "Armed" : "Unarmed";
-                            AutoArmLogger.Debug($"[{pawn.LabelShort}] {status} and idle ({pawn.CurJob?.def?.defName}), interrupting to find weapon");
-                        }
-
-                        interruptedPawns.Add(pawn.thingIDNumber);
-                        pawn.jobs.EndCurrentJob(JobCondition.InterruptForced);
-                        return false; // Let interrupt process
-                    }
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Detected as UNARMED");
                 }
-
-                // Clear from tracking if status changed
-                if (!matchesRequirement)
-                {
-                    interruptedPawns.Remove(pawn.thingIDNumber);
-                }
-
-                // Debug logging for unarmed detection
-                if (AutoArmMod.settings?.debugLogging == true && !isArmed && !requireArmed && pawn.IsHashIntervalTick(300))
-                {
-                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Detected as UNARMED in ConditionalWeaponStatus");
-                }
-
                 return matchesRequirement;
             }
             catch (Exception ex)
             {
-                // Record failure for this pawn
-                if (!pawnEvaluationFailures.ContainsKey(pawn))
-                    pawnEvaluationFailures[pawn] = 0;
-                pawnEvaluationFailures[pawn]++;
+                // Track failure count
+                pawnEvaluationFailures.TryGetValue(pawn, out int count);
+                pawnEvaluationFailures[pawn] = count + 1;
 
-                // If too many failures, record a crash
-                if (pawnEvaluationFailures[pawn] > Constants.PawnEvaluationCriticalThreshold && !loggedCriticalPawns.Contains(pawn))
+                // Only log if this pawn has failed many times
+                if (count + 1 > Constants.PawnEvaluationCriticalThreshold &&
+                    !loggedCriticalPawns.Contains(pawn))
                 {
-                    Log.Error($"[AutoArm] Multiple evaluation failures for {pawn?.Name?.ToStringShort ?? "unknown"} - possible crash loop detected");
+                    // NOW INCLUDES: Exception type and message for debugging
+                    Log.Error($"[AutoArm] Multiple failures for {pawn?.Name?.ToStringShort ?? "unknown"}: {ex.GetType().Name} - {ex.Message}");
                     loggedCriticalPawns.Add(pawn);
-                }
 
-                Log.Error($"[AutoArm] Error in ThinkNode_ConditionalWeaponStatus.Satisfied for {pawn?.Name?.ToStringShort ?? "unknown"}: {ex.Message}");
-                return false; // Safe default
+                    // Optional: Log stack trace only if debug mode is on
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        Log.Error($"[AutoArm] Stack trace: {ex.StackTrace}");
+                    }
+                }
+                return false;
             }
         }
 
         private bool CanConsiderWeapons(Pawn pawn)
         {
-            // === EARLY EXIT CHECKS - Most common failures first ===
+            // Use the unified cached validation system
+            // This handles all the same checks but with intelligent caching:
+            // - Dynamic properties (dead/downed/drafted/jobs) are always checked
+            // - Stable properties (race/capabilities/age) are cached
+            // - Lord job participation uses O(1) HashSet lookup
+            // - Automatic cache invalidation via Harmony patches
 
-            // Dead/downed/drafted are most common
-            if (pawn?.Spawned != true || pawn.Dead || pawn.Downed || pawn.Drafted)
-                return false;
-
-            // Not a colonist
-            if (!JobGiverHelpers.SafeIsColonist(pawn))
-                return false;
-
-            // Can't do violence
-            try
-            {
-                if (pawn.WorkTagIsDisabled(WorkTags.Violent))
-                    return false;
-            }
-            catch
-            {
-                // If we can't check, assume they can use weapons
-            }
-
-            // === STATUS CHECKS - Pawn shouldn't look for weapons ===
-
-            // Mental state
-            if (pawn.InMentalState)
-                return false;
-
-            // In bed/sleeping
-            if (pawn.InBed() || pawn.CurJob?.def == JobDefOf.LayDown)
-                return false;
-
-            // In ritual/ceremony
-            if (ValidationHelper.IsInRitual(pawn))
-                return false;
-
-            // Being carried or in caravan
-            if (pawn.IsCaravanMember() || pawn.carryTracker?.CarriedThing != null)
-                return false;
-
-            // Prisoner check - prisoners shouldn't pick up colony weapons (slaves are OK)
-            if (pawn.IsPrisoner)
-                return false;
-
-            // Currently in medical bed needing treatment
-            if (pawn.InBed() && pawn.CurrentBed()?.Medical == true &&
-                HealthAIUtility.ShouldBeTendedNowByPlayer(pawn))
-                return false;
-
-            // In a lord job (wedding, party, etc) - these run parallel to normal jobs
-            var lord = pawn.Map?.lordManager?.LordOf(pawn);
-            if (lord != null)
-            {
-                var lordJobType = lord.LordJob?.GetType().Name;
-                if (lordJobType != null &&
-                    (lordJobType.Contains("Party") ||
-                     lordJobType.Contains("Wedding") ||
-                     lordJobType.Contains("Ritual") ||
-                     lordJobType.Contains("Speech")))
-                    return false;
-            }
-
-            // Currently hauling something important
-            if (pawn.CurJob != null &&
-                (pawn.CurJob.def == JobDefOf.HaulToCell ||
-                 pawn.CurJob.def == JobDefOf.HaulToContainer ||
-                 pawn.CurJob.def?.defName?.Contains("Haul") == true ||
-                 pawn.CurJob.def?.defName?.Contains("Inventory") == true ||
-                 pawn.CurJob.def?.defName == "HaulToInventory" ||        // PUAH hauling
-                 pawn.CurJob.def?.defName == "UnloadYourHauledInventory")) // PUAH unloading
-                return false;
-
-            // Age check for children (Biotech)
-            if (ModsConfig.BiotechActive && pawn.ageTracker != null)
-            {
-                if (pawn.ageTracker.AgeBiologicalYears < 18)
-                {
-                    if (!(AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false))
-                        return false;
-
-                    int minAge = AutoArmMod.settings?.childrenMinAge ?? 13;
-                    if (pawn.ageTracker.AgeBiologicalYears < minAge)
-                        return false;
-                }
-            }
-
-            // Temporary colonist check
-            if (JobGiverHelpers.IsTemporaryColonist(pawn))
-            {
-                if (!(AutoArmMod.settings?.allowTemporaryColonists ?? false))
-                    return false;
-            }
-
-            // Check if this pawn has been failing repeatedly
+            // Check if this pawn has been failing repeatedly (keep this check here for safety)
             if (pawnEvaluationFailures.TryGetValue(pawn, out int failCount) &&
                 failCount > Constants.PawnEvaluationFailureThreshold)
             {
                 return false;
             }
 
-            return true;
-        }
-
-        private static bool IsIdleJob(JobDef jobDef)
-        {
-            if (jobDef == null) return false;
-
-            // Don't interrupt combat waiting even though it has "Wait" in the name
-            if (jobDef == JobDefOf.Wait_Combat || jobDef.defName == "Wait_Combat")
-                return false;
-
-            return jobDef == JobDefOf.Wait ||
-                   jobDef == JobDefOf.Wait_MaintainPosture ||
-                   jobDef == JobDefOf.GotoWander ||
-                   jobDef.defName == "Wander" ||
-                   jobDef.defName == "IdleJoy" ||
-                   jobDef.defName == "Skygaze" ||
-                   jobDef.defName == "Cloudwatch" ||
-                   jobDef.defName == "Stargaze" ||
-                   jobDef.defName == "SocialRelax" ||
-                   jobDef.defName == "WaitWander" ||
-                   jobDef.defName == "WaitSafeTemperature";
+            return PawnValidationCache.CanConsiderWeapons(pawn);
         }
 
         public override float GetPriority(Pawn pawn)
         {
             try
             {
-                // Quick exit if mod disabled
-                if (AutoArmMod.settings?.modEnabled != true)
+                // Quick exit if mod disabled (cache locally)
+                var settings = AutoArmMod.settings;
+                if (settings == null || settings.modEnabled != true)
                     return 0f;
 
                 return Satisfied(pawn) ? priority : Constants.DefaultThinkNodePriority;
@@ -1059,23 +977,8 @@ namespace AutoArm
         /// </summary>
         public static void CleanupDeadPawns()
         {
-            // Clean up interrupted pawns tracking
-            interruptedPawns.RemoveWhere(id =>
-            {
-                // Check all maps for the pawn
-                if (Find.Maps != null)
-                {
-                    foreach (var map in Find.Maps)
-                    {
-                        var pawn = map.mapPawns?.AllPawns?.FirstOrDefault(p => p.thingIDNumber == id);
-                        if (pawn != null)
-                        {
-                            return pawn.Dead || pawn.Destroyed;
-                        }
-                    }
-                }
-                return true; // Remove if pawn not found anywhere
-            });
+            // Clean up validation cache (includes lord job cache)
+            PawnValidationCache.CleanupDeadPawns();
 
             // Clean up evaluation failures
             var deadPawns = pawnEvaluationFailures.Keys

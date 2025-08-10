@@ -15,6 +15,8 @@
 	<!-- General Settings -->
 	<AutoArm_DisableDuringRaids>Disable during raids</AutoArm_DisableDuringRaids>
 	<AutoArm_DisableDuringRaidsDesc>Temporarily disable auto-equip when the game detects high danger (major raids/threats) to boost performance. Plays nicer with other mods as well.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>Only auto-equip from storage zones</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>When enabled, colonists will only auto-equip weapons that are in storage zones or storage containers (stockpiles, shelves, etc.), just like vanilla apparel behavior.</AutoArm_OnlyEquipFromStorageDesc>
 	<AutoArm_AllowForcedWeaponUpgrades>Allow quality upgrades for forced weapons</AutoArm_AllowForcedWeaponUpgrades>
 	<AutoArm_AllowForcedWeaponUpgradesDesc>When enabled, colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver → masterwork revolver).</AutoArm_AllowForcedWeaponUpgradesDesc>
 	<AutoArm_AllowTemporaryColonists>Allow temporary colonists to auto-equip</AutoArm_AllowTemporaryColonists>
@@ -82,11 +84,11 @@
 	<AutoArm_WeaponPreference>Weapon preference</AutoArm_WeaponPreference>
 	<AutoArm_WeaponPreferenceDesc>Adjust how much all colonists prefer ranged vs melee weapons.</AutoArm_WeaponPreferenceDesc>
 	<AutoArm_AgeRestrictions>Age Restrictions</AutoArm_AgeRestrictions>
-	<AutoArm_AllowChildrenToEquipWeapons>Allow colonists under 18 to auto-equip weapons</AutoArm_AllowChildrenToEquipWeapons>
-	<AutoArm_AllowChildrenToEquipWeaponsDesc>When enabled, teenagers can auto-equip weapons based on the age slider below (vanilla allows 13+). When disabled, only adults (18+) will auto-equip weapons. Note: Vanilla already prevents children under 13 from using any weapons.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_AllowChildrenToEquipWeapons>Use custom age restrictions for auto-equipping</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>Slide left to automate your child militia earlier, slide right for boring safety. Kids also somehow bypass all weapon weight checks. Definitely not a bug.</AutoArm_AllowChildrenToEquipWeaponsDesc>
 	<AutoArm_MinimumAge>Minimum age</AutoArm_MinimumAge>
-	<AutoArm_MinimumAgeDesc>Minimum age for children to auto-equip weapons</AutoArm_MinimumAgeDesc>
-	
+	<AutoArm_MinimumAgeDesc>Minimum age to start auto-equipping weapons</AutoArm_MinimumAgeDesc>
+
 	<!-- Weapon Preference Values -->
 	<AutoArm_StrongMeleePreference>Strong melee preference</AutoArm_StrongMeleePreference>
 	<AutoArm_ModerateMeleePreference>Moderate melee preference</AutoArm_ModerateMeleePreference>
@@ -96,7 +98,7 @@
 	<AutoArm_ModerateRangedPreference>Moderate ranged preference</AutoArm_ModerateRangedPreference>
 	<AutoArm_StrongRangedPreference>Strong ranged preference</AutoArm_StrongRangedPreference>
 	<AutoArm_RiskOfWeaponSwapLoops>Risk of weapon swap loops</AutoArm_RiskOfWeaponSwapLoops>
-	<AutoArm_WhatCouldGoWrong>⚠ What could go wrong?</AutoArm_WhatCouldGoWrong>
+	<AutoArm_WhatCouldGoWrong>⚠ Randy approved!</AutoArm_WhatCouldGoWrong>
 	<AutoArm_EquipDelay>Equip delay</AutoArm_EquipDelay>
 	<AutoArm_EquipDelayTooltip>Minimum time between weapon checks (seconds)</AutoArm_EquipDelayTooltip>
 	<AutoArm_SearchRadius>Search radius</AutoArm_SearchRadius>

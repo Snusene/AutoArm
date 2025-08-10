@@ -34,10 +34,9 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Thing __instance)
         {
-            // Skip if mod disabled
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-                
+            // CRITICAL: Always track weapon spawns for cache
+            // Even if mod appears disabled, we need the cache ready
+            // Settings might not be loaded yet during initial spawn
             if (__instance == null || __instance.def == null)
                 return;
 

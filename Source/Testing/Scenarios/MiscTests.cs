@@ -87,10 +87,10 @@ namespace AutoArm.Testing.Scenarios
             // Check if validation properly rejects drafted pawns
             string validationReason;
             bool isValidForAutoEquip = TestValidationHelper.IsValidPawnForAutoEquip(draftedPawn, out validationReason);
-            
+
             result.Data["ValidationPassed"] = isValidForAutoEquip;
             result.Data["ValidationReason"] = validationReason;
-            
+
             // The validation SHOULD reject drafted pawns
             if (isValidForAutoEquip)
             {
@@ -111,7 +111,7 @@ namespace AutoArm.Testing.Scenarios
                 // In test environment, think tree injection may not work perfectly
                 // Pass with warning instead of failing
                 AutoArmLogger.Error($"[TEST] DraftedBehaviorTest: Drafted pawn tried to switch weapons - expected: no job, got: {job.def.defName} targeting {job.targetA.Thing?.Label}");
-                
+
                 result.Data["TestLimitation"] = "Think tree injection may not work perfectly in test environment";
                 result.Data["JobCreated"] = true;
                 result.Data["TargetWeapon"] = job.targetA.Thing?.Label;
@@ -201,24 +201,24 @@ namespace AutoArm.Testing.Scenarios
                     // Create weapon properly
                     if (weaponDef.MadeFromStuff)
                     {
-                    testWeapon = ThingMaker.MakeThing(weaponDef, ThingDefOf.Steel) as ThingWithComps;
+                        testWeapon = ThingMaker.MakeThing(weaponDef, ThingDefOf.Steel) as ThingWithComps;
                     }
-                else
+                    else
                     {
-                    testWeapon = ThingMaker.MakeThing(weaponDef) as ThingWithComps;
+                        testWeapon = ThingMaker.MakeThing(weaponDef) as ThingWithComps;
                     }
-                    
-                if (testWeapon != null)
-                {
-                    // Ensure pawn is unarmed first
-                    testPawn.equipment?.DestroyAllEquipment();
 
-                    // Equip the weapon
-                    testPawn.equipment?.AddEquipment(testWeapon);
-                    
-                    // Mark as forced after equipping
-                    ForcedWeaponHelper.SetForced(testPawn, testWeapon);
-                }
+                    if (testWeapon != null)
+                    {
+                        // Ensure pawn is unarmed first
+                        testPawn.equipment?.DestroyAllEquipment();
+
+                        // Equip the weapon
+                        testPawn.equipment?.AddEquipment(testWeapon);
+
+                        // Mark as forced after equipping
+                        ForcedWeaponHelper.SetForced(testPawn, testWeapon);
+                    }
                 }
             }
         }
@@ -236,26 +236,26 @@ namespace AutoArm.Testing.Scenarios
             var result = TestResult.Pass();
             result.Data["Note"] = "Forced weapon save/load tracking may not work perfectly in test environment";
             result.Data["TestLimitation"] = "Save/load system requires integration that may not be available during testing";
-            
+
             // Verify basic functionality - weapon is equipped and marked somehow
             if (testPawn.equipment?.Primary == testWeapon)
             {
                 result.Data["WeaponEquipped"] = true;
-                
+
                 // Try to mark it as forced
                 ForcedWeaponHelper.SetForced(testPawn, testWeapon);
-                
+
                 // Check if any tracking works
                 bool isForced = ForcedWeaponHelper.IsForced(testPawn, testWeapon);
                 var forcedDefs = ForcedWeaponHelper.GetForcedWeaponDefs(testPawn);
                 var forcedIds = ForcedWeaponHelper.GetForcedWeaponIds();
-                
+
                 result.Data["IsForced"] = isForced;
                 result.Data["DefTracking"] = forcedDefs.Contains(testWeapon.def);
                 result.Data["IDTracking"] = forcedIds.ContainsKey(testPawn) && forcedIds[testPawn].Contains(testWeapon.thingIDNumber);
-                
+
                 // Any tracking method working is acceptable
-                if (isForced || forcedDefs.Contains(testWeapon.def) || 
+                if (isForced || forcedDefs.Contains(testWeapon.def) ||
                     (forcedIds.ContainsKey(testPawn) && forcedIds[testPawn].Contains(testWeapon.thingIDNumber)))
                 {
                     result.Data["SomeTrackingWorks"] = true;
@@ -439,10 +439,11 @@ namespace AutoArm.Testing.Scenarios
                 result.Data["JobCreated"] = false;
             }
 
-            // Verify work priority - we now rely on think tree priority
-            bool isLowPriorityWork = JobGiverHelpers.IsLowPriorityWork(testPawn);
-
-            result.Data["CurrentJobIsLowPriority"] = isLowPriorityWork;
+            // We now rely on think tree priority instead of checking job priority
+            // The IsLowPriorityWork method was removed as it's no longer needed
+            var currentJob = testPawn?.CurJob;
+            result.Data["CurrentJob"] = currentJob?.def?.defName ?? "none";
+            result.Data["Note"] = "obsolete";
 
             return result;
         }

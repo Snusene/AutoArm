@@ -210,7 +210,7 @@ namespace AutoArm.Testing.Scenarios
             WeaponBlacklist.CleanupOldEntries();
 
             result.Data["StillBlacklistedAfterCleanup"] = WeaponBlacklist.IsBlacklisted(testWeaponDef, testPawn);
-            result.Data["Note"] = $"Full expiration test requires advancing game time ({Constants.WeaponBlacklistDuration} ticks)";
+            result.Data["Note"] = $"Full expiration test requires ({Constants.WeaponBlacklistDuration} ticks)";
 
             return result;
         }
@@ -289,17 +289,17 @@ namespace AutoArm.Testing.Scenarios
         public void Cleanup()
         {
             WeaponBlacklist.ClearBlacklist(testPawn);
-            
+
             if (blacklistedWeapon != null && !blacklistedWeapon.Destroyed)
             {
                 blacklistedWeapon.Destroy();
             }
-            
+
             if (normalWeapon != null && !normalWeapon.Destroyed)
             {
                 normalWeapon.Destroy();
             }
-            
+
             if (testPawn != null && !testPawn.Destroyed)
             {
                 testPawn.Destroy();

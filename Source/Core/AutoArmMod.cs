@@ -23,17 +23,6 @@ namespace AutoArm
         public static AutoArmMod Instance { get; private set; }
         public static string Version => "1.0.0";
 
-        private const float LINE_HEIGHT = 30f;
-        private const float CHECKBOX_SIZE = 24f;
-        private const float LABEL_WIDTH = 250f;
-        private const float TAB_BUTTON_HEIGHT = 30f;
-        private const float CONTENT_PADDING = 10f;
-        private const float SECTION_GAP = 20f;
-        private const float SMALL_GAP = 12f;
-        private const float TINY_GAP = 6f;
-        private const float RESET_BUTTON_WIDTH = 100f;
-        private const float RESET_BUTTON_HEIGHT = 30f;
-
         public static AutoArmSettings settings;
         private SettingsTab currentTab = SettingsTab.General;
 
@@ -104,7 +93,7 @@ namespace AutoArm
             DrawHeader(listing, inRect);
             DrawTabButtons(listing);
 
-            var contentRect = listing.GetRect(inRect.height - listing.CurHeight - LINE_HEIGHT);
+            var contentRect = listing.GetRect(inRect.height - listing.CurHeight - Constants.UI_LINE_HEIGHT);
             DrawTabContent(contentRect);
 
             listing.End();
@@ -125,22 +114,22 @@ namespace AutoArm
             // Draw hover hint to the right of Settings
             Text.Font = GameFont.Tiny;
             Color oldColor = GUI.color;
-            GUI.color = new Color(0.7f, 0.7f, 0.7f, 0.8f); // Gray with slight transparency
+            GUI.color = new Color(Constants.UI_GRAY_ALPHA, Constants.UI_GRAY_ALPHA, Constants.UI_GRAY_ALPHA, Constants.UI_TEXT_ALPHA); // Gray with slight transparency
             var hintRect = new Rect(settingsLabelRect.xMax + 10f, titleRect.y + 4f, 200f, titleRect.height);
             Widgets.Label(hintRect, "(hover over options for descriptions)");
             GUI.color = oldColor;
 
             Text.Font = GameFont.Small;
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
         }
 
         private void DrawResetButton(Rect inRect)
         {
             Rect resetButtonRect = new Rect(
-                inRect.width - RESET_BUTTON_WIDTH - 5f,
+                inRect.width - Constants.UI_RESET_BUTTON_WIDTH - 5f,
                 5f,
-                RESET_BUTTON_WIDTH,
-                RESET_BUTTON_HEIGHT
+                Constants.UI_RESET_BUTTON_WIDTH,
+                Constants.UI_RESET_BUTTON_HEIGHT
             );
 
             Color oldColor = GUI.color;
@@ -162,25 +151,25 @@ namespace AutoArm
 
         private void DrawTabButtons(Listing_Standard listing)
         {
-            var tabRect = listing.GetRect(TAB_BUTTON_HEIGHT);
+            var tabRect = listing.GetRect(Constants.UI_TAB_BUTTON_HEIGHT);
             var tabWidth = tabRect.width / 4f - 5f;
 
             Color originalColor = GUI.color;
 
             GUI.color = currentTab == SettingsTab.General ? Color.white : new Color(0.7f, 1f, 0.7f);
-            if (Widgets.ButtonText(new Rect(tabRect.x, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "AutoArm_General".Translate()))
+            if (Widgets.ButtonText(new Rect(tabRect.x, tabRect.y, tabWidth, Constants.UI_TAB_BUTTON_HEIGHT), "AutoArm_General".Translate()))
                 currentTab = SettingsTab.General;
 
             GUI.color = currentTab == SettingsTab.Compatibility ? Color.white : new Color(1f, 1f, 0.7f);
-            if (Widgets.ButtonText(new Rect(tabRect.x + tabWidth + 5f, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "AutoArm_Compatibility".Translate()))
+            if (Widgets.ButtonText(new Rect(tabRect.x + tabWidth + 5f, tabRect.y, tabWidth, Constants.UI_TAB_BUTTON_HEIGHT), "AutoArm_Compatibility".Translate()))
                 currentTab = SettingsTab.Compatibility;
 
             GUI.color = currentTab == SettingsTab.Advanced ? Color.white : new Color(1f, 0.9f, 0.6f);
-            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 2, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "AutoArm_Advanced".Translate()))
+            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 2, tabRect.y, tabWidth, Constants.UI_TAB_BUTTON_HEIGHT), "AutoArm_Advanced".Translate()))
                 currentTab = SettingsTab.Advanced;
 
             GUI.color = currentTab == SettingsTab.Debug ? Color.white : new Color(1f, 0.7f, 0.7f);
-            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 3, tabRect.y, tabWidth, TAB_BUTTON_HEIGHT), "AutoArm_Debug".Translate()))
+            if (Widgets.ButtonText(new Rect(tabRect.x + (tabWidth + 5f) * 3, tabRect.y, tabWidth, Constants.UI_TAB_BUTTON_HEIGHT), "AutoArm_Debug".Translate()))
             {
                 if (Current.Game?.CurrentMap != null)
                 {
@@ -193,14 +182,14 @@ namespace AutoArm
             }
 
             GUI.color = originalColor;
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
         }
 
         private void DrawTabContent(Rect contentRect)
         {
-            var innerRect = contentRect.ContractedBy(CONTENT_PADDING);
+            var innerRect = contentRect.ContractedBy(Constants.UI_CONTENT_PADDING);
 
-            Widgets.DrawBoxSolid(contentRect, new Color(0.1f, 0.1f, 0.1f, 0.3f));
+            Widgets.DrawBoxSolid(contentRect, new Color(0.1f, 0.1f, 0.1f, Constants.UI_BOX_ALPHA));
 
             var innerListing = new Listing_Standard();
             innerListing.Begin(innerRect);
@@ -238,15 +227,15 @@ namespace AutoArm
 
         private void DrawCheckbox(Listing_Standard listing, string label, ref bool value, string tooltip = null, float indent = 0f, bool isSubOption = false)
         {
-            Rect fullRect = listing.GetRect(LINE_HEIGHT);
+            Rect fullRect = listing.GetRect(Constants.UI_LINE_HEIGHT);
             Rect labelRect = fullRect;
 
             // Use smaller checkbox for sub-options
-            float checkboxSize = isSubOption ? CHECKBOX_SIZE * 0.8f : CHECKBOX_SIZE;
+            float checkboxSize = isSubOption ? Constants.UI_CHECKBOX_SIZE * 0.8f : Constants.UI_CHECKBOX_SIZE;
 
             Rect checkRect = new Rect(
                 fullRect.x + indent,
-                fullRect.y + (LINE_HEIGHT - checkboxSize) / 2f,
+                fullRect.y + (Constants.UI_LINE_HEIGHT - checkboxSize) / 2f,
                 checkboxSize,
                 checkboxSize
             );
@@ -299,7 +288,7 @@ namespace AutoArm
             Widgets.Label(labelRect, label);
 
             // Draw slider line below label
-            Rect rect = listing.GetRect(LINE_HEIGHT);
+            Rect rect = listing.GetRect(Constants.UI_LINE_HEIGHT);
 
             // Use 1/3 width for slider, aligned left
             float sliderWidth = rect.width / 3f;
@@ -348,17 +337,17 @@ namespace AutoArm
             if (isWeaponPreference)
             {
                 // Special display for weapon preference
-                if (value <= -0.75f)
+                if (value <= Constants.PREF_STRONG_MELEE_THRESHOLD)
                     displayValue = "AutoArm_StrongMeleePreference".Translate();
-                else if (value <= -0.35f)
+                else if (value <= Constants.PREF_MODERATE_MELEE_THRESHOLD)
                     displayValue = "AutoArm_ModerateMeleePreference".Translate();
-                else if (value <= -0.10f)
+                else if (value <= Constants.PREF_SLIGHT_MELEE_THRESHOLD)
                     displayValue = "AutoArm_SlightMeleePreference".Translate();
-                else if (value < 0.10f)
+                else if (value < Constants.PREF_BALANCED_THRESHOLD)
                     displayValue = "AutoArm_Balanced".Translate();
-                else if (value < 0.35f)
+                else if (value < Constants.PREF_SLIGHT_RANGED_THRESHOLD)
                     displayValue = "AutoArm_SlightRangedPreference".Translate();
-                else if (value < 0.75f)
+                else if (value < Constants.PREF_MODERATE_RANGED_THRESHOLD)
                     displayValue = "AutoArm_ModerateRangedPreference".Translate();
                 else
                     displayValue = "AutoArm_StrongRangedPreference".Translate();
@@ -468,7 +457,7 @@ namespace AutoArm
                 }
             }
 
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             // Gray out all other settings if mod is disabled
             Color oldColor = GUI.color;
@@ -482,15 +471,20 @@ namespace AutoArm
             DrawCheckbox(listing, "AutoArm_ShowNotifications".Translate(), ref settings.showNotifications,
                 "Shows notification messages when colonists equip or upgrade weapons.");
 
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             DrawCheckbox(listing, "AutoArm_DisableDuringRaids".Translate(), ref settings.disableDuringRaids,
                 "Temporarily disable auto-equip when the game detects high danger (major raids/threats) to boost performance. Plays nicer with other mods as well.");
 
+            listing.Gap(Constants.UI_SMALL_GAP);
+
+            DrawCheckbox(listing, "AutoArm_OnlyEquipFromStorage".Translate(), ref settings.onlyAutoEquipFromStorage,
+                "When enabled, colonists will only auto-equip weapons that are in storage zones or storage containers (stockpiles, shelves, etc.), just like vanilla apparel behavior.");
+
             // Royalty DLC settings
             if (ModsConfig.RoyaltyActive)
             {
-                listing.Gap(SMALL_GAP);
+                listing.Gap(Constants.UI_SMALL_GAP);
 
                 bool oldRespectBonds = settings.respectWeaponBonds;
                 DrawCheckbox(listing, "AutoArm_ForceWeapon".Translate(), ref settings.respectWeaponBonds,
@@ -503,12 +497,12 @@ namespace AutoArm
                 }
             }
 
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             DrawCheckbox(listing, "AutoArm_AllowForcedWeaponUpgrades".Translate(), ref settings.allowForcedWeaponUpgrades,
                 "When enabled, colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver → masterwork revolver).");
 
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             DrawCheckbox(listing, "AutoArm_AllowTemporaryColonists".Translate(), ref settings.allowTemporaryColonists,
                 "When enabled, temporary colonists (quest lodgers, borrowed pawns, royal guests) can auto-equip weapons.");
@@ -517,7 +511,7 @@ namespace AutoArm
             GUI.color = oldColor;
             GUI.enabled = wasEnabled;
 
-            listing.Gap(SECTION_GAP);
+            listing.Gap(Constants.UI_SECTION_GAP);
         }
 
         private void DrawCompatibilityTab(Listing_Standard listing)
@@ -526,13 +520,13 @@ namespace AutoArm
             var headerRect = listing.GetRect(Text.LineHeight);
             Widgets.Label(headerRect, "AutoArm_CompatibilityPatches".Translate());
             Text.Font = GameFont.Small;
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             DrawModStatus(listing, "Simple Sidearms", SimpleSidearmsCompat.IsLoaded());
             DrawModStatus(listing, "Combat Extended", CECompat.IsLoaded());
             DrawModStatus(listing, "Infusion 2", InfusionCompat.IsLoaded());
 
-            listing.Gap(SECTION_GAP);
+            listing.Gap(Constants.UI_SECTION_GAP);
 
             DrawSimpleSidearmsSettings(listing);
             DrawCombatExtendedSettings(listing);
@@ -562,13 +556,13 @@ namespace AutoArm
             // Show warning if reflection failed
             if (reflectionFailed)
             {
-                listing.Gap(TINY_GAP);
+                listing.Gap(Constants.UI_TINY_GAP);
                 Color oldColor = GUI.color;
                 GUI.color = new Color(1f, 0.6f, 0.6f); // Red warning color
                 var warningRect = listing.GetRect(Text.LineHeight * 2);
                 Widgets.Label(warningRect, "AutoArm_SimpleSidearmsReflectionFailed".Translate());
                 GUI.color = oldColor;
-                listing.Gap(TINY_GAP);
+                listing.Gap(Constants.UI_TINY_GAP);
             }
 
             // Disable GUI if reflection failed
@@ -592,7 +586,7 @@ namespace AutoArm
 
             if (settings.autoEquipSidearms && !reflectionFailed)
             {
-                listing.Gap(TINY_GAP);
+                listing.Gap(Constants.UI_TINY_GAP);
 
                 Color oldColor = GUI.color;
                 GUI.color = new Color(1f, 1f, 0.6f);
@@ -617,7 +611,7 @@ namespace AutoArm
         {
             if (!CECompat.IsLoaded()) return;
 
-            listing.Gap(SECTION_GAP);
+            listing.Gap(Constants.UI_SECTION_GAP);
             Text.Font = GameFont.Medium;
             var headerRect = listing.GetRect(Text.LineHeight);
             Widgets.Label(headerRect, "AutoArm_CombatExtended".Translate());
@@ -669,7 +663,7 @@ namespace AutoArm
             // Show status message if CE ammo is disabled
             if (!ceAmmoSystemEnabled)
             {
-                listing.Gap(TINY_GAP);
+                listing.Gap(Constants.UI_TINY_GAP);
                 oldColor = GUI.color;
                 GUI.color = new Color(1f, 0.8f, 0.4f); // Orange warning
                 var warningRect = listing.GetRect(Text.LineHeight);
@@ -684,7 +678,7 @@ namespace AutoArm
             var headerRect = listing.GetRect(Text.LineHeight);
             Widgets.Label(headerRect, "AutoArm_WeaponUpgrades".Translate());
             Text.Font = GameFont.Small;
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             // Use the new slider style
             DrawSlider(listing, "AutoArm_Threshold".Translate(), ref settings.weaponUpgradeThreshold,
@@ -692,12 +686,12 @@ namespace AutoArm
                 "How much better a weapon needs to be before colonists will switch. Lower values mean more frequent switching.",
                 true); // isPercentageBetter
 
-            listing.Gap(SMALL_GAP);
+            listing.Gap(Constants.UI_SMALL_GAP);
 
             // Weapon Type Preference
             DrawWeaponPreferenceSlider(listing);
 
-            listing.Gap(SECTION_GAP);
+            listing.Gap(Constants.UI_SECTION_GAP);
 
             DrawAgeRestrictions(listing);
         }
@@ -742,7 +736,7 @@ namespace AutoArm
             Text.Font = GameFont.Small;
 
             DrawCheckbox(listing, "AutoArm_AllowChildrenToEquipWeapons".Translate(), ref settings.allowChildrenToEquipWeapons,
-                "When enabled, teenagers can auto-equip weapons based on the age slider below (vanilla allows 13+). When disabled, only adults (18+) will auto-equip weapons. Note: Vanilla already prevents children under 13 from using any weapons.");
+                "AutoArm_AllowChildrenToEquipWeaponsDesc".Translate());
 
             if (settings.allowChildrenToEquipWeapons)
             {
@@ -750,11 +744,11 @@ namespace AutoArm
                 float tempAge = (float)settings.childrenMinAge;
                 DrawSlider(listing, "AutoArm_MinimumAge".Translate(), ref tempAge,
                     (float)Constants.ChildMinAgeLimit, (float)Constants.ChildMaxAgeLimit, "F0",
-                    "Minimum age for children to auto-equip weapons",
+                    "Minimum age to start auto-equipping weapons",
                     false);
                 settings.childrenMinAge = Mathf.RoundToInt(tempAge);
 
-                if (settings.childrenMinAge < 10)
+                if (settings.childrenMinAge <= 3)
                 {
                     Color oldColor = GUI.color;
                     GUI.color = new Color(1f, 0.8f, 0.4f);
@@ -874,7 +868,7 @@ namespace AutoArm
             resizeable = true;
         }
 
-        public override Vector2 InitialSize => new Vector2(600f, 500f);
+        public override Vector2 InitialSize => new Vector2(Constants.DEBUG_WINDOW_WIDTH, Constants.DEBUG_WINDOW_HEIGHT);
 
         protected override void SetInitialSizeAndPosition()
         {
@@ -1014,7 +1008,7 @@ namespace AutoArm
                 int totalCount = lastTestResults.Count(r => r.Key != "_SUMMARY");
 
                 if (failedCount == 0)
-                    textColor = new Color(0.8f, 1f, 0.8f);  // Green for all passed
+                    textColor = new Color(Constants.TEST_COLOR_GREEN_R, Constants.TEST_COLOR_GREEN_G, Constants.TEST_COLOR_GREEN_B);  // Green for all passed
                 else if (failedCount == totalCount)
                     textColor = new Color(1f, 0.8f, 0.8f);  // Red for all failed
                 else
@@ -1026,7 +1020,7 @@ namespace AutoArm
             }
             else if (testResultsText.Contains("✓"))
             {
-                textColor = new Color(0.8f, 1f, 0.8f);  // Green
+                textColor = new Color(Constants.TEST_COLOR_GREEN_R, Constants.TEST_COLOR_GREEN_G, Constants.TEST_COLOR_GREEN_B);  // Green
             }
 
             GUI.color = textColor;
@@ -1110,7 +1104,7 @@ namespace AutoArm
 
                 // Log to console as well
                 Testing.TestRunner.LogTestResults(results);
-                
+
                 // Reset configuration after running all tests
                 AutoArmMod.settings?.ResetToDefaults();
                 testResultsText += "\n\n=== Configuration reset to defaults after test run ===";
@@ -1234,8 +1228,8 @@ namespace AutoArm
                 testResultsText += $"  {group.Key}: {group.Count()}\n";
             }
 
-            testResultsText += $"\nTop ground weapons (first 10):\n";
-            foreach (var weapon in groundWeapons.Take(10))
+            testResultsText += $"\nTop ground weapons (first {Constants.TEST_RESULT_PREVIEW_COUNT}):\n";
+            foreach (var weapon in groundWeapons.Take(Constants.TEST_RESULT_PREVIEW_COUNT))
             {
                 QualityCategory quality;
                 weapon.TryGetQuality(out quality);
@@ -1366,10 +1360,10 @@ namespace AutoArm
                 if (isValid && !pawn.Drafted)
                 {
                     var nearbyWeapons = groundWeapons
-                        .Where(w => w.Position.DistanceTo(pawn.Position) <= Constants.SearchRadiusMedium && !w.IsForbidden(pawn))
-                        .OrderByDescending(w => WeaponScoringHelper.GetTotalScore(pawn, w))
-                        .Take(3)
-                        .ToList();
+                    .Where(w => w.Position.DistanceTo(pawn.Position) <= Constants.SearchRadiusMedium && !w.IsForbidden(pawn))
+                    .OrderByDescending(w => WeaponScoringHelper.GetTotalScore(pawn, w))
+                    .Take(Constants.TEST_WEAPON_NEARBY_COUNT)
+                    .ToList();
 
                     if (nearbyWeapons.Any())
                     {

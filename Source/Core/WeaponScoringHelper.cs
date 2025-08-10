@@ -35,6 +35,153 @@ namespace AutoArm.Weapons
         private static int cacheAccessCounter = 0;
         private const int MaxWeaponCacheSize = Constants.MaxWeaponCacheSize;
 
+        // ========== NEW: Per-ThingDef precomputed stats cache (thread-safe) ==========
+        // Caches expensive per-def inspections (verb/projectile stats, situational flags, base DPS estimate)
+        private class WeaponDefStats
+        {
+            public VerbProperties PrimaryVerb;
+            public ProjectileProperties PrimaryProjectile;
+            public int BurstCount;
+            public float Warmup;
+            public float Cooldown;
+            public float BurstDelay; // seconds
+            public float TimePerBurst; // seconds
+            public float BaseRangedDPS_NoQuality; // computed on first observation (approx)
+            public bool IsSituational;
+            public bool IsRanged;
+            public bool IsMelee;
+        }
+
+        private static readonly Dictionary<ThingDef, WeaponDefStats> defStatsCache = new Dictionary<ThingDef, WeaponDefStats>(256);
+        private static readonly object defStatsCacheLock = new object(); // Thread safety for RimThreaded compatibility
+
+        /// <summary>
+        /// Get or create cached weapon def stats (thread-safe)
+        /// </summary>
+        private static WeaponDefStats GetOrCreateDefStats(ThingDef def, ThingWithComps sampleWeapon = null)
+        {
+            if (def == null) return null;
+            
+            lock (defStatsCacheLock)
+            {
+                if (defStatsCache.TryGetValue(def, out var stats)) 
+                    return stats;
+
+                stats = new WeaponDefStats
+                {
+                    IsRanged = def.IsRangedWeapon,
+                    IsMelee = def.IsMeleeWeapon,
+                    PrimaryVerb = null,
+                    PrimaryProjectile = null,
+                    BurstCount = 0,
+                    Warmup = 0f,
+                    Cooldown = 0f,
+                    BurstDelay = 0f,
+                    TimePerBurst = 0f,
+                    BaseRangedDPS_NoQuality = 0f,
+                    IsSituational = false
+                };
+
+                // Try to fetch primary verb (cheap once)
+                var verb = def.Verbs != null && def.Verbs.Count > 0 ? def.Verbs[0] : null;
+                if (verb != null)
+                {
+                    stats.PrimaryVerb = verb;
+                    stats.BurstCount = Math.Max(1, verb.burstShotCount);
+                    stats.Warmup = verb.warmupTime;
+                    stats.BurstDelay = verb.ticksBetweenBurstShots / 60f;
+                    
+                    // Best approximation of cooldown: if available on def, use stat; otherwise 0
+                    try
+                    {
+                        stats.Cooldown = def.GetStatValueAbstract(StatDefOf.RangedWeapon_Cooldown);
+                    }
+                    catch
+                    {
+                        stats.Cooldown = 0f;
+                    }
+                    
+                    stats.TimePerBurst = stats.Warmup + stats.Cooldown + (Math.Max(0, stats.BurstCount - 1) * stats.BurstDelay);
+
+                    // Projectile if present
+                    try
+                    {
+                        stats.PrimaryProjectile = verb.defaultProjectile?.projectile;
+                    }
+                    catch
+                    {
+                        stats.PrimaryProjectile = null;
+                    }
+                }
+
+                // Compute situational heuristics
+                bool isSituational = false;
+                if (stats.PrimaryProjectile != null)
+                {
+                    try
+                    {
+                        if (stats.PrimaryProjectile.explosionRadius > 0) isSituational = true;
+                        if (stats.PrimaryProjectile.damageDef != null && stats.PrimaryProjectile.damageDef.harmsHealth == false) 
+                            isSituational = true;
+                    }
+                    catch { /* ignore */ }
+                }
+
+                // Forced miss radius, fire-extinguish etc
+                if (!isSituational && stats.PrimaryVerb != null)
+                {
+                    if (stats.PrimaryVerb.ForcedMissRadius > 0) isSituational = true;
+                }
+
+                // Cheap name-based checks (low cost, once per def)
+                if (!isSituational && def.defName != null)
+                {
+                    var dn = def.defName.ToLowerInvariant();
+                    if (dn.Contains("grenade") || dn.Contains("launcher") || dn.Contains("extinguish") ||
+                        dn.Contains("firebeat") || dn.Contains("fire_beat") || 
+                        (dn.Contains("charge") && dn.Contains("launcher")))
+                    {
+                        isSituational = true;
+                    }
+                }
+
+                stats.IsSituational = isSituational;
+
+                // Initial base DPS estimate if possible (approximate per-def using sampleWeapon if provided)
+                try
+                {
+                    float dps = 0f;
+                    if (stats.PrimaryProjectile != null)
+                    {
+                        // If we have a sampleWeapon, use it; otherwise attempt null-safe call
+                        float damage = 0f;
+                        if (sampleWeapon != null)
+                        {
+                            damage = stats.PrimaryProjectile.GetDamageAmount(sampleWeapon);
+                        }
+                        else
+                        {
+                            // best-effort: try passing null (some implementations allow it)
+                            try { damage = stats.PrimaryProjectile.GetDamageAmount(null); }
+                            catch { damage = 0f; }
+                        }
+
+                        // Only calculate DPS if we have valid time and damage
+                        if (stats.TimePerBurst > 0f && damage > 0f)
+                            dps = (damage * stats.BurstCount) / stats.TimePerBurst;
+                    }
+                    stats.BaseRangedDPS_NoQuality = dps;
+                }
+                catch
+                {
+                    stats.BaseRangedDPS_NoQuality = 0f;
+                }
+
+                defStatsCache[def] = stats;
+                return stats;
+            }
+        }
+
         /// <summary>
         /// Get the total score for a weapon/pawn combination
         /// </summary>
@@ -49,12 +196,17 @@ namespace AutoArm.Weapons
             float policyScore = GetOutfitPolicyScore(pawn, weapon);
             // For currently equipped forbidden weapons, apply penalty but continue scoring
             // This allows colonists to find better replacements
-            if (policyScore <= -1000f && pawn.equipment?.Primary != weapon)
+            if (policyScore <= Constants.OutfitFilterDisallowedPenalty && pawn.equipment?.Primary != weapon)
                 return policyScore;  // Reject weapons we're not holding
             totalScore += policyScore;
 
+            // Apply HP penalty for weapons below minimum threshold
+            // This encourages upgrades even though we allow the weapon
+            float hpPenalty = GetHitPointsPenalty(pawn, weapon);
+            totalScore += hpPenalty;
+
             float personaScore = GetPersonaWeaponScore(pawn, weapon);
-            if (personaScore <= -1000f)
+            if (personaScore <= Constants.OutfitFilterDisallowedPenalty)
                 return personaScore;
             totalScore += personaScore;
 
@@ -65,6 +217,17 @@ namespace AutoArm.Weapons
 
             // Weapon properties (base weapon scores)
             totalScore += GetWeaponPropertyScore(pawn, weapon);
+            
+            // Odyssey DLC unique weapon bonuses
+            float odysseyBonus = GetOdysseyWeaponBonus(weapon);
+            if (odysseyBonus > 0)
+            {
+                totalScore += odysseyBonus;
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Odyssey unique weapon bonus for {weapon.Label}: +{odysseyBonus}");
+                }
+            }
             
             // Mod compatibility bonuses
             // Infusion 2 - add bonus for infused weapons
@@ -163,7 +326,15 @@ namespace AutoArm.Weapons
         /// </summary>
         private static bool IsSituationalWeapon(ThingWithComps weapon)
         {
-            if (weapon?.def?.Verbs?.FirstOrDefault() == null)
+            if (weapon?.def == null) return false;
+
+            // Consult def-level cache for this check
+            var stats = GetOrCreateDefStats(weapon.def, weapon);
+            if (stats != null)
+                return stats.IsSituational;
+
+            // Fallback (shouldn't be hit with proper cache)
+            if (weapon.def.Verbs == null || weapon.def.Verbs.Count == 0)
                 return false;
 
             var verb = weapon.def.Verbs[0];
@@ -196,7 +367,7 @@ namespace AutoArm.Weapons
         }
 
         /// <summary>
-        /// Calculate score for ranged weapons - Optimized version
+        /// Calculate score for ranged weapons - Optimized version using def-level cache
         /// </summary>
         private static float GetRangedWeaponScore(ThingWithComps weapon)
         {
@@ -205,6 +376,10 @@ namespace AutoArm.Weapons
             // Get DPS with quality
             float dps = weapon.GetStatValue(StatDefOf.RangedWeapon_DamageMultiplier, true) *
                        GetRangedDPS(weapon);
+            
+            // Apply quality multiplier explicitly
+            float qualityMultiplier = GetQualityMultiplier(weapon);
+            dps *= qualityMultiplier;
 
             // Apply power creep protection
             float adjustedDPS = dps;
@@ -216,8 +391,9 @@ namespace AutoArm.Weapons
 
             float baseScore = adjustedDPS * RANGED_MULTIPLIER;
 
-            // Get weapon verb properties
-            var verb = weapon.def.Verbs?.FirstOrDefault();
+            // Use def-level cached verb properties when available
+            var stats = GetOrCreateDefStats(weapon.def, weapon);
+            VerbProperties verb = stats?.PrimaryVerb ?? weapon.def.Verbs?.FirstOrDefault();
             if (verb == null)
                 return baseScore;
 
@@ -235,7 +411,7 @@ namespace AutoArm.Weapons
                 baseScore += Constants.BurstBonusMultiplier * (float)Math.Log(burstCount + 1);
             }
 
-            // Add armor penetration score
+            // Add armor penetration score (uses cached projectile when possible)
             float apScore = GetArmorPenetrationScore(weapon);
             baseScore += apScore;
 
@@ -250,6 +426,10 @@ namespace AutoArm.Weapons
             // Get DPS with quality
             float dps = weapon.GetStatValue(StatDefOf.MeleeWeapon_DamageMultiplier, true) *
                        weapon.def.GetStatValueAbstract(StatDefOf.MeleeWeapon_AverageDPS);
+            
+            // Apply quality multiplier explicitly
+            float qualityMultiplier = GetQualityMultiplier(weapon);
+            dps *= qualityMultiplier;
 
             // Apply power creep protection
             float adjustedDPS = dps;
@@ -269,10 +449,40 @@ namespace AutoArm.Weapons
         }
 
         /// <summary>
+        /// Get quality multiplier for weapon scoring
+        /// </summary>
+        private static float GetQualityMultiplier(ThingWithComps weapon)
+        {
+            if (!weapon.TryGetQuality(out QualityCategory quality))
+                return 1.0f; // No quality = no multiplier
+            
+            // Quality levels: Awful=0, Poor=1, Normal=2, Good=3, Excellent=4, Masterwork=5, Legendary=6
+            int qualityLevel = (int)quality;
+            
+            // Apply the quality formula from Constants
+            // Base + (level * factor) = 0.95 + (level * 0.05)
+            // This gives: Awful=0.95, Poor=1.0, Normal=1.05, Good=1.10, Excellent=1.15, Masterwork=1.20, Legendary=1.25
+            float multiplier = Constants.QualityScoreBase + (qualityLevel * Constants.QualityScoreFactor);
+            
+            return multiplier;
+        }
+        
+        /// <summary>
         /// Get base ranged DPS before quality modifiers
+        /// Uses def-level cache to avoid repeated verb/projectile lookups
         /// </summary>
         private static float GetRangedDPS(ThingWithComps weapon)
         {
+            if (weapon?.def == null) return 0f;
+
+            var stats = GetOrCreateDefStats(weapon.def, weapon);
+            if (stats != null && stats.BaseRangedDPS_NoQuality > 0f)
+            {
+                // Return cached estimate (approx)
+                return stats.BaseRangedDPS_NoQuality;
+            }
+
+            // Fallback / compute and store
             var verb = weapon.def.Verbs?.FirstOrDefault();
             if (verb == null)
                 return 0f;
@@ -290,8 +500,31 @@ namespace AutoArm.Weapons
             // Calculate time per burst cycle
             float timePerBurst = warmup + cooldown + (burstCount - 1) * burstDelay;
 
-            // DPS = (damage * shots) / time
-            return (damage * burstCount) / timePerBurst;
+            float computedDps = 0f;
+            if (timePerBurst > 0f && damage > 0f) // Added damage check
+                computedDps = (damage * burstCount) / timePerBurst;
+
+            // Store an approximation in def cache for subsequent calls (use weapon-based damage measure)
+            if (stats != null)
+            {
+                lock (defStatsCacheLock)
+                {
+                    stats.BaseRangedDPS_NoQuality = computedDps;
+                    // also set verb/projectile derived values if missing
+                    if (stats.PrimaryVerb == null)
+                    {
+                        stats.PrimaryVerb = verb;
+                        stats.PrimaryProjectile = projectile;
+                        stats.BurstCount = Math.Max(1, verb.burstShotCount);
+                        stats.Warmup = verb.warmupTime;
+                        stats.Cooldown = cooldown;
+                        stats.BurstDelay = verb.ticksBetweenBurstShots / 60f;
+                        stats.TimePerBurst = timePerBurst;
+                    }
+                }
+            }
+
+            return computedDps;
         }
 
         /// <summary>
@@ -318,7 +551,7 @@ namespace AutoArm.Weapons
         }
 
         /// <summary>
-        /// Calculate armor penetration score - Optimized version
+        /// Calculate armor penetration score - Optimized version using def-level projectile cache
         /// </summary>
         private static float GetArmorPenetrationScore(ThingWithComps weapon)
         {
@@ -326,8 +559,9 @@ namespace AutoArm.Weapons
 
             if (weapon.def.IsRangedWeapon)
             {
-                // Get AP from projectile
-                var projectile = weapon.def.Verbs?.FirstOrDefault()?.defaultProjectile?.projectile;
+                // Use cached projectile when available
+                var stats = GetOrCreateDefStats(weapon.def, weapon);
+                ProjectileProperties projectile = stats?.PrimaryProjectile ?? weapon.def.Verbs?.FirstOrDefault()?.defaultProjectile?.projectile;
                 if (projectile != null)
                 {
                     ap = projectile.GetArmorPenetration(weapon);
@@ -381,7 +615,15 @@ namespace AutoArm.Weapons
         public static void ClearWeaponScoreCache()
         {
             weaponBaseScoreCache.Clear();
-            AutoArmLogger.Log("Cleared weapon base score cache");
+            cacheAccessCounter = 0; // Reset access counter too
+            
+            // Clear def-level cache as well (thread-safe)
+            lock (defStatsCacheLock)
+            {
+                defStatsCache.Clear();
+            }
+            
+            AutoArmLogger.Log("Cleared weapon base score cache and def-level precomputed stats");
         }
 
         private static float GetOutfitPolicyScore(Pawn pawn, ThingWithComps weapon)
@@ -390,9 +632,61 @@ namespace AutoArm.Weapons
             var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
             if (filter != null && !filter.Allows(weapon))
             {
-                // Forbidden weapons always get -1000
-                return -1000f;
+                // Forbidden weapons always get penalty from Constants
+                return Constants.OutfitFilterDisallowedPenalty;
             }
+            return 0f;
+        }
+
+        /// <summary>
+        /// Apply penalty for weapons below outfit's minimum HP threshold
+        /// This encourages pawns to upgrade to better condition weapons
+        /// </summary>
+        private static float GetHitPointsPenalty(Pawn pawn, ThingWithComps weapon)
+        {
+            // Only apply penalty if outfit filter exists
+            var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
+            if (filter == null)
+                return 0f;
+            
+            try
+            {
+                var allowedHitPointsPercents = filter.AllowedHitPointsPercents;
+                
+                // Check if filter has a minimum HP requirement
+                if (allowedHitPointsPercents != FloatRange.ZeroToOne && 
+                    allowedHitPointsPercents.min > 0.0f)
+                {
+                    float hitPointsPercent = (float)weapon.HitPoints / weapon.MaxHitPoints;
+                    
+                    // If weapon is below the minimum HP threshold
+                    if (hitPointsPercent < allowedHitPointsPercents.min)
+                    {
+                        // Apply a penalty proportional to how far below the threshold we are
+                        float deficit = allowedHitPointsPercents.min - hitPointsPercent;
+                        
+                        // Scale penalty: base penalty for just below threshold, scales with deficit
+                        float penalty = Constants.HPBelowMinimumBasePenalty - (deficit * Constants.HPDeficitScalingFactor);
+                        
+                        // Cap the penalty to avoid extreme values
+                        if (penalty < Constants.HPBelowMinimumMaxPenalty) 
+                            penalty = Constants.HPBelowMinimumMaxPenalty;
+                        
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] HP penalty for {weapon.Label} " +
+                                              $"({hitPointsPercent:P0} < {allowedHitPointsPercents.min:P0}): {penalty:F0}");
+                        }
+                        
+                        return penalty;
+                    }
+                }
+            }
+            catch (Exception e) 
+            {
+                AutoArmLogger.Debug($"Failed to check HP penalty: {e.Message}");
+            }
+            
             return 0f;
         }
 
@@ -408,7 +702,7 @@ namespace AutoArm.Weapons
                 if (!TestRunner.IsRunningTests && bladelinkComp.CodedPawn != null)
                 {
                     if (bladelinkComp.CodedPawn != pawn)
-                        return -1000f;
+                        return Constants.OutfitFilterDisallowedPenalty;  // Same penalty as outfit filter
                     else
                         return Constants.PersonaWeaponBonus;
                 }
@@ -502,6 +796,172 @@ namespace AutoArm.Weapons
             }
 
             return score;
+        }
+        
+        /// <summary>
+        /// Get bonus score for Odyssey DLC unique weapons with special traits
+        /// </summary>
+        private static float GetOdysseyWeaponBonus(ThingWithComps weapon)
+        {
+            if (weapon == null)
+                return 0f;
+            
+            // Check if Odyssey DLC is active
+            bool odysseyActive = ModLister.GetActiveModWithIdentifier("ludeon.rimworld.odyssey") != null;
+            
+            if (!odysseyActive)
+                return 0f;
+            
+            // Check for Odyssey weapon traits/abilities
+            // Odyssey weapons likely have special components for their unique abilities
+            var specialComp = weapon.AllComps?.FirstOrDefault(c => 
+                c.GetType().Name.Contains("WeaponTrait") || 
+                c.GetType().Name.Contains("WeaponAbility") ||
+                c.GetType().Name.Contains("UniqueWeapon") ||
+                c.GetType().Name.Contains("OdysseyWeapon") ||
+                c.GetType().Name.Contains("SpecialWeapon"));
+            
+            if (specialComp != null)
+            {
+                // This is a unique weapon with special traits
+                float bonus = Constants.OdysseyUniqueBaseBonus;
+                
+                // Try to count the number of beneficial traits
+                try
+                {
+                    var traitsField = specialComp.GetType().GetField("traits") ?? 
+                                     specialComp.GetType().GetField("abilities") ??
+                                     specialComp.GetType().GetField("weaponTraits") ??
+                                     specialComp.GetType().GetField("specialAbilities");
+                    
+                    if (traitsField != null)
+                    {
+                        var traits = traitsField.GetValue(specialComp);
+                        if (traits is System.Collections.ICollection collection)
+                        {
+                            int traitCount = collection.Count;
+                            bonus += traitCount * Constants.OdysseyUniqueTraitBonus;
+                            
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"Odyssey weapon {weapon.Label} has {traitCount} traits");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Couldn't find trait list, assume average of 2 traits
+                        bonus += 2 * Constants.OdysseyUniqueTraitBonus;
+                    }
+                }
+                catch
+                {
+                    // Error accessing traits, use base bonus + average trait bonus
+                    bonus += 2 * Constants.OdysseyUniqueTraitBonus;
+                }
+                
+                return bonus;
+            }
+            
+            // Alternative detection: Check if weapon def name contains Odyssey identifiers
+            // Odyssey weapons often have special naming patterns
+            string defName = weapon.def.defName.ToLower();
+            string label = weapon.Label?.ToLower() ?? "";
+            
+            // Check for Odyssey-specific patterns
+            if (defName.Contains("odyssey") || 
+                label.Contains("odyssey") ||
+                defName.Contains("_od_") || // Possible Odyssey prefix
+                defName.Contains("assault") && (defName.Contains("upgraded") || defName.Contains("enhanced")) ||
+                defName.Contains("rifle") && (defName.Contains("advanced") || defName.Contains("elite")))
+            {
+                // Likely an Odyssey weapon based on naming
+                float bonus = Constants.OdysseyUniqueBaseBonus + (2 * Constants.OdysseyUniqueTraitBonus);
+                
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"Detected Odyssey weapon by name pattern: {weapon.Label}");
+                }
+                
+                return bonus;
+            }
+            
+            // Check for weapons with unusually high stats (Odyssey weapons are upgraded versions)
+            if (weapon.def.IsRangedWeapon)
+            {
+                var verb = weapon.def.Verbs?.FirstOrDefault();
+                if (verb != null)
+                {
+                    // Get base weapon for comparison if possible
+                    string baseWeaponName = defName.Replace("upgraded", "")
+                                                   .Replace("enhanced", "")
+                                                   .Replace("advanced", "")
+                                                   .Replace("elite", "")
+                                                   .Replace("odyssey", "")
+                                                   .Replace("_od_", "_")
+                                                   .Trim('_');
+                    
+                    var baseWeaponDef = DefDatabase<ThingDef>.GetNamedSilentFail(baseWeaponName);
+                    
+                    if (baseWeaponDef != null && baseWeaponDef != weapon.def)
+                    {
+                        // Compare stats with base weapon
+                        var baseVerb = baseWeaponDef.Verbs?.FirstOrDefault();
+                        if (baseVerb != null)
+                        {
+                            bool isUpgraded = false;
+                            
+                            // Check if this weapon has significantly better stats
+                            if (verb.range > baseVerb.range * 1.1f || // 10% better range
+                                verb.burstShotCount > baseVerb.burstShotCount || // More burst
+                                verb.warmupTime < baseVerb.warmupTime * 0.9f || // 10% faster
+                                (verb.defaultProjectile?.projectile?.GetDamageAmount(weapon) ?? 0) > 
+                                (baseVerb.defaultProjectile?.projectile?.GetDamageAmount(weapon) ?? 0) * 1.15f) // 15% more damage
+                            {
+                                isUpgraded = true;
+                            }
+                            
+                            if (isUpgraded)
+                            {
+                                float bonus = Constants.OdysseyUniqueBaseBonus + (2 * Constants.OdysseyUniqueTraitBonus);
+                                
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"Detected Odyssey weapon by stat comparison with base: {weapon.Label}");
+                                }
+                                
+                                return bonus;
+                            }
+                        }
+                    }
+                    
+                    // Check for exceptional stats without base comparison
+                    bool hasExceptionalStats = false;
+                    
+                    // These thresholds indicate an upgraded/special weapon
+                    if ((defName.Contains("assault") && verb.range > 33f) || // Assault rifles normally have ~31 range
+                        (defName.Contains("sniper") && verb.range > 47f) || // Sniper rifles normally have ~45 range
+                        (defName.Contains("charge") && verb.burstShotCount > 3) || // Charge rifles normally have 3 burst
+                        (verb.warmupTime < 0.3f && verb.range > 28f)) // Very fast with good range
+                    {
+                        hasExceptionalStats = true;
+                    }
+                    
+                    if (hasExceptionalStats)
+                    {
+                        float bonus = Constants.OdysseyUniqueBaseBonus + (2 * Constants.OdysseyUniqueTraitBonus);
+                        
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"Detected Odyssey weapon by exceptional stats: {weapon.Label}");
+                        }
+                        
+                        return bonus;
+                    }
+                }
+            }
+            
+            return 0f;
         }
     }
 }

@@ -347,7 +347,38 @@ namespace AutoArm.Caching
             // Early exit if no cache exists
             if (!weaponCache.TryGetValue(map, out var cache) || cache.Weapons.Count == 0)
             {
-                return new List<ThingWithComps>();
+                // SAFETY NET: If cache is empty but map has weapons, try to initialize
+                // This handles cases where initial spawn patches were skipped
+                if (map != null && map.listerThings != null)
+                {
+                    var mapHasWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Any();
+                    if (mapHasWeapons)
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Warn($"[CACHE] Cache empty but map has weapons - reinitializing cache for map {map.uniqueID}");
+                        }
+                        InitializeCacheForMap(map);
+                        
+                        // Try again with newly initialized cache
+                        if (weaponCache.TryGetValue(map, out cache) && cache.Weapons.Count > 0)
+                        {
+                            // Continue with normal logic below
+                        }
+                        else
+                        {
+                            return new List<ThingWithComps>();
+                        }
+                    }
+                    else
+                    {
+                        return new List<ThingWithComps>();
+                    }
+                }
+                else
+                {
+                    return new List<ThingWithComps>();
+                }
             }
 
             // Use pooled collections to avoid allocations
@@ -426,15 +457,16 @@ namespace AutoArm.Caching
                 AutoArmLogger.Error($"Error getting weapons from map {map.uniqueID}", ex);
             }
 
-            // Get weapons from storage containers
+            // Get weapons from storage containers (including modded storage)
             try
             {
-                var storageBuildings = map.listerBuildings.allBuildingsColonist
-                    .Where(b => b != null && !b.Destroyed && b.Spawned && 
-                           (b.GetSlotGroup() != null || b.def.building?.fixedStorageSettings != null));
+                // Check ALL colony buildings, not just those with obvious storage properties
+                var allBuildings = map.listerBuildings.allBuildingsColonist
+                    .Where(b => b != null && !b.Destroyed && b.Spawned);
 
-                foreach (var building in storageBuildings)
+                foreach (var building in allBuildings)
                 {
+                    // Method 1: Try the standard inner container
                     var innerContainer = building.TryGetInnerInteractableThingOwner();
                     if (innerContainer != null)
                     {
@@ -443,9 +475,124 @@ namespace AutoArm.Caching
                             if (item is ThingWithComps weapon && IsValidWeapon(weapon))
                             {
                                 allWeapons.Add(weapon);
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"Found {weapon.Label} in {building.Label} (standard container)");
+                                }
                             }
                         }
                     }
+                    
+                    // Method 2: Use reflection to find any ThingOwner field (catches modded storage)
+                    // This is necessary for mods like Weapon Storage, Deep Storage, etc.
+                    try
+                    {
+                        var type = building.GetType();
+                        var fields = type.GetFields(System.Reflection.BindingFlags.Instance | 
+                                                    System.Reflection.BindingFlags.Public | 
+                                                    System.Reflection.BindingFlags.NonPublic);
+                        
+                        foreach (var field in fields)
+                        {
+                            // Look for ThingOwner fields (common in storage mods)
+                            if (field.FieldType.IsGenericType && 
+                                field.FieldType.GetGenericTypeDefinition() == typeof(ThingOwner<>))
+                            {
+                                var thingOwner = field.GetValue(building) as IThingHolder;
+                                if (thingOwner != null)
+                                {
+                                    foreach (var item in thingOwner.GetDirectlyHeldThings())
+                                    {
+                                        if (item is ThingWithComps weapon && IsValidWeapon(weapon) && 
+                                            !allWeapons.Contains(weapon))
+                                        {
+                                            allWeapons.Add(weapon);
+                                            if (AutoArmMod.settings?.debugLogging == true)
+                                            {
+                                                AutoArmLogger.Debug($"Found {weapon.Label} in {building.Label} via reflection (field: {field.Name})");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Also check for List<Thing> or List<ThingWithComps> fields
+                            else if (field.FieldType.IsGenericType && 
+                                     field.FieldType.GetGenericTypeDefinition() == typeof(List<>) &&
+                                     (field.FieldType.GetGenericArguments()[0] == typeof(Thing) ||
+                                      field.FieldType.GetGenericArguments()[0] == typeof(ThingWithComps)))
+                            {
+                                var list = field.GetValue(building) as System.Collections.IEnumerable;
+                                if (list != null)
+                                {
+                                    foreach (var item in list)
+                                    {
+                                        if (item is ThingWithComps weapon && IsValidWeapon(weapon) && 
+                                            !allWeapons.Contains(weapon))
+                                        {
+                                            allWeapons.Add(weapon);
+                                            if (AutoArmMod.settings?.debugLogging == true)
+                                            {
+                                                AutoArmLogger.Debug($"Found {weapon.Label} in {building.Label} via reflection (list field: {field.Name})");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Method 3: Check properties too (some mods use properties instead of fields)
+                        var properties = type.GetProperties(System.Reflection.BindingFlags.Instance | 
+                                                           System.Reflection.BindingFlags.Public | 
+                                                           System.Reflection.BindingFlags.NonPublic);
+                        
+                        foreach (var prop in properties)
+                        {
+                            // Skip properties without getters or indexers
+                            if (!prop.CanRead || prop.GetIndexParameters().Length > 0)
+                                continue;
+                                
+                            try
+                            {
+                                if (prop.PropertyType.IsGenericType && 
+                                    prop.PropertyType.GetGenericTypeDefinition() == typeof(ThingOwner<>))
+                                {
+                                    var thingOwner = prop.GetValue(building) as IThingHolder;
+                                    if (thingOwner != null)
+                                    {
+                                        foreach (var item in thingOwner.GetDirectlyHeldThings())
+                                        {
+                                            if (item is ThingWithComps weapon && IsValidWeapon(weapon) && 
+                                                !allWeapons.Contains(weapon))
+                                            {
+                                                allWeapons.Add(weapon);
+                                                if (AutoArmMod.settings?.debugLogging == true)
+                                                {
+                                                    AutoArmLogger.Debug($"Found {weapon.Label} in {building.Label} via reflection (property: {prop.Name})");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Some properties might throw exceptions when accessed, ignore them
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Don't let one building's reflection error stop the whole process
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"Error using reflection on {building.Label}: {ex.Message}");
+                        }
+                    }
+                }
+                
+                if (AutoArmMod.settings?.debugLogging == true && allWeapons.Count > 0)
+                {
+                    AutoArmLogger.Debug($"Total weapons found in storage containers: {allWeapons.Count}");
                 }
             }
             catch (Exception ex)
@@ -708,6 +855,81 @@ namespace AutoArm.Caching
             {
                 ValidateCacheContents(map, cache);
             }
+        }
+
+        /// <summary>
+        /// Get weapons in storage zones near a position - optimized for vanilla-like behavior
+        /// </summary>
+        public static List<ThingWithComps> GetStorageWeaponsNear(Map map, IntVec3 position, float maxDistance)
+        {
+            var allWeapons = GetWeaponsNear(map, position, maxDistance);
+            
+            // Filter to only storage weapons
+            return allWeapons.Where(w => IsInStorageZone(w)).ToList();
+        }
+        
+        /// <summary>
+        /// Check if weapon is in a storage zone (stockpile or storage building)
+        /// Handles vanilla and modded storage containers
+        /// </summary>
+        private static bool IsInStorageZone(ThingWithComps weapon)
+        {
+            if (weapon == null || weapon.Map == null)
+                return false;
+            
+            // Check if the weapon is in a storage zone/stockpile
+            var slotGroup = weapon.GetSlotGroup();
+            if (slotGroup != null)
+            {
+                return true;
+            }
+            
+            // Check if it's in a vanilla storage building (shelves, etc.)
+            if (weapon.ParentHolder is Building_Storage)
+            {
+                return true;
+            }
+            
+            // Check if it's in ANY building (handles modded storage)
+            if (weapon.ParentHolder is Building building)
+            {
+                // Check if building has a slot group (storage zone)
+                if (building.GetSlotGroup() != null)
+                {
+                    return true;
+                }
+                
+                // Check if building has fixed storage settings
+                if (building.def.building?.fixedStorageSettings != null)
+                {
+                    return true;
+                }
+                
+                // Check if building has an inner container (modded storage like Weapon Storage, Deep Storage, etc.)
+                var innerContainer = building.TryGetInnerInteractableThingOwner();
+                if (innerContainer != null && innerContainer.Contains(weapon))
+                {
+                    return true;
+                }
+            }
+            
+            // Check if parent is any IThingHolder that's a storage (catches edge cases)
+            if (weapon.ParentHolder is IThingHolder holder)
+            {
+                // Check if the holder is part of a storage system
+                if (holder is ISlotGroupParent)
+                {
+                    return true;
+                }
+                
+                // Check if holder is a minified thing in storage (e.g., uninstalled furniture)
+                if (holder is MinifiedThing minified && minified.GetSlotGroup() != null)
+                {
+                    return true;
+                }
+            }
+            
+            return false;
         }
 
         /// <summary>

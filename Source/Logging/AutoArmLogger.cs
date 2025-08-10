@@ -48,19 +48,55 @@ namespace AutoArm.Logging   // keep root namespace so existing call-sites resolv
         }
 
         private static readonly object SyncRoot = new object();
-        private static readonly StreamWriter Writer;      // initialised in static ctor
+        private static StreamWriter Writer = null;      // initialised in static ctor
 
         #region static constructor
 
         static AutoArmLogger()
         {
+            InitializeLogFile();
+        }
+        
+        private static void InitializeLogFile()
+        {
             try
             {
                 // CHANGED: Write directly to RimWorld folder
                 string path = Path.Combine(GenFilePaths.SaveDataFolderPath, LogFileName);
+                
+                // Try to delete old log file if it exists and is locked
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        File.Delete(path);
+                    }
+                    catch
+                    {
+                        // If we can't delete it, try to append instead
+                        try
+                        {
+                            // Try to open with shared access
+                            var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                            Writer = new StreamWriter(fs, Encoding.UTF8) { AutoFlush = true };
+                            Writer.WriteLine();
+                            Writer.WriteLine("===============================================================");
+                            Writer.WriteLine($"AutoArm Log - Session resumed: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                            Writer.WriteLine("===============================================================");
+                            Writer.WriteLine();
+                            return;
+                        }
+                        catch
+                        {
+                            // If that also fails, use a new filename with timestamp
+                            path = Path.Combine(GenFilePaths.SaveDataFolderPath, $"AutoArm_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+                        }
+                    }
+                }
 
-                // Create or overwrite the log file on each game start
-                Writer = new StreamWriter(path, false, Encoding.UTF8) { AutoFlush = true };
+                // Create or overwrite the log file
+                var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                Writer = new StreamWriter(fileStream, Encoding.UTF8) { AutoFlush = true };
 
                 // Write header for new log file
                 Writer.WriteLine("===============================================================");
@@ -71,11 +107,16 @@ namespace AutoArm.Logging   // keep root namespace so existing call-sites resolv
                 // Log the path for debugging
                 Writer.WriteLine($"Log file location: {path}");
                 Writer.WriteLine();
+                
+                // Update the stored path
+                autoArmLogPath = path;
             }
             catch (Exception ex)
             {
-                // If log creation fails, at least notify the player
-                Verse.Log.Error("[AutoArm] Failed to create AutoArm.log file: " + ex);
+                // If log creation fails completely, set Writer to null and continue without file logging
+                Writer = null;
+                // Only show a warning, not an error, to avoid alarming the player
+                Verse.Log.Warning("[AutoArm] Could not create log file (file may be in use). Debug logging will be disabled for this session.");
             }
         }
 
@@ -88,12 +129,20 @@ namespace AutoArm.Logging   // keep root namespace so existing call-sites resolv
         /// </summary>
         public static void AnnounceVerboseLogging()
         {
-            string message = "[AutoArm] Verbose logging enabled!\n" +
-                           $"Debug logs are written to: {AutoArmLogPath}";
+            if (Writer != null)
+            {
+                string message = "[AutoArm] Verbose logging enabled!\n" +
+                               $"Debug logs are written to: {AutoArmLogPath}";
 
-            // Log to both in-game console and our debug log
-            Verse.Log.Message(message);
-            Debug("Verbose logging enabled - player notified of log location");
+                // Log to both in-game console and our debug log
+                Verse.Log.Message(message);
+                Debug("Verbose logging enabled - player notified of log location");
+            }
+            else
+            {
+                // If file logging is disabled, just notify that debug mode is on
+                Verse.Log.Message("[AutoArm] Debug mode enabled (file logging unavailable this session)");
+            }
         }
 
         #endregion Verbose Logging Announcement
@@ -260,15 +309,28 @@ namespace AutoArm.Logging   // keep root namespace so existing call-sites resolv
             string lvl = level.ToString().ToUpperInvariant().PadRight(5);
             string line = $"[{ts}] [{lvl}] {message}";
 
-            lock (SyncRoot)
+            // Only write to file if Writer was successfully initialized
+            if (Writer != null)
             {
-                Writer.WriteLine(line);
-
-                if (ex != null)
+                lock (SyncRoot)
                 {
-                    Writer.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
-                    Writer.WriteLine($"Stack trace:\n{ex.StackTrace}");
-                    Writer.WriteLine("------------------------------------------------");
+                    try
+                    {
+                        Writer.WriteLine(line);
+
+                        if (ex != null)
+                        {
+                            Writer.WriteLine($"Exception: {ex.GetType().Name}: {ex.Message}");
+                            Writer.WriteLine($"Stack trace:\n{ex.StackTrace}");
+                            Writer.WriteLine("------------------------------------------------");
+                        }
+                    }
+                    catch
+                    {
+                        // If writing fails, disable file logging for this session
+                        try { Writer?.Dispose(); } catch { }
+                        Writer = null;
+                    }
                 }
             }
 

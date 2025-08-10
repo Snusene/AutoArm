@@ -163,8 +163,7 @@ namespace AutoArm.Testing
         {
             try
             {
-                // Clear timing cooldowns between tests
-                TimingHelper.ClearAllCooldowns();
+                // TimingHelper removed - it only had empty methods
 
                 // Clear weapon cache
                 if (map != null)

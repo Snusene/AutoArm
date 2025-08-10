@@ -63,7 +63,7 @@
 	<description>
 		<![CDATA[<b>Core features</b>
 Unarmed colonists grab weapons immediately
-Colonists automatically equip better weapons based on their traits and skills
+Colonists automatically upgrade based on their traits, skills and weapon stats
 Manually equipped weapons are remembered and stays locked
 
 <b>How to Use</b>

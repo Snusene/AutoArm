@@ -32,8 +32,7 @@ namespace AutoArm.Helpers
             {
                 var cleanupStats = new CleanupStats();
 
-                // Clean up timing data
-                TimingHelper.CleanupOldCooldowns();
+                // Timing data cleanup removed - TimingHelper was vestigial
 
                 // Clean up forced weapon tracker
                 cleanupStats.ForcedWeapons = ForcedWeaponHelper.Cleanup();
@@ -78,6 +77,9 @@ namespace AutoArm.Helpers
 
                 // Clean up think node evaluation failures
                 ThinkNode_ConditionalWeaponStatus.CleanupDeadPawns();
+                
+                // Clean up pawn validation cache (includes lord cache)
+                PawnValidationCache.CleanupDeadPawns();
 
                 // Clean up expired generic cache entries
                 cleanupStats.CacheEntries = GenericCache.CleanupExpired();
@@ -253,6 +255,9 @@ namespace AutoArm.Helpers
             
             // Clear validation helper storage type caches
             ValidationHelper.ClearStorageTypeCaches();
+            
+            // Clear pawn validation cache (includes lord cache)
+            PawnValidationCache.ClearCache();
             
             // Clear generic cache
             GenericCache.ClearAll();

@@ -2,6 +2,7 @@ using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
 using AutoArm.Logging;
+using HarmonyLib;
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -9,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using Verse;
 using Verse.AI;
+using Verse.Sound;
 
 namespace AutoArm
 {
@@ -429,8 +431,23 @@ namespace AutoArm
                 }
             }
 
-            // Search for weapons
-            var cachedWeapons = Caching.ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, searchRadius);
+            // Search for weapons - respect storage-only setting
+            List<ThingWithComps> cachedWeapons;
+            if (AutoArmMod.settings?.onlyAutoEquipFromStorage == true)
+            {
+                // Only look in storage zones and containers
+                cachedWeapons = Caching.ImprovedWeaponCacheManager.GetStorageWeaponsNear(pawn.Map, pawn.Position, searchRadius);
+                
+                if (AutoArmMod.settings?.debugLogging == true && cachedWeapons.Count == 0)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] No sidearm weapons found in storage within {searchRadius} units");
+                }
+            }
+            else
+            {
+                // Look everywhere
+                cachedWeapons = Caching.ImprovedWeaponCacheManager.GetWeaponsNear(pawn.Map, pawn.Position, searchRadius);
+            }
 
             ThingWithComps bestWeapon = null;
             float bestScore = 0f;
@@ -439,14 +456,37 @@ namespace AutoArm
 
             foreach (var weapon in cachedWeapons)
             {
-                // Basic validation
-                if (!ValidationHelper.CanPawnUseWeapon(pawn, weapon, out string reason))
+                // Check if this is a same-type upgrade BEFORE doing SimpleSidearms slot validation
+                // This allows upgrading weapons even when slots are full
+                // Check both inventory weapons AND primary weapon for same-type upgrades
+                bool isSameTypeUpgrade = inventoryWeapons.ContainsKey(weapon.def) || 
+                                         (primaryWeapon != null && weapon.def == primaryWeapon.def);
+                
+                // For same-type upgrades, skip SimpleSidearms slot check
+                // For new weapons, do full validation including SS slots
+                if (isSameTypeUpgrade)
                 {
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    // Do validation WITHOUT SimpleSidearms slot check
+                    if (!ValidationHelper.CanPawnUseWeapon(pawn, weapon, out string reason, skipSimpleSidearmsCheck: true))
                     {
-                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: {reason}");
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: {reason}");
+                        }
+                        continue;
                     }
-                    continue;
+                }
+                else
+                {
+                    // Full validation including SimpleSidearms slot check
+                    if (!ValidationHelper.CanPawnUseWeapon(pawn, weapon, out string reason))
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: {reason}");
+                        }
+                        continue;
+                    }
                 }
 
                 if (DroppedItemTracker.IsRecentlyDropped(weapon))
@@ -464,34 +504,57 @@ namespace AutoArm
 
                 float score = getWeaponScore(pawn, weapon);
 
-                // Skip if this matches the primary weapon type (handled by primary upgrade logic)
-                if (primaryWeapon != null && weapon.def == primaryWeapon.def)
+                // Check if we already have this weapon type (in inventory or as primary)
+                if (isSameTypeUpgrade)
                 {
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    // Determine which existing weapon we're comparing against
+                    ThingWithComps existingWeapon = null;
+                    bool isPrimaryUpgrade = false;
+                    
+                    if (primaryWeapon != null && weapon.def == primaryWeapon.def)
                     {
-                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Skipping {weapon.Label} - matches primary weapon type");
+                        existingWeapon = primaryWeapon;
+                        isPrimaryUpgrade = true;
                     }
-                    continue;
-                }
-
-                // Check if we already have this weapon type in inventory
-                if (inventoryWeapons.ContainsKey(weapon.def))
-                {
-                    var existingWeapon = inventoryWeapons[weapon.def];
+                    else if (inventoryWeapons.ContainsKey(weapon.def))
+                    {
+                        existingWeapon = inventoryWeapons[weapon.def];
+                        isPrimaryUpgrade = false;
+                    }
+                    
+                    if (existingWeapon == null)
+                    {
+                        continue; // Shouldn't happen, but be safe
+                    }
+                    
+                    // OPTIMIZATION: Quick quality check to avoid scoring obviously inferior weapons
+                    QualityCategory existingQuality = QualityCategory.Normal;
+                    QualityCategory newQuality = QualityCategory.Normal;
+                    
+                    existingWeapon.TryGetQuality(out existingQuality);
+                    weapon.TryGetQuality(out newQuality);
+                    
+                    // If quality is clearly worse, skip without scoring or logging
+                    if (newQuality < existingQuality)
+                    {
+                        continue; // Obviously inferior, no need to score
+                    }
+                    
                     float existingScore = getWeaponScore(pawn, existingWeapon);
                     float threshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
 
                     // Check if SS manages this weapon
-                    bool isSidearmManaged = IsSimpleSidearmsManaged(pawn, existingWeapon);
+                    bool isSidearmManaged = IsSimpleSidearmsManaged(pawn, existingWeapon) || isPrimaryUpgrade;
                     
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    // Only log if same or better quality (we already filtered out worse quality)
+                    if (AutoArmMod.settings?.debugLogging == true && newQuality >= existingQuality)
                     {
                         AutoArmLogger.Debug($"[{pawn.LabelShort}] Checking upgrade for {existingWeapon.Label}: SS-managed={isSidearmManaged}, existingScore={existingScore:F0}, newScore={score:F0}, threshold={threshold:F2}");
                     }
 
-                    // For SS-managed weapons OR any weapon in inventory, check upgrade settings
+                    // For SS-managed weapons OR primary weapon OR any weapon in inventory, check upgrade settings
                     // (weapons in inventory should be considered as potential sidearms even if SS hasn't registered them yet)
-                    if (isSidearmManaged || existingWeapon.holdingOwner == pawn.inventory.innerContainer)
+                    if (isSidearmManaged || isPrimaryUpgrade || existingWeapon.holdingOwner == pawn.inventory.innerContainer)
                     {
                         // Check if sidearm upgrades are allowed
                         if (AutoArmMod.settings?.allowSidearmUpgrades != true)
@@ -536,7 +599,8 @@ namespace AutoArm
                         }
                         else
                         {
-                            if (AutoArmMod.settings?.debugLogging == true)
+                            // Only log rejection if same or better quality (we already filtered out worse quality)
+                            if (AutoArmMod.settings?.debugLogging == true && newQuality >= existingQuality)
                             {
                                 AutoArmLogger.Debug($"[{pawn.LabelShort}] Weapon {weapon.Label} rejected: Not enough upgrade over {existingWeapon.Label} ({score} <= {existingScore} * {threshold})");
                             }
@@ -587,20 +651,62 @@ namespace AutoArm
             // Create appropriate job
             if (isUpgrade && weaponToReplace != null)
             {
-                // For sidearm upgrades, use custom swap job to ensure old weapon ends up at new weapon location
-                if (AutoArmMod.settings?.debugLogging == true)
+                // Check if this is a primary weapon upgrade
+                bool isPrimaryUpgrade = (weaponToReplace == pawn.equipment?.Primary);
+                
+                if (isPrimaryUpgrade)
                 {
-                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Creating swap job for SS upgrade: {weaponToReplace.Label} -> {bestWeapon.Label}");
+                    // For primary weapon upgrades, we need to drop the old primary at the new weapon location
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Creating primary swap job for upgrade: {weaponToReplace.Label} -> {bestWeapon.Label}");
+                    }
+                    
+                    // Create a custom primary swap job that drops the old weapon at the new weapon's location
+                    var job = CreateSwapPrimaryJob(pawn, bestWeapon, weaponToReplace);
+                    if (job != null)
+                    {
+                        AutoEquipTracker.MarkAsAutoEquip(job, pawn);
+                        
+                        // Show notification for primary upgrade
+                        if (AutoArmMod.settings?.showNotifications == true && 
+                            PawnUtility.ShouldSendNotificationAbout(pawn))
+                        {
+                            Messages.Message("AutoArm_UpgradedSidearm".Translate(
+                                pawn.LabelShort.CapitalizeFirst(),
+                                weaponToReplace.Label,
+                                bestWeapon.Label
+                            ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                        }
+                    }
+                    return job;
                 }
+                else
+                {
+                    // For sidearm upgrades in inventory, pre-validate that the swap will work
+                    if (!CanPerformSidearmSwap(pawn, bestWeapon, weaponToReplace))
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Sidearm swap validation failed: {weaponToReplace.Label} -> {bestWeapon.Label}");
+                        }
+                        return null;
+                    }
+                    
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Creating swap job for SS upgrade: {weaponToReplace.Label} -> {bestWeapon.Label}");
+                    }
 
-                // Create our custom swap job
-                var job = CreateSwapSidearmJob(pawn, bestWeapon, weaponToReplace);
-                if (job != null)
-                {
-                    AutoEquipTracker.MarkAsAutoEquip(job, pawn);
-                    // SimpleSidearms is the authority - no need to track forcing separately
+                    // Create our custom swap job
+                    var job = CreateSwapSidearmJob(pawn, bestWeapon, weaponToReplace);
+                    if (job != null)
+                    {
+                        AutoEquipTracker.MarkAsAutoEquip(job, pawn);
+                        // SimpleSidearms is the authority - no need to track forcing separately
+                    }
+                    return job;
                 }
-                return job;
             }
             else
             {
@@ -631,9 +737,57 @@ namespace AutoArm
         }
 
         /// <summary>
+        /// Check if a sidearm swap can be performed successfully
+        /// </summary>
+        private static bool CanPerformSidearmSwap(Pawn pawn, ThingWithComps newWeapon, ThingWithComps oldWeapon)
+        {
+            if (pawn == null || newWeapon == null || oldWeapon == null)
+                return false;
+                
+            // Make sure old weapon is actually in inventory
+            if (!pawn.inventory.innerContainer.Contains(oldWeapon))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Old weapon {oldWeapon.Label} not in inventory for swap");
+                }
+                return false;
+            }
+            
+            // For same-type upgrades, skip slot limit check since we're replacing, not adding
+            bool isSameTypeUpgrade = (newWeapon.def == oldWeapon.def);
+            
+            if (isSameTypeUpgrade)
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Same-type upgrade detected, bypassing SS slot limit check");
+                }
+                // For same-type upgrades, we don't need SS validation since we're replacing
+                // The swap will maintain the same number of slots
+                return true;
+            }
+            else
+            {
+                // Different weapon type - check if SimpleSidearms would allow it
+                string reason;
+                if (!CanPickupSidearmInstance(newWeapon, pawn, out reason))
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] SS pre-validation rejects {newWeapon.Label}: {reason}");
+                    }
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        /// <summary>
         /// Create a job to swap a sidearm with a better weapon
         /// </summary>
-        private static Job CreateSwapSidearmJob(Pawn pawn, ThingWithComps newWeapon, ThingWithComps oldWeapon)
+        public static Job CreateSwapSidearmJob(Pawn pawn, ThingWithComps newWeapon, ThingWithComps oldWeapon)
         {
             if (_swapSidearmJobDef == null)
             {
@@ -648,6 +802,24 @@ namespace AutoArm
             }
 
             return JobMaker.MakeJob(_swapSidearmJobDef, newWeapon, oldWeapon);
+        }
+        
+        /// <summary>
+        /// Create a job to swap the primary weapon with a better weapon
+        /// </summary>
+        public static Job CreateSwapPrimaryJob(Pawn pawn, ThingWithComps newWeapon, ThingWithComps oldWeapon)
+        {
+            // For primary swaps, we can use a regular equip job with a custom driver
+            // that drops the old weapon at the pickup location
+            var swapPrimaryJobDef = new JobDef
+            {
+                defName = "AutoArmSwapPrimary",
+                driverClass = typeof(JobDriver_SwapPrimary),
+                reportString = "swapping primary weapon.",
+                casualInterruptible = false
+            };
+            
+            return JobMaker.MakeJob(swapPrimaryJobDef, newWeapon, oldWeapon);
         }
 
         /// <summary>
@@ -1374,7 +1546,7 @@ namespace AutoArm
                     .FailOnDespawnedNullOrForbidden(TargetIndex.A)
                     .FailOnSomeonePhysicallyInteracting(TargetIndex.A);
 
-                // Do the swap at this location
+                // Do the ATOMIC swap at this location
                 yield return new Toil
                 {
                     initAction = delegate
@@ -1391,58 +1563,169 @@ namespace AutoArm
                                 return;
                             }
 
-                            // Drop old weapon from inventory at THIS location (where new weapon is)
-                            if (OldWeapon.holdingOwner == pawn.inventory.innerContainer)
+                            // ATOMIC SWAP - Critical section
+                            // We need to ensure the inventory swap happens atomically
+                            
+                            // 1. Find old weapon's position in inventory
+                            int oldWeaponIndex = pawn.inventory.innerContainer.IndexOf(OldWeapon);
+                            if (oldWeaponIndex < 0)
                             {
-                                Thing droppedWeapon;
-                                if (OldWeapon.stackCount > 1)
+                                AutoArmLogger.Warn($"[{pawn.LabelShort}] Swap aborted - {OldWeapon.Label} not in inventory");
+                                return;
+                            }
+                            
+                            // 2. Pre-validate that SS will accept the swap
+                            // SKIP validation for same-type upgrades - we're replacing, not adding
+                            bool isSameTypeUpgrade = (OldWeapon.def == NewWeapon.def);
+                            if (!isSameTypeUpgrade)
+                            {
+                                string validationReason;
+                                if (!CanPickupSidearmInstance(NewWeapon, pawn, out validationReason))
                                 {
-                                    droppedWeapon = OldWeapon.SplitOff(1);
-                                }
-                                else
-                                {
-                                    pawn.inventory.innerContainer.Remove(OldWeapon);
-                                    droppedWeapon = OldWeapon;
-                                }
-
-                                // Place it exactly where we're standing (at new weapon location)
-                                GenPlace.TryPlaceThing(droppedWeapon, pawn.Position, pawn.Map, ThingPlaceMode.Near);
-
-                                // Inform SimpleSidearms we dropped it
-                                ForgetSidearmInMemory(pawn, OldWeapon);
-
-                                // Mark for AutoArm tracking
-                                DroppedItemTracker.MarkAsDropped(droppedWeapon, 600);
-
-                                if (AutoArmMod.settings?.debugLogging == true)
-                                {
-                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Dropped {OldWeapon.Label} at {pawn.Position}");
+                                    if (AutoArmMod.settings?.debugLogging == true)
+                                    {
+                                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Swap aborted - SS would reject {NewWeapon.Label}: {validationReason}");
+                                    }
+                                    return;
                                 }
                             }
-
-                            // Pick up new weapon into inventory
+                            else if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Same-type swap - skipping SS validation (replacing {OldWeapon.Label} with {NewWeapon.Label})");
+                            }
+                            
+                            // Store forced/preferred status before swap to maintain it
+                            bool wasForced = false;
+                            bool wasPreferred = false;
+                            if (OldWeapon.def == NewWeapon.def)  // Same-type upgrade
+                            {
+                                IsWeaponTypeForced(pawn, OldWeapon.def, out wasForced, out wasPreferred);
+                                if ((wasForced || wasPreferred) && AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Will maintain {(wasForced ? "forced" : "preferred")} status for {NewWeapon.Label}");
+                                }
+                            }
+                            
+                            // 3. Pick up new weapon from ground (but don't add to inventory yet)
                             if (NewWeapon.Spawned)
                             {
                                 NewWeapon.DeSpawn();
                             }
-                            if (!pawn.inventory.innerContainer.TryAdd(NewWeapon))
+                            
+                            // 4. Store reference to old weapon before removing it
+                            ThingWithComps oldWeaponToPlace = OldWeapon;
+                            IntVec3 dropPosition = pawn.Position; // Drop at current position (new weapon location)
+                            
+                            // 5. ATOMIC OPERATION - Direct swap in container
+                            // This maintains the same slot position, avoiding SS weight/slot recalculation issues
+                            try
                             {
-                                AutoArmLogger.Warn($"[{pawn.LabelShort}] Failed to add {NewWeapon.Label} to inventory");
-                                // Try to re-spawn it if we failed
-                                if (!NewWeapon.Spawned)
+                                if (AutoArmMod.settings?.debugLogging == true)
                                 {
-                                    GenPlace.TryPlaceThing(NewWeapon, pawn.Position, pawn.Map, ThingPlaceMode.Near);
+                                    int invCount = pawn.inventory.innerContainer.Count;
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Performing atomic swap: {OldWeapon.Label} (slot {oldWeaponIndex}) -> {NewWeapon.Label}");
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Current inventory count: {invCount} items");
+                                }
+                                
+                                // Handle stackable weapons
+                                if (oldWeaponToPlace.stackCount > 1)
+                                {
+                                    // Split off one item from the stack
+                                    oldWeaponToPlace = (ThingWithComps)OldWeapon.SplitOff(1);
+                                    // The remaining stack stays in inventory
+                                    if (AutoArmMod.settings?.debugLogging == true)
+                                    {
+                                        AutoArmLogger.Debug($"[{pawn.LabelShort}] Split stack: keeping {OldWeapon.stackCount} in inventory, dropping 1");
+                                    }
+                                }
+                                else
+                                {
+                                    // Remove the entire item - we'll replace it atomically
+                                    pawn.inventory.innerContainer.Remove(OldWeapon);
+                                }
+                                
+                                // Add new weapon to inventory immediately
+                                // This should succeed since we just freed up the slot
+                                if (!pawn.inventory.innerContainer.TryAdd(NewWeapon))
+                                {
+                                    // Unexpected failure - try to restore old weapon
+                                    AutoArmLogger.Error($"[{pawn.LabelShort}] CRITICAL: Failed to add {NewWeapon.Label} during atomic swap!");
+                                    
+                                    // Try to put old weapon back
+                                    if (!pawn.inventory.innerContainer.TryAdd(oldWeaponToPlace))
+                                    {
+                                        // Can't restore - drop it
+                                        GenPlace.TryPlaceThing(oldWeaponToPlace, dropPosition, pawn.Map, ThingPlaceMode.Near);
+                                    }
+                                    
+                                    // Re-spawn new weapon since we couldn't pick it up
+                                    if (!NewWeapon.Spawned)
+                                    {
+                                        GenPlace.TryPlaceThing(NewWeapon, dropPosition, pawn.Map, ThingPlaceMode.Near);
+                                    }
+                                    return;
+                                }
+                                
+                                // Play the weapon's equip sound if it has one
+                                if (NewWeapon.def.soundInteract != null)
+                                {
+                                    NewWeapon.def.soundInteract.PlayOneShot(new TargetInfo(pawn.Position, pawn.Map, false));
+                                }
+                                
+                                // Success! Now place the old weapon on ground
+                                GenPlace.TryPlaceThing(oldWeaponToPlace, dropPosition, pawn.Map, ThingPlaceMode.Near);
+                                
+                                // Unforbid the dropped weapon - it's an upgrade, not trash!
+                                if (oldWeaponToPlace != null && oldWeaponToPlace.Spawned)
+                                {
+                                    oldWeaponToPlace.SetForbidden(false, false);
+                                }
+                                
+                                // 6. Update SimpleSidearms memory AFTER successful swap
+                                // The order here is important - inform of drop first, then add
+                                InformOfDroppedSidearm(pawn, oldWeaponToPlace);
+                                InformOfAddedSidearm(pawn, NewWeapon);
+                                
+                                // 6b. Maintain forced/preferred status for same-type upgrades
+                                if ((wasForced || wasPreferred) && OldWeapon.def == NewWeapon.def)
+                                {
+                                    if (wasForced)
+                                    {
+                                        // Re-force the weapon type after swap
+                                        // Note: This might briefly make it primary - SS will reorder
+                                        SetWeaponAsForced(pawn, NewWeapon);
+                                        if (AutoArmMod.settings?.debugLogging == true)
+                                        {
+                                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Re-forced {NewWeapon.Label} after swap");
+                                        }
+                                    }
+                                    // Note: Preferred status should be maintained automatically by SS
+                                    // since we're just swapping same weapon type
+                                }
+                                
+                                // 7. Mark old weapon as dropped for AutoArm tracking
+                                DroppedItemTracker.MarkAsDropped(oldWeaponToPlace, 600);
+                                
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Atomic swap successful: {OldWeapon.Label} -> {NewWeapon.Label}");
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Dropped {oldWeaponToPlace.Label} at {dropPosition}");
+                                }
+                            }
+                            catch (Exception swapEx)
+                            {
+                                AutoArmLogger.Error($"[{pawn.LabelShort}] Atomic swap failed: {swapEx.Message}", swapEx);
+                                
+                                // Emergency cleanup - ensure weapons end up somewhere
+                                if (!NewWeapon.Spawned && NewWeapon.holdingOwner == null)
+                                {
+                                    GenPlace.TryPlaceThing(NewWeapon, dropPosition, pawn.Map, ThingPlaceMode.Near);
+                                }
+                                if (oldWeaponToPlace != null && oldWeaponToPlace.holdingOwner == null && !oldWeaponToPlace.Spawned)
+                                {
+                                    GenPlace.TryPlaceThing(oldWeaponToPlace, dropPosition, pawn.Map, ThingPlaceMode.Near);
                                 }
                                 return;
-                            }
-
-                            // Inform SimpleSidearms we added it
-                            InformOfAddedSidearm(pawn, NewWeapon);
-
-                            if (AutoArmMod.settings?.debugLogging == true)
-                            {
-                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Picked up {NewWeapon.Label} as sidearm");
-                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Swap complete: {OldWeapon.Label} -> {NewWeapon.Label}");
                             }
 
                             // Show notification for sidearm upgrade
@@ -1457,12 +1740,170 @@ namespace AutoArm
                             }
 
                             // Let SimpleSidearms reorder weapons if needed
-                            // SS is the authority - no need to sync forcing
+                            // This ensures SS picks the best weapon as primary
                             ReorderWeaponsAfterEquip(pawn);
+                            
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Sidearm swap complete and reordered");
+                            }
                         }
                         catch (Exception e)
                         {
                             AutoArmLogger.Error($"[{pawn.LabelShort}] Error during sidearm swap: {e.Message}", e);
+                        }
+                    },
+                    defaultCompleteMode = ToilCompleteMode.Instant
+                };
+            }
+        }
+        
+        /// <summary>
+        /// JobDriver for swapping primary weapons - drops old primary at new weapon location
+        /// </summary>
+        public class JobDriver_SwapPrimary : JobDriver
+        {
+            private ThingWithComps NewWeapon => (ThingWithComps)job.targetA.Thing;
+            private ThingWithComps OldWeapon => (ThingWithComps)job.targetB.Thing;
+
+            public override bool TryMakePreToilReservations(bool errorOnFailed)
+            {
+                // Reserve the new weapon so no one else takes it
+                return pawn.Reserve(NewWeapon, job, 1, -1, null, errorOnFailed);
+            }
+
+            protected override IEnumerable<Toil> MakeNewToils()
+            {
+                // Fail if new weapon disappears
+                this.FailOnDestroyedNullOrForbidden(TargetIndex.A);
+                this.FailOnDespawnedNullOrForbidden(TargetIndex.A);
+
+                // Go to the new weapon
+                yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.ClosestTouch)
+                    .FailOnDespawnedNullOrForbidden(TargetIndex.A)
+                    .FailOnSomeonePhysicallyInteracting(TargetIndex.A);
+
+                // Do the swap - drop old primary and equip new weapon
+                yield return new Toil
+                {
+                    initAction = delegate
+                    {
+                        try
+                        {
+                            // Verify both weapons still exist
+                            if (NewWeapon == null || OldWeapon == null)
+                            {
+                                if (AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Primary swap cancelled - weapon no longer exists");
+                                }
+                                return;
+                            }
+
+                            // Verify old weapon is still the primary
+                            if (pawn.equipment?.Primary != OldWeapon)
+                            {
+                                AutoArmLogger.Warn($"[{pawn.LabelShort}] Primary swap aborted - {OldWeapon.Label} is no longer primary");
+                                return;
+                            }
+                            
+                            IntVec3 dropPosition = pawn.Position; // Drop at current position (new weapon location)
+                            
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Swapping primary: {OldWeapon.Label} -> {NewWeapon.Label}");
+                            }
+                            
+                            // Store forced/preferred status before swap to maintain it
+                            bool wasForced = false;
+                            bool wasPreferred = false;
+                            if (OldWeapon.def == NewWeapon.def)  // Same-type upgrade
+                            {
+                                IsWeaponTypeForced(pawn, OldWeapon.def, out wasForced, out wasPreferred);
+                                if ((wasForced || wasPreferred) && AutoArmMod.settings?.debugLogging == true)
+                                {
+                                    AutoArmLogger.Debug($"[{pawn.LabelShort}] Will maintain {(wasForced ? "forced" : "preferred")} status for {NewWeapon.Label}");
+                                }
+                            }
+                            
+                            // 1. Drop the current primary weapon
+                            ThingWithComps droppedWeapon;
+                            if (!pawn.equipment.TryDropEquipment(OldWeapon, out droppedWeapon, dropPosition))
+                            {
+                                AutoArmLogger.Error($"[{pawn.LabelShort}] Failed to drop primary weapon {OldWeapon.Label}");
+                                return;
+                            }
+                            
+                            // Unforbid the dropped weapon - it's an upgrade, not trash!
+                            if (droppedWeapon != null && droppedWeapon.Spawned)
+                            {
+                                droppedWeapon.SetForbidden(false, false);
+                            }
+                            
+                            // 2. Pick up new weapon from ground
+                            if (NewWeapon.Spawned)
+                            {
+                                NewWeapon.DeSpawn();
+                            }
+                            
+                            // 3. Equip the new weapon
+                            pawn.equipment.AddEquipment(NewWeapon);
+                            
+                            // Play the weapon's equip sound if it has one
+                            if (NewWeapon.def.soundInteract != null)
+                            {
+                                NewWeapon.def.soundInteract.PlayOneShot(new TargetInfo(pawn.Position, pawn.Map, false));
+                            }
+                            
+                            // 4. Update SimpleSidearms memory if loaded
+                            if (IsLoaded())
+                            {
+                                // The old primary is now on the ground, inform SS
+                                InformOfDroppedSidearm(pawn, droppedWeapon);
+                                
+                                // The new weapon is now primary, inform SS
+                                InformOfAddedSidearm(pawn, NewWeapon);
+                                
+                                // Maintain forced/preferred status for same-type upgrades
+                                if ((wasForced || wasPreferred) && OldWeapon.def == NewWeapon.def)
+                                {
+                                    if (wasForced)
+                                    {
+                                        SetWeaponAsForced(pawn, NewWeapon);
+                                        if (AutoArmMod.settings?.debugLogging == true)
+                                        {
+                                            AutoArmLogger.Debug($"[{pawn.LabelShort}] Re-forced {NewWeapon.Label} after primary swap");
+                                        }
+                                    }
+                                }
+                                
+                                // Let SimpleSidearms reorder if needed
+                                ReorderWeaponsAfterEquip(pawn);
+                            }
+                            
+                            // 5. Mark old weapon as dropped for AutoArm tracking
+                            DroppedItemTracker.MarkAsDropped(droppedWeapon, 600);
+                            
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Primary swap successful: {OldWeapon.Label} -> {NewWeapon.Label}");
+                                AutoArmLogger.Debug($"[{pawn.LabelShort}] Dropped {droppedWeapon.Label} at {dropPosition}");
+                            }
+
+                            // Show notification for primary upgrade
+                            if (AutoArmMod.settings?.showNotifications == true && 
+                                PawnUtility.ShouldSendNotificationAbout(pawn))
+                            {
+                                Messages.Message("AutoArm_UpgradedWeapon".Translate(
+                                    pawn.LabelShort.CapitalizeFirst(),
+                                    OldWeapon.Label,
+                                    NewWeapon.Label
+                                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            AutoArmLogger.Error($"[{pawn.LabelShort}] Error during primary swap: {e.Message}", e);
                         }
                     },
                     defaultCompleteMode = ToilCompleteMode.Instant
@@ -1474,5 +1915,127 @@ namespace AutoArm
 
 namespace AutoArm.Jobs
 {
-    // JobDriver_SwapSidearm is now in SimpleSidearmsCompat as a nested class
+    // JobDriver_SwapSidearm and JobDriver_SwapPrimary are now in SimpleSidearmsCompat as nested classes
+}
+
+namespace AutoArm.Patches
+{
+    // REMOVED PROBLEMATIC PATCH - It was causing infinite recursion by calling the original method from within its own prefix
+    // The patch attempted to intercept SimpleSidearms' job creation but the approach was flawed
+    // TODO: If we need to fix SS job failures, use a different approach:
+    // - Option 1: Patch the JobDriver's toils to handle drop failures gracefully
+    // - Option 2: Have AutoArm check more frequently to beat SS to the upgrade
+    // - Option 3: Add a user setting to disable SS's auto-upgrade feature
+    
+    /// <summary>
+    /// Patch to detect when SimpleSidearms' EquipSecondary job fails
+    /// </summary>
+    [HarmonyPatch]
+    public static class SimpleSidearms_JobDriver_EquipSecondary_Patch
+    {
+        private static bool _initialized = false;
+        private static Type _jobDriverType = null;
+        
+        public static void Initialize()
+        {
+            if (_initialized || !SimpleSidearmsCompat.IsLoaded())
+                return;
+                
+            try
+            {
+                // Find the EquipSecondary JobDriver
+                _jobDriverType = GenTypes.AllTypes.FirstOrDefault(t => 
+                    t.FullName?.Contains("SimpleSidearms") == true && 
+                    t.Name == "JobDriver_EquipSecondary");
+                    
+                if (_jobDriverType == null)
+                {
+                    // Try alternative search
+                    _jobDriverType = GenTypes.AllTypes.FirstOrDefault(t => 
+                        t.BaseType == typeof(JobDriver) && 
+                        t.FullName?.Contains("EquipSecondary") == true);
+                }
+                
+                if (_jobDriverType != null)
+                {
+                    var harmony = AutoArmInit.harmonyInstance;
+                    if (harmony != null)
+                    {
+                        // Patch the EndJobWith method to detect failures
+                        var endJobMethod = typeof(JobDriver).GetMethod("EndJobWith", 
+                            BindingFlags.Public | BindingFlags.Instance);
+                            
+                        if (endJobMethod != null)
+                        {
+                            var postfix = typeof(SimpleSidearms_JobDriver_EquipSecondary_Patch)
+                                .GetMethod(nameof(EndJobWith_Postfix), BindingFlags.Static | BindingFlags.NonPublic);
+                            harmony.Patch(endJobMethod, postfix: new HarmonyMethod(postfix));
+                            
+                            if (AutoArmMod.settings?.debugLogging == true)
+                            {
+                                AutoArmLogger.Debug("[SS JobFix] Patched JobDriver.EndJobWith for failure detection");
+                            }
+                        }
+                    }
+                }
+                
+                _initialized = true;
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Warn($"[SS JobFix] Failed to patch EquipSecondary JobDriver: {e.Message}");
+            }
+        }
+        
+        private static void EndJobWith_Postfix(JobDriver __instance, JobCondition condition)
+        {
+            // Only care about EquipSecondary jobs that failed
+            if (__instance?.job?.def?.defName != "EquipSecondary")
+                return;
+                
+            if (condition != JobCondition.Succeeded && condition != JobCondition.None)
+            {
+                var pawn = __instance.pawn;
+                var weapon = __instance.job?.targetA.Thing as ThingWithComps;
+                
+                if (pawn != null && weapon != null && AutoArmMod.settings?.debugLogging == true)
+                {
+                    AutoArmLogger.Debug($"[SS JobFix] EquipSecondary job FAILED for {pawn.LabelShort} trying to equip {weapon.Label}. Condition: {condition}");
+                    
+                    // Log why it might have failed
+                    if (condition == JobCondition.Incompletable)
+                    {
+                        AutoArmLogger.Debug($"[SS JobFix] Job was incompletable - likely no valid drop space or path blocked");
+                        
+                        // Check current situation
+                        float weight = MassUtility.GearAndInventoryMass(pawn);
+                        float capacity = MassUtility.Capacity(pawn);
+                        AutoArmLogger.Debug($"[SS JobFix] Pawn weight: {weight:F1}/{capacity:F1} kg");
+                        
+                        var room = pawn.GetRoom();
+                        if (room != null)
+                        {
+                            AutoArmLogger.Debug($"[SS JobFix] Room size: {room.CellCount} cells, Outdoors: {room.PsychologicallyOutdoors}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Initialize all SimpleSidearms patches
+    /// </summary>
+    [HarmonyPatch(typeof(Game), "InitNewGame")]
+    public static class SimpleSidearms_AllPatches_Initializer
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            if (SimpleSidearmsCompat.IsLoaded())
+            {
+                SimpleSidearms_JobDriver_EquipSecondary_Patch.Initialize();
+            }
+        }
+    }
 }

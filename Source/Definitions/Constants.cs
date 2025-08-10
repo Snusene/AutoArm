@@ -51,6 +51,12 @@ namespace AutoArm.Definitions
         public const float SkillBonusGrowthRate = 1.15f;              // Exponential growth per level
         public const float SkillBonusMax = 500f;                      // Maximum skill bonus
         public const float WrongWeaponTypePenalty = 0.5f;             // Penalty multiplier for mismatched weapon
+        public const float OutfitFilterDisallowedPenalty = -1000f;    // Score penalty for weapons disallowed in outfit filter
+
+        // HP threshold penalties (asymmetric filter behavior)
+        public const float HPBelowMinimumBasePenalty = -30f;          // Base penalty for weapons below minimum HP
+        public const float HPDeficitScalingFactor = 150f;             // Scaling factor for HP deficit (deficit * this factor)
+        public const float HPBelowMinimumMaxPenalty = -60f;           // Maximum penalty cap for very damaged weapons
 
         // Odyssey unique weapon bonuses
         public const float OdysseyUniqueBaseBonus = 50f;              // Base bonus for unique weapons
@@ -193,7 +199,7 @@ namespace AutoArm.Definitions
         // =======================================
 
         // Check intervals for different pawn states
-        public const int EmergencyCheckInterval = 15;                     // Check every 15 ticks (4 times per second) - balanced for performance with multiple unarmed
+        public const int EmergencyCheckInterval = 60;                     // Check every 60 ticks (1 per second) - balanced for performance
 
         // Armed check interval scales with colony size for automatic performance optimization
         // Formula: colony_size * ArmedIntervalPerColonist (e.g., 10 colonists = 0.5 sec, 30 colonists = 1.5 sec)
@@ -201,6 +207,9 @@ namespace AutoArm.Definitions
 
         public const int ArmedIntervalMin = 15;                           // Minimum 0.25 seconds - same as unarmed!
         public const int ArmedIntervalMax = 150;                          // Maximum 2.5 seconds for huge colonies
+
+        // Weapon equip cooldown - prevents flip-flopping
+        public const int WeaponEquipCooldownTicks = 300;                  // 5 seconds - enough to walk away and start nearby job
 
         // Weapon blacklist settings
         public const int WeaponBlacklistDuration = 3600;              // 60 seconds - how long weapons stay blacklisted
@@ -231,21 +240,11 @@ namespace AutoArm.Definitions
         public const int ExcludedItemReportInterval = 3600;           // 60 seconds - report excluded items
 
         // =======================================
-        // VALIDATION & ERROR THRESHOLDS
-        // =======================================
-
-        // Pawn evaluation failure thresholds
-        public const int PawnEvaluationFailureThreshold = 10;         // Max failures before skipping pawn
-
-        public const int PawnEvaluationCriticalThreshold = 5;         // Failures before logging critical warning
-        public const int PawnEvaluationExcessiveThreshold = 50;       // Excessive failures for cleanup
-
-        // =======================================
         // CHILD AGE RESTRICTIONS (Biotech)
         // =======================================
 
         // Age limits for children equipping weapons
-        public const int ChildMinAgeLimit = 3;                        // Minimum age slider value
+        public const int ChildMinAgeLimit = 0;                        // Minimum age slider value
 
         public const int ChildMaxAgeLimit = 18;                       // Maximum age slider value (adult threshold)
         public const int ChildDefaultMinAge = 13;                     // Default minimum age for weapon equipping
@@ -260,6 +259,16 @@ namespace AutoArm.Definitions
 
         public const float WeaponPreferenceMeleeBase = 8f;            // Base melee multiplier at balanced preference
         public const float WeaponPreferenceAdjustment = 5f;           // Adjustment per preference point
+
+        // =======================================
+        // VALIDATION & ERROR THRESHOLDS
+        // =======================================
+
+        // Pawn evaluation failure thresholds
+        public const int PawnEvaluationFailureThreshold = 10;         // Max failures before skipping pawn
+
+        public const int PawnEvaluationCriticalThreshold = 5;         // Failures before logging critical warning
+        public const int PawnEvaluationExcessiveThreshold = 50;       // Excessive failures for cleanup
 
         // =======================================
         // THINK TREE INJECTION
@@ -304,23 +313,10 @@ namespace AutoArm.Definitions
         // PERFORMANCE OPTIMIZATIONS
         // =======================================
 
-        // Early exit optimization
-        public const int EarlyExitWeaponCount = 5;                        // Stop searching after finding this many good weapons
-
-        public const float EarlyExitScoreThreshold = 1.2f;                // Stop if found weapon is 20% better
-
         // Batch processing
-        // Simple dynamic scaling - armed check interval = colony_size * 0.05 seconds:
-        // - 5 colonists: Each armed colonist checks every 0.25 seconds (15 ticks) - same as unarmed!
-        // - 10 colonists: Each armed colonist checks every 0.5 seconds (30 ticks)
-        // - 20 colonists: Each armed colonist checks every 1 second (60 ticks)
-        // - 30 colonists: Each armed colonist checks every 1.5 seconds (90 ticks)
-        // - 50+ colonists: Capped at 2.5 seconds max (150 ticks)
-        // - Unarmed always: Check every 15 ticks, max 5 per tick = emergency response under 0.25 seconds
-        // Result: Ultra-responsive weapon switching with automatic performance scaling
-        public const int MaxPawnsPerTick = 2;                             // Max armed pawns to process per tick
+        public const int MaxPawnsPerTick = 1;                         // Max pawns to process per tick
 
-        public const int MaxUnarmedPawnsPerTick = 5;                      // Max unarmed pawns per tick (higher priority but still limited)
+        public const int ProcessEveryNthTick = 2;                     // Process weapons every Nth tick
 
         // =======================================
         // WEAPON CATEGORIZATION
@@ -331,5 +327,55 @@ namespace AutoArm.Definitions
 
         public const float CategoryRangeMedium = 35f;                 // 20-35 range = medium range weapon
                                                                       // > 35 range = long range weapon
+
+        // =======================================
+        // UI LAYOUT CONSTANTS
+        // =======================================
+
+        // Main UI layout
+        public const float UI_LINE_HEIGHT = 30f;                      // Standard line height for UI elements
+
+        public const float UI_CHECKBOX_SIZE = 24f;                    // Standard checkbox size
+        public const float UI_LABEL_WIDTH = 250f;                     // Standard label width
+        public const float UI_TAB_BUTTON_HEIGHT = 30f;                // Height for tab buttons
+        public const float UI_CONTENT_PADDING = 10f;                  // Content area padding
+        public const float UI_SECTION_GAP = 20f;                      // Gap between sections
+        public const float UI_SMALL_GAP = 12f;                        // Small gap between elements
+        public const float UI_TINY_GAP = 6f;                          // Tiny gap between elements
+        public const float UI_RESET_BUTTON_WIDTH = 100f;              // Reset button width
+        public const float UI_RESET_BUTTON_HEIGHT = 30f;              // Reset button height
+
+        // Debug window
+        public const float DEBUG_WINDOW_WIDTH = 600f;                 // Debug window initial width
+
+        public const float DEBUG_WINDOW_HEIGHT = 500f;                // Debug window initial height
+
+        // Color values
+        public const float UI_GRAY_ALPHA = 0.7f;                      // Gray text alpha value
+
+        public const float UI_BOX_ALPHA = 0.3f;                       // Box background alpha
+        public const float UI_TEXT_ALPHA = 0.8f;                      // Hint text alpha
+
+        // =======================================
+        // WEAPON PREFERENCE DISPLAY THRESHOLDS
+        // =======================================
+
+        public const float PREF_STRONG_MELEE_THRESHOLD = -0.75f;      // <= -0.75 = Strong melee preference
+        public const float PREF_MODERATE_MELEE_THRESHOLD = -0.35f;    // <= -0.35 = Moderate melee preference
+        public const float PREF_SLIGHT_MELEE_THRESHOLD = -0.10f;      // <= -0.10 = Slight melee preference
+        public const float PREF_BALANCED_THRESHOLD = 0.10f;           // < 0.10 = Balanced
+        public const float PREF_SLIGHT_RANGED_THRESHOLD = 0.35f;      // < 0.35 = Slight ranged preference
+        public const float PREF_MODERATE_RANGED_THRESHOLD = 0.75f;    // < 0.75 = Moderate ranged preference
+                                                                      // >= 0.75 = Strong ranged preference
+
+        // =======================================
+        // TESTING & DEBUG
+        // =======================================
+
+        public const int TEST_RESULT_PREVIEW_COUNT = 10;              // Number of items to show in test previews
+        public const int TEST_WEAPON_NEARBY_COUNT = 3;                // Number of nearby weapons to show in tests
+        public const float TEST_COLOR_GREEN_R = 0.8f;                 // Green color R component
+        public const float TEST_COLOR_GREEN_G = 1.0f;                 // Green color G component
+        public const float TEST_COLOR_GREEN_B = 0.8f;                 // Green color B component
     }
 }

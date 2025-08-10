@@ -1,4 +1,4 @@
-﻿// Auto-generated from WeaponConstants.cs - 2025-08-07 02:19
+﻿// Auto-generated from WeaponConstants.cs - 2025-08-10 07:18
 // Run extract-constants.ps1 to regenerate
 
 window.C = {

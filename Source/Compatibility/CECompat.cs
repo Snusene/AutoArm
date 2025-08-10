@@ -448,7 +448,7 @@ namespace AutoArm
         {
             if (!IsLoaded() || weapon == null || pawn == null)
                 return true; // Default to true if CE not loaded
-                
+
             // Inverse of ShouldSkipWeaponForCE
             return !ShouldSkipWeaponForCE(weapon, pawn);
         }
@@ -460,7 +460,7 @@ namespace AutoArm
         {
             if (!IsLoaded())
             {
-                detectionResult = "Combat Extended not loaded";
+                detectionResult = "Skipped";
                 return false;
             }
 

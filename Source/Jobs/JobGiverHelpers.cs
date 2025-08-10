@@ -228,72 +228,16 @@ namespace AutoArm.Jobs
             return ValidationHelper.IsValidWeapon(weapon, pawn, out reason);
         }
 
-        /// <summary>
-        /// Check if a pawn is in a critical job (wrapper for compatibility)
-        /// </summary>
-        public static bool IsCriticalJob(Pawn pawn, bool hasNoSidearms = false)
-        {
-            return JobHelper.IsCriticalJob(pawn);
-        }
-
-        // Removed IsSafeToInterrupt wrappers - we rely entirely on think tree priority
-
-        /// <summary>
-        /// Check if pawn is doing low priority work (wrapper for compatibility)
-        /// </summary>
-        public static bool IsLowPriorityWork(Pawn pawn)
-        {
-            return JobHelper.IsLowPriorityWork(pawn);
-        }
-
-        /// <summary>
-        /// Check if a weapon is explosive
-        /// </summary>
-        public static bool IsExplosiveWeapon(ThingDef weaponDef)
-        {
-            if (weaponDef == null || !weaponDef.IsRangedWeapon)
-                return false;
-
-            // Check verbs for explosive damage
-            if (weaponDef.Verbs != null)
-            {
-                foreach (var verb in weaponDef.Verbs)
-                {
-                    if (verb.defaultProjectile?.projectile?.explosionRadius > 0)
-                        return true;
-
-                    if (verb.defaultProjectile?.projectile?.damageDef?.defName?.Contains("Bomb") == true ||
-                        verb.defaultProjectile?.projectile?.damageDef?.defName?.Contains("Explosion") == true)
-                        return true;
-                }
-            }
-
-            // Check weapon name patterns
-            var defName = weaponDef.defName.ToLower();
-            var label = weaponDef.label?.ToLower() ?? "";
-
-            if (defName.Contains("grenade") || label.Contains("grenade") ||
-                defName.Contains("rocket") || label.Contains("rocket") ||
-                defName.Contains("launcher") || label.Contains("launcher") ||
-                defName.Contains("explosive") || label.Contains("explosive") ||
-                defName.Contains("bomb") || label.Contains("bomb") ||
-                defName.Contains("molotov") || label.Contains("molotov") ||
-                defName.Contains("emp") || label.Contains("emp") ||
-                defName.Contains("frag") || label.Contains("frag"))
-            {
-                return true;
-            }
-
-            return false;
-        }
+        // Note: IsCriticalJob and IsLowPriorityWork removed
+        // The think tree system with priorities 5.6 (armed) and 6.9 (unarmed)
+        // naturally handles when colonists look for weapons (between jobs, not during work)
 
         /// <summary>
         /// Clean up log cooldowns globally
         /// </summary>
         public static void CleanupLogCooldowns()
         {
-            // This is handled by TimingHelper
-            TimingHelper.CleanupOldCooldowns();
+            // No longer needed - TimingHelper was removed as it contained only empty methods
         }
 
         /// <summary>

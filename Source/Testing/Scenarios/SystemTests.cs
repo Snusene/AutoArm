@@ -447,12 +447,12 @@ namespace AutoArm.Testing.Scenarios
             // Don't actually start the job - just verify it was created properly
             // Starting the job requires proper reservation which may fail in test environment
             // The important thing is that the job was created with correct parameters
-            result.Data["JobStartSkipped"] = "Job execution skipped in test environment";
-            
+            result.Data["JobStartSkipped"] = "Job execution skipped";
+
             // Instead of starting, just verify the weapon can be reserved
             bool canReserve = testPawn.CanReserve(testWeapon);
             result.Data["CanReserveWeapon"] = canReserve;
-            
+
             if (!canReserve)
             {
                 result.Data["ReservationNote"] = "Weapon cannot be reserved (may be normal in test environment)";

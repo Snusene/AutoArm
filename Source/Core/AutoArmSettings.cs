@@ -19,6 +19,7 @@ namespace AutoArm
 
         private const bool DEFAULT_DEBUG_LOGGING = false;
         private const bool DEFAULT_SHOW_NOTIFICATIONS = true;
+        private const bool DEFAULT_ONLY_EQUIP_FROM_STORAGE = false;
 
         // Removed thinkTreeInjectionFailed - we now rely entirely on think tree priority
         private const bool DEFAULT_AUTO_EQUIP_SIDEARMS = true;
@@ -28,7 +29,7 @@ namespace AutoArm
         private const bool DEFAULT_CHECK_CE_AMMO = true;
         private const bool DEFAULT_LAST_KNOWN_CE_AMMO_STATE = false;
         private const float DEFAULT_WEAPON_TYPE_PREFERENCE = Constants.DefaultWeaponTypePreference;  // Slight ranged preference
-        private const bool DEFAULT_ALLOW_CHILDREN_TO_EQUIP = true;
+        private const bool DEFAULT_ALLOW_CHILDREN_TO_EQUIP = false;
         private const bool DEFAULT_ALLOW_TEMPORARY_COLONISTS = false;
         private const bool DEFAULT_DISABLE_DURING_RAIDS = true;
         private const bool DEFAULT_RESPECT_WEAPON_BONDS = true;
@@ -37,6 +38,7 @@ namespace AutoArm
 
         public bool debugLogging = DEFAULT_DEBUG_LOGGING;
         public bool showNotifications = DEFAULT_SHOW_NOTIFICATIONS;
+        public bool onlyAutoEquipFromStorage = DEFAULT_ONLY_EQUIP_FROM_STORAGE;
 
         private bool _autoEquipSidearms = DEFAULT_AUTO_EQUIP_SIDEARMS;
         private bool _allowSidearmUpgrades = DEFAULT_ALLOW_SIDEARM_UPGRADES;
@@ -72,7 +74,7 @@ namespace AutoArm
         public float weaponUpgradeThreshold = Constants.WeaponUpgradeThreshold;
         public float weaponTypePreference = DEFAULT_WEAPON_TYPE_PREFERENCE;  // -1 = strong melee, 0 = balanced, 1 = strong ranged
         public int childrenMinAge = Constants.ChildDefaultMinAge;
-        public bool allowChildrenToEquipWeapons = DEFAULT_ALLOW_CHILDREN_TO_EQUIP;  // Default to true to match vanilla behavior
+        public bool allowChildrenToEquipWeapons = DEFAULT_ALLOW_CHILDREN_TO_EQUIP;  // Default to false - use vanilla behavior (13+ can auto-equip)
         public bool allowTemporaryColonists = DEFAULT_ALLOW_TEMPORARY_COLONISTS;  // Default to false - don't let guests take our weapons!
         public bool disableDuringRaids = DEFAULT_DISABLE_DURING_RAIDS;  // Default to true for performance
         public bool respectWeaponBonds = DEFAULT_RESPECT_WEAPON_BONDS;  // Default to true - protect valuable bonded weapons
@@ -87,6 +89,7 @@ namespace AutoArm
             Scribe_Values.Look(ref modEnabled, "modEnabled", DEFAULT_MOD_ENABLED);
             Scribe_Values.Look(ref debugLogging, "debugLogging", DEFAULT_DEBUG_LOGGING);
             Scribe_Values.Look(ref showNotifications, "showNotifications", DEFAULT_SHOW_NOTIFICATIONS);
+            Scribe_Values.Look(ref onlyAutoEquipFromStorage, "onlyAutoEquipFromStorage", DEFAULT_ONLY_EQUIP_FROM_STORAGE);
             Scribe_Values.Look(ref _autoEquipSidearms, "autoEquipSidearms", DEFAULT_AUTO_EQUIP_SIDEARMS);
             Scribe_Values.Look(ref _allowSidearmUpgrades, "allowSidearmUpgrades", DEFAULT_ALLOW_SIDEARM_UPGRADES);
             Scribe_Values.Look(ref allowForcedWeaponUpgrades, "allowForcedWeaponUpgrades", DEFAULT_ALLOW_FORCED_WEAPON_UPGRADES);
@@ -109,6 +112,7 @@ namespace AutoArm
             modEnabled = DEFAULT_MOD_ENABLED;
             debugLogging = DEFAULT_DEBUG_LOGGING;
             showNotifications = DEFAULT_SHOW_NOTIFICATIONS;
+            onlyAutoEquipFromStorage = DEFAULT_ONLY_EQUIP_FROM_STORAGE;
             _autoEquipSidearms = DEFAULT_AUTO_EQUIP_SIDEARMS;
             _allowSidearmUpgrades = DEFAULT_ALLOW_SIDEARM_UPGRADES;
             allowForcedWeaponUpgrades = DEFAULT_ALLOW_FORCED_WEAPON_UPGRADES;

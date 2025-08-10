@@ -1,6 +1,7 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
 // This file: Harmony patches for equipment management
 // Handles weapon equipping, dropping, and forced weapon tracking
+// OPTIMIZED: Settings reference cached locally to reduce property access overhead
 
 using AutoArm.Definitions;
 using AutoArm.Helpers;
@@ -27,8 +28,11 @@ namespace AutoArm
         [HarmonyPrefix]
         public static void Prefix(Job newJob, Pawn ___pawn)
         {
+            // OPTIMIZATION: Cache settings reference to avoid multiple property accesses
+            var settings = AutoArmMod.settings;
+            
             // Check if mod is enabled - FIRST CHECK
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (settings?.modEnabled != true)
                 return;
 
             if (newJob == null || ___pawn == null)
@@ -44,7 +48,7 @@ namespace AutoArm
                     // SimpleSidearmsCompat simplified - pending upgrade tracking removed
 
                     // Debug logging to track all equip jobs - only if debug logging is enabled
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    if (settings.debugLogging)
                     {
                         AutoArmLogger.LogPawnWeapon(___pawn, targetWeapon, $"Starting equip job [playerForced: {newJob.playerForced}, interaction: {newJob.interaction}]");
                     }
@@ -53,7 +57,7 @@ namespace AutoArm
                     // But skip if this is part of a sidearm upgrade
                     // SimpleSidearmsCompat simplified - use job context to detect sidearm upgrades
                     bool isPartOfSidearmUpgrade = false;
-                    if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
+                    if (SimpleSidearmsCompat.IsLoaded() && settings.autoEquipSidearms)
                     {
                         // Check if this is an auto-equip job (not player forced)
                         isPartOfSidearmUpgrade = !newJob.playerForced && AutoEquipTracker.IsAutoEquip(newJob);
@@ -61,13 +65,16 @@ namespace AutoArm
 
                     if (newJob.playerForced && !isPartOfSidearmUpgrade)
                     {
+                        // Clear weapon cooldown when player manually equips
+                        JobGiver_PickUpBetterWeapon.ClearWeaponCooldown(___pawn);
+                        
                         // Only track as forced in AutoArm's system
                         // Don't automatically sync with SimpleSidearms - let SS manage its own forcing
                         if (!SimpleSidearmsCompat.IsLoaded())
                         {
                             ForcedWeaponHelper.SetForced(___pawn, targetWeapon);
 
-                            if (AutoArmMod.settings?.debugLogging == true)
+                            if (settings.debugLogging)
                             {
                                 AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced weapon - {targetWeapon.Label}");
                             }
@@ -87,7 +94,7 @@ namespace AutoArm
                      WeaponValidation.IsProperWeapon(sidearmWeapon))
             {
                 // Debug logging for SimpleSidearms jobs
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (settings.debugLogging)
                 {
                     AutoArmLogger.LogPawnWeapon(___pawn, sidearmWeapon,
                         $"Starting SimpleSidearms job ({newJob.def.defName}):\n" +
@@ -105,7 +112,7 @@ namespace AutoArm
                     {
                         ForcedWeaponHelper.AddForcedSidearm(___pawn, sidearmWeapon);
 
-                        if (AutoArmMod.settings?.debugLogging == true)
+                        if (settings.debugLogging)
                         {
                             AutoArmLogger.Debug($"{___pawn.LabelShort}: Forced sidearm - {sidearmWeapon.Label}");
                         }
@@ -117,8 +124,11 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Job newJob, Pawn ___pawn)
         {
+            // OPTIMIZATION: Cache settings reference
+            var settings = AutoArmMod.settings;
+            
             // Check if mod is enabled - FIRST CHECK
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (settings?.modEnabled != true)
                 return;
 
             if (newJob == null || ___pawn == null)
@@ -137,8 +147,11 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(bool __result, Pawn ___pawn, ThingWithComps resultingEq)
         {
+            // OPTIMIZATION: Cache settings reference
+            var settings = AutoArmMod.settings;
+            
             // Check if mod is enabled - FIRST CHECK
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (settings?.modEnabled != true)
                 return;
 
             if (!__result || ___pawn == null || !___pawn.IsColonist || resultingEq == null)
@@ -157,7 +170,7 @@ namespace AutoArm
                     // It will be cleared after 60 ticks (1 second) if not picked back up
                     ForcedWeaponTracker.MarkForcedWeaponDropped(___pawn, resultingEq);
 
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    if (settings.debugLogging)
                     {
                         AutoArmLogger.Debug($"[{___pawn.LabelShort}] Dropped forced weapon {resultingEq.Label} - will clear forced status in 1 second if not re-equipped");
                     }
@@ -168,6 +181,35 @@ namespace AutoArm
                 {
                     DroppedItemTracker.ClearPendingUpgrade(resultingEq);
                     DroppedItemTracker.MarkAsDropped(resultingEq, 1200);
+                }
+                else
+                {
+                    // Check if this is a player-initiated drop (not part of an auto-equip)
+                    bool isPlayerDrop = false;
+
+                    // No job at all = dropped via gear tab
+                    if (___pawn.CurJob == null)
+                    {
+                        isPlayerDrop = true;
+                    }
+                    // Has a job but it's not an auto-equip job
+                    else if (___pawn.CurJob?.def != JobDefOf.Equip || !AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
+                    {
+                        // Not part of an auto-equip sequence
+                        isPlayerDrop = true;
+                    }
+
+                    // Apply cooldown for player drops
+                    if (isPlayerDrop)
+                    {
+                        // Use default cooldown (600 ticks / 10 seconds) for player drops
+                        DroppedItemTracker.MarkAsDropped(resultingEq, DroppedItemTracker.DefaultIgnoreTicks);
+                        
+                        if (settings.debugLogging)
+                        {
+                            AutoArmLogger.Debug($"[{___pawn.LabelShort}] Player dropped {resultingEq.Label} - applying {DroppedItemTracker.DefaultIgnoreTicks} tick cooldown");
+                        }
+                    }
                 }
             }
             catch (Exception e)
@@ -183,7 +225,7 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Pawn ___pawn)
         {
-            // Check if mod is enabled - FIRST CHECK
+            // Check if mod is enabled - FIRST CHECK (no need to cache for this simple check)
             if (AutoArmMod.settings?.modEnabled != true)
                 return;
 
@@ -221,8 +263,11 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(ThingWithComps newEq, Pawn ___pawn)
         {
+            // OPTIMIZATION: Cache settings reference
+            var settings = AutoArmMod.settings;
+            
             // Check if mod is enabled - FIRST CHECK
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (settings?.modEnabled != true)
                 return;
 
             if (newEq == null || ___pawn == null || !___pawn.IsColonist)
@@ -234,7 +279,7 @@ namespace AutoArm
             // Check if we had a weapon that couldn't move to inventory
             // The vanilla Equip job has now swapped it at the target location
             var weaponCouldntMove = AutoEquipTracker.GetWeaponCannotMoveToInventory(___pawn);
-            if (weaponCouldntMove != null && AutoArmMod.settings?.modEnabled == true)
+            if (weaponCouldntMove != null)
             {
                 // The weapon has been swapped - it's now on the ground where the new weapon was
                 // Find it and mark it as dropped so we don't immediately pick it up again
@@ -245,7 +290,7 @@ namespace AutoArm
                 if (droppedWeapon != null)
                 {
                     DroppedItemTracker.MarkAsDropped(droppedWeapon, Constants.LongDropCooldownTicks);
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    if (settings.debugLogging)
                     {
                         AutoArmLogger.Debug($"[{___pawn.LabelShort}] Weapon {droppedWeapon.Label} was swapped at target location and marked as dropped");
                     }
@@ -256,20 +301,18 @@ namespace AutoArm
             }
 
             // Check if this weapon should be forced (from forced weapon upgrade)
-            if (AutoArmMod.settings?.modEnabled == true &&
-                AutoEquipTracker.ShouldForceWeapon(___pawn, newEq))
+            if (AutoEquipTracker.ShouldForceWeapon(___pawn, newEq))
             {
                 // Transfer forced status to the upgraded weapon
                 ForcedWeaponHelper.SetForced(___pawn, newEq);
                 AutoEquipTracker.ClearWeaponToForce(___pawn);
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (settings.debugLogging)
                 {
                     AutoArmLogger.Debug($"{___pawn.LabelShort}: Transferred forced status to upgraded weapon {newEq.Label}");
                 }
             }
             // Auto-force bonded weapons when "Respect weapon bonds" is enabled
-            else if (AutoArmMod.settings?.modEnabled == true &&
-                AutoArmMod.settings?.respectWeaponBonds == true &&
+            else if (settings.respectWeaponBonds &&
                 ModsConfig.RoyaltyActive &&
                 ValidationHelper.IsWeaponBondedToPawn(newEq, ___pawn))
             {
@@ -286,13 +329,13 @@ namespace AutoArm
                     ForcedWeaponHelper.SetForced(___pawn, newEq);
                 }
 
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (settings.debugLogging)
                 {
                     AutoArmLogger.Debug($"{___pawn.LabelShort}: Bonded weapon {newEq.Label} auto-forced");
                 }
             }
             // Check if this weapon type was already forced as a sidearm
-            else if (AutoArmMod.settings?.modEnabled == true && !SimpleSidearmsCompat.IsLoaded())
+            else if (!SimpleSidearmsCompat.IsLoaded())
             {
                 // Only do this when SimpleSidearms is NOT loaded
                 // When SS is loaded, it manages its own forcing
@@ -325,8 +368,7 @@ namespace AutoArm
                 }
             }
             // Only mark as forced if this is completing a player-forced equip job
-            else if (AutoArmMod.settings?.modEnabled == true &&
-                     ___pawn.CurJob?.def == JobDefOf.Equip && ___pawn.CurJob.playerForced &&
+            else if (___pawn.CurJob?.def == JobDefOf.Equip && ___pawn.CurJob.playerForced &&
                      !AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
             {
                 // This was a manual equip
@@ -336,7 +378,7 @@ namespace AutoArm
                 {
                     ForcedWeaponHelper.SetForced(___pawn, newEq);
 
-                    if (AutoArmMod.settings?.debugLogging == true)
+                    if (settings.debugLogging)
                     {
                         AutoArmLogger.Debug($"{___pawn.LabelShort}: Manually equipped {newEq.Label} - forced");
                     }
@@ -344,14 +386,13 @@ namespace AutoArm
             }
 
             // Then handle auto-equip notifications
-            if (AutoArmMod.settings?.modEnabled == true &&
-                ___pawn.CurJob?.def == JobDefOf.Equip && AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
+            if (___pawn.CurJob?.def == JobDefOf.Equip && AutoEquipTracker.IsAutoEquip(___pawn.CurJob))
             {
                 // Don't inform SimpleSidearms about primary weapon equips
                 // This was causing SimpleSidearms to "remember" primary weapons as sidearms
 
                 if (PawnUtility.ShouldSendNotificationAbout(___pawn) &&
-                    AutoArmMod.settings?.showNotifications == true)
+                    settings.showNotifications)
                 {
                     var previousWeapon = AutoEquipTracker.GetPreviousWeapon(___pawn);
 
@@ -378,14 +419,14 @@ namespace AutoArm
                 // Cooldown functionality removed - no longer needed
 
                 // Only log success if debug logging is enabled
-                if (AutoArmMod.settings?.debugLogging == true)
+                if (settings.debugLogging)
                 {
                     AutoArmLogger.LogPawnWeapon(___pawn, newEq, "Successfully equipped, clearing job tracking");
                 }
 
                 // STREAMLINED: After equipping, let SimpleSidearms know about sidearm changes
                 // But DON'T trigger reordering for primary weapons to avoid duplication issues
-                if (SimpleSidearmsCompat.IsLoaded() && AutoArmMod.settings?.autoEquipSidearms == true)
+                if (SimpleSidearmsCompat.IsLoaded() && settings.autoEquipSidearms)
                 {
                     try
                     {
@@ -412,7 +453,7 @@ namespace AutoArm
                             SimpleSidearmsCompat.InformOfDroppedSidearm(___pawn, droppedSameType);
                             SimpleSidearmsCompat.InformOfAddedSidearm(___pawn, newEq);
 
-                            if (AutoArmMod.settings?.debugLogging == true)
+                            if (settings.debugLogging)
                             {
                                 AutoArmLogger.Debug($"[{___pawn.LabelShort}] SS memory updated for sidearm upgrade: forgot {droppedSameType.Label}, added {newEq.Label}");
                             }
@@ -420,7 +461,7 @@ namespace AutoArm
                             // Only reorder for sidearm upgrades
                             SimpleSidearmsCompat.ReorderWeaponsAfterEquip(___pawn);
                             
-                            if (AutoArmMod.settings?.debugLogging == true)
+                            if (settings.debugLogging)
                             {
                                 AutoArmLogger.Debug($"[{___pawn.LabelShort}] SimpleSidearms reordered weapons after sidearm upgrade");
                             }
@@ -429,7 +470,7 @@ namespace AutoArm
                         {
                             // Primary weapon equip - DON'T inform SS and DON'T reorder
                             // This prevents SS from trying to pick up same-type weapons as sidearms
-                            if (AutoArmMod.settings?.debugLogging == true)
+                            if (settings.debugLogging)
                             {
                                 AutoArmLogger.Debug($"[{___pawn.LabelShort}] Primary weapon {newEq.Label} equipped - skipping SimpleSidearms integration to prevent duplication");
                             }
@@ -450,8 +491,11 @@ namespace AutoArm
         [HarmonyPrefix]
         public static void Prefix(Pawn ___pawn, JobCondition condition, Job ___curJob)
         {
+            // OPTIMIZATION: Cache settings reference
+            var settings = AutoArmMod.settings;
+            
             // Check if mod is enabled - FIRST CHECK
-            if (AutoArmMod.settings?.modEnabled != true)
+            if (settings?.modEnabled != true)
                 return;
 
             if (___pawn == null || ___curJob == null)
@@ -474,7 +518,7 @@ namespace AutoArm
                         // Always blacklist failed weapons to prevent equip loops
                         WeaponBlacklist.AddToBlacklist(weapon.def, ___pawn, errorReason);
                         
-                        if (AutoArmMod.settings?.debugLogging == true)
+                        if (settings.debugLogging)
                         {
                             AutoArmLogger.Debug($"{___pawn.LabelShort}: Blacklisted {weapon.Label} - {errorReason} (job condition: {condition})");
                         }

@@ -310,8 +310,7 @@ namespace AutoArm.Testing
         {
             try
             {
-                // Clear timing systems
-                TimingHelper.ClearAllCooldowns();
+                // TimingHelper removed - it only had empty methods
                 
                 // Clear caches
                 if (map != null)

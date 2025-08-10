@@ -102,71 +102,38 @@ namespace AutoArm.Helpers
             {
                 bool shouldCheckSidearmRestrictions = true;
 
-                // Case 1: Pawn is completely unarmed - they need ANY weapon as primary
+                // CRITICAL FIX: If pawn is completely unarmed, they ALWAYS bypass SS restrictions
+                // They're picking up their FIRST weapon as primary, not adding a sidearm!
                 if (pawn.equipment?.Primary == null)
                 {
                     shouldCheckSidearmRestrictions = false;
+                    if (AutoArmMod.settings?.debugLogging == true && isUnarmed)
+                    {
+                        AutoArmLogger.Debug($"[{pawn.LabelShort}] UNARMED - bypassing ALL SimpleSidearms restrictions for primary weapon pickup");
+                    }
                 }
-                // Case 2: Check if current primary is a "true" primary or a remembered sidearm
+                // Only check complex logic if pawn already has a primary weapon
                 else if (pawn.equipment?.Primary != null)
                 {
-                    // SimpleSidearmsCompat simplified - can't check if remembered sidearm
-                    bool primaryIsRememberedSidearm = false;
+                    // Check if this new weapon would replace the current primary
+                    var currentScore = WeaponScoreCache.GetCachedScore(pawn, pawn.equipment.Primary);
+                    var newScore = WeaponScoreCache.GetCachedScore(pawn, weapon);
 
-                    if (!primaryIsRememberedSidearm)
+                    // If new weapon is significantly better, it would replace the primary
+                    float upgradeThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
+                    if (newScore > currentScore * upgradeThreshold)
                     {
-                        // Current primary is a true primary weapon, not a sidearm
-                        // Check if this new weapon would replace it (i.e., be equipped as primary)
-                        var currentScore = WeaponScoreCache.GetCachedScore(pawn, pawn.equipment.Primary);
-                        var newScore = WeaponScoreCache.GetCachedScore(pawn, weapon);
-
-                        // If new weapon is significantly better, it would replace the primary
-                        // Use the actual configured threshold, not a hardcoded value
-                        float upgradeThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
-                        if (newScore > currentScore * upgradeThreshold)
+                        // This weapon would become the new primary, not a sidearm
+                        shouldCheckSidearmRestrictions = false;
+                        if (AutoArmMod.settings?.debugLogging == true)
                         {
-                            shouldCheckSidearmRestrictions = false;
-                            if (AutoArmMod.settings?.debugLogging == true)
-                            {
-                                AutoArmLogger.Debug($"[{pawn.LabelShort}] {weapon.Label} would replace primary (score {newScore:F0} > {currentScore:F0} * {upgradeThreshold:F2}) - bypassing SS sidearm restrictions");
-                            }
+                            AutoArmLogger.Debug($"[{pawn.LabelShort}] {weapon.Label} would replace primary (score {newScore:F0} > {currentScore:F0} * {upgradeThreshold:F2}) - bypassing SS sidearm restrictions");
                         }
                     }
-                    else
-                    {
-                        // Case 3: Current primary IS a remembered sidearm - check if colonist has ANY non-sidearm weapon
-                        // This prevents colonists from being "locked" with only sidearms
-                        bool hasAnyNonSidearmWeapon = false;
-
-                        // Check inventory for any non-sidearm weapons
-                        if (pawn.inventory?.innerContainer != null)
-                        {
-                            foreach (var item in pawn.inventory.innerContainer)
-                            {
-                                if (item is ThingWithComps invWeapon && invWeapon.def.IsWeapon)
-                                {
-                                    // SimpleSidearmsCompat simplified - assume not remembered sidearm
-                                    if (true)
-                                    {
-                                        hasAnyNonSidearmWeapon = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        // If colonist has ONLY sidearms (no true primary), allow picking up any weapon as primary
-                        if (!hasAnyNonSidearmWeapon)
-                        {
-                            shouldCheckSidearmRestrictions = false;
-                        }
-                        else
-                        {
-                            // Apply SimpleSidearms restrictions
-                        }
-                    }
+                    // Otherwise, this would be added as a sidearm - apply SS restrictions
                 }
 
+                // Only apply SimpleSidearms restrictions if we determined we should
                 if (shouldCheckSidearmRestrictions)
                 {
                     string ssReason;
@@ -175,16 +142,20 @@ namespace AutoArm.Helpers
                     {
                         reason = $"SimpleSidearms: {ssReason}";
 
-                        // Log when we're applying SS restrictions to what might be a primary upgrade
-                        if (AutoArmMod.settings?.debugLogging == true && pawn.equipment?.Primary != null)
+                        // Log when we're applying SS restrictions
+                        if (AutoArmMod.settings?.debugLogging == true)
                         {
-                            var currentScore = WeaponScoreCache.GetCachedScore(pawn, pawn.equipment.Primary);
-                            var newScore = WeaponScoreCache.GetCachedScore(pawn, weapon);
-                            float upgradeThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
-
-                            if (newScore > currentScore)
+                            if (pawn.equipment?.Primary != null)
                             {
+                                var currentScore = WeaponScoreCache.GetCachedScore(pawn, pawn.equipment.Primary);
+                                var newScore = WeaponScoreCache.GetCachedScore(pawn, weapon);
+                                float upgradeThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
                                 AutoArmLogger.Debug($"[{pawn.LabelShort}] {weapon.Label} rejected by SS: {ssReason} (scores: {newScore:F0} vs {currentScore:F0}, needed >{currentScore * upgradeThreshold:F0})");
+                            }
+                            else
+                            {
+                                // This shouldn't happen - we should have bypassed SS checks for unarmed pawns
+                                AutoArmLogger.Warn($"[{pawn.LabelShort}] UNARMED but SS restrictions still applied! {weapon.Label} rejected: {ssReason}");
                             }
                         }
 
@@ -390,203 +361,239 @@ namespace AutoArm.Helpers
         }
 
         /// <summary>
-        /// Consolidated pawn validation (fixes #3, #16, #24)
+        /// Consolidated pawn validation
+        /// NOTE: When called from JobGiver path (fromJobGiver=true), ThinkNode has already validated:
+        /// - Spawned, Dead, Downed, Drafted status
+        /// - IsColonist, Violence capability
+        /// - Mental state, In bed, In ritual, In caravan
+        /// - Lord jobs, Hauling jobs, Age restrictions
+        /// - Race checks (Humanlike, Mechanoid)
+        /// - Manipulation capability
+        /// This method is kept for non-JobGiver callers (tests, UI, etc.)
         /// </summary>
-        public static bool IsValidPawn(Pawn pawn, out string reason, bool checkForWeapons = true)
+        public static bool IsValidPawn(Pawn pawn, out string reason, bool checkForWeapons = true, bool fromJobGiver = false)
         {
             reason = "";
 
-            // Basic null and state checks
+            // Basic null checks - always needed
             if (pawn == null)
             {
                 reason = "Pawn is null";
                 return false;
             }
 
-            if (!pawn.Spawned)
-            {
-                reason = "Not spawned";
-                return false;
-            }
-
-            if (pawn.Dead || pawn.Destroyed)
-            {
-                reason = "Dead or destroyed";
-                return false;
-            }
-
+            // Map check - always needed
             if (pawn.Map == null)
             {
-                reason = "No map";
+                reason = "Map is null";
                 return false;
             }
 
+            // Essential position check - always needed (can change between ThinkNode and job execution)
             if (!pawn.Position.IsValid || !pawn.Position.InBounds(pawn.Map))
             {
                 reason = "Invalid position";
                 return false;
             }
 
-            // Race checks
-            if (!pawn.RaceProps.Humanlike)
+            // === REDUNDANT CHECKS - Skip when called from JobGiver ===
+            // When fromJobGiver=true, ThinkNode has already validated all of these
+            // Only run these checks for non-JobGiver callers (tests, UI, etc.)
+            if (!fromJobGiver)
             {
-                reason = "Not humanlike";
-                return false;
-            }
-
-            if (pawn.RaceProps.IsMechanoid)
-            {
-                reason = "Is mechanoid";
-                return false;
-            }
-
-            // Status checks
-            if (pawn.Downed)
-            {
-                reason = "Downed";
-                return false;
-            }
-
-            if (pawn.InMentalState)
-            {
-                reason = "In mental state";
-                return false;
-            }
-
-            if (pawn.IsPrisoner)
-            {
-                reason = "Is prisoner";
-                return false;
-            }
-
-            // Note: Slaves are allowed to pick up weapons - they're colony-owned workers
-            // The player controls this via outfit filters if they don't want armed slaves
-
-            if (pawn.Drafted)
-            {
-                reason = "Drafted";
-                return false;
-            }
-
-            if (pawn.InBed())
-            {
-                reason = "In bed";
-                return false;
-            }
-
-            // Faction and colonist checks
-            if (!SafeIsColonist(pawn))
-            {
-                // Special handling for slaves - they're owned by the colony
-                if (ModsConfig.IdeologyActive && pawn.IsSlaveOfColony)
+                // Capability and race checks - ThinkNode now checks these
+                // Using more flexible checks for mod compatibility
+                if (pawn.RaceProps == null)
                 {
-                    // Slaves are allowed - continue validation
-                }
-                else
-                {
-                    reason = "Not a colonist";
+                    reason = "No race properties";
                     return false;
                 }
-            }
-
-            // Violence capability check (only for weapon-related validation)
-            if (checkForWeapons && pawn.WorkTagIsDisabled(WorkTags.Violent))
-            {
-                reason = "Incapable of violence";
-                return false;
-            }
-
-            // Health checks
-            if (pawn.health?.capacities == null)
-            {
-                reason = "No health capacities";
-                return false;
-            }
-
-            if (!pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation))
-            {
-                reason = "Cannot manipulate";
-                return false;
-            }
-
-            // Lord job checks
-            if (pawn.Map?.lordManager != null)
-            {
-                var lord = pawn.Map.lordManager.LordOf(pawn);
-                if (lord != null)
+                
+                if (pawn.RaceProps.Animal)
                 {
-                    if (!(lord.LordJob is LordJob_DefendBase ||
-                          lord.LordJob is LordJob_AssistColony))
+                    reason = "Is animal";
+                    return false;
+                }
+
+                if (pawn.RaceProps.IsMechanoid)
+                {
+                    reason = "Is mechanoid";
+                    return false;
+                }
+                
+                if (!pawn.RaceProps.ToolUser)
+                {
+                    reason = "Cannot use tools";
+                    return false;
+                }
+                
+                if (pawn.RaceProps.intelligence < Intelligence.ToolUser)
+                {
+                    reason = "Intelligence too low";
+                    return false;
+                }
+
+                // Health/capability checks - ThinkNode now checks manipulation
+                if (pawn.health?.capacities == null)
+                {
+                    reason = "No health capacities";
+                    return false;
+                }
+
+                if (!pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation))
+                {
+                    reason = "Cannot manipulate";
+                    return false;
+                }
+                
+                if (!pawn.Spawned)
+                {
+                    reason = "Not spawned";
+                    return false;
+                }
+
+                if (pawn.Dead || pawn.Destroyed)
+                {
+                    reason = "Dead or destroyed";
+                    return false;
+                }
+
+                if (pawn.Downed)
+                {
+                    reason = "Downed";
+                    return false;
+                }
+
+                if (pawn.Drafted)
+                {
+                    reason = "Drafted";
+                    return false;
+                }
+
+                if (pawn.InMentalState)
+                {
+                    reason = "In mental state";
+                    return false;
+                }
+
+                if (pawn.InBed())
+                {
+                    reason = "In bed";
+                    return false;
+                }
+
+                if (pawn.IsPrisoner)
+                {
+                    reason = "Is prisoner";
+                    return false;
+                }
+
+                // Colonist check - includes regular colonists and slaves
+                if (!SafeIsColonist(pawn))
+                {
+                    // Special handling for slaves - they're owned by the colony
+                    if (ModsConfig.IdeologyActive && pawn.IsSlaveOfColony)
                     {
-                        reason = $"In lord job: {lord.LordJob.GetType().Name}";
+                        // Slaves are allowed - continue validation
+                    }
+                    else
+                    {
+                        reason = "Not a colonist";
                         return false;
                     }
                 }
-            }
-
-            // Ritual check
-            if (IsInRitual(pawn))
-            {
-                reason = "In ritual or ceremony";
-                return false;
-            }
-
-            // Hauling check - don't interfere with hauling jobs
-            if (pawn.CurJob != null &&
-                (pawn.CurJob.def == JobDefOf.HaulToCell ||
-                 pawn.CurJob.def == JobDefOf.HaulToContainer ||
-                 pawn.CurJob.def?.defName?.Contains("Haul") == true ||
-                 pawn.CurJob.def?.defName?.Contains("Carry") == true ||
-                 // Pick Up And Haul specific jobs
-                 pawn.CurJob.def?.defName == "HaulToInventory" ||
-                 pawn.CurJob.def?.defName == "UnloadYourHauledInventory" ||
-                 // Other inventory-related jobs that might be from PUAH or similar mods
-                 pawn.CurJob.def?.defName?.Contains("Inventory") == true ||
-                 pawn.CurJob.def?.defName == "UnloadYourInventory" ||
-                 pawn.CurJob.def?.defName == "TakeToInventory"))
-            {
-                reason = "Currently hauling";
-                return false;
-            }
-
-            // Caravan check
-            if (pawn.IsCaravanMember())
-            {
-                reason = "In caravan";
-                return false;
-            }
-
-            // Temporary colonist check
-            if (JobGiverHelpers.IsTemporaryColonist(pawn))
-            {
-                if (!(AutoArmMod.settings?.allowTemporaryColonists ?? false))
+                
+                // If they ARE a colonist (including slaves), check if they're temporary
+                if (JobGiverHelpers.IsTemporaryColonist(pawn))
                 {
-                    reason = "Temporary colonist (quest/borrowed)";
+                    if (!(AutoArmMod.settings?.allowTemporaryColonists ?? false))
+                    {
+                        reason = "Temporary colonist (quest/borrowed) - not allowed";
+                        return false;
+                    }
+                    // Temporary colonists allowed - continue
+                }
+
+                // Violence capability check
+                if (checkForWeapons && pawn.WorkTagIsDisabled(WorkTags.Violent))
+                {
+                    reason = "Incapable of violence";
                     return false;
                 }
-            }
 
-            // Age check for Biotech
-            if (ModsConfig.BiotechActive && pawn.ageTracker != null)
-            {
-                if (pawn.ageTracker.AgeBiologicalYears < 18)
+                // Lord job checks
+                if (pawn.Map?.lordManager != null)
                 {
+                    var lord = pawn.Map.lordManager.LordOf(pawn);
+                    if (lord != null)
+                    {
+                        if (!(lord.LordJob is LordJob_DefendBase ||
+                              lord.LordJob is LordJob_AssistColony))
+                        {
+                            reason = $"In lord job: {lord.LordJob.GetType().Name}";
+                            return false;
+                        }
+                    }
+                }
+
+                // Ritual check
+                if (IsInRitual(pawn))
+                {
+                    reason = "In ritual or ceremony";
+                    return false;
+                }
+
+                // Hauling check
+                if (pawn.CurJob != null &&
+                    (pawn.CurJob.def == JobDefOf.HaulToCell ||
+                     pawn.CurJob.def == JobDefOf.HaulToContainer ||
+                     pawn.CurJob.def?.defName?.Contains("Haul") == true ||
+                     pawn.CurJob.def?.defName?.Contains("Carry") == true ||
+                     pawn.CurJob.def?.defName == "HaulToInventory" ||
+                     pawn.CurJob.def?.defName == "UnloadYourHauledInventory" ||
+                     pawn.CurJob.def?.defName?.Contains("Inventory") == true ||
+                     pawn.CurJob.def?.defName == "UnloadYourInventory" ||
+                     pawn.CurJob.def?.defName == "TakeToInventory"))
+                {
+                    reason = "Currently hauling";
+                    return false;
+                }
+
+                // Caravan check
+                if (pawn.IsCaravanMember())
+                {
+                    reason = "In caravan";
+                    return false;
+                }
+
+                // Temporary colonist check already handled above with IsColonist check
+
+                // Age check for Biotech
+                if (ModsConfig.BiotechActive && pawn.ageTracker != null)
+                {
+                    // When setting is disabled, follow vanilla behavior (13+ are adults)
+                    // When setting is enabled, use the custom age slider (3-18)
                     if (!(AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false))
                     {
-                        reason = $"Children not allowed to equip weapons ({pawn.ageTracker.AgeBiologicalYears} years old)";
-                        return false;
+                        // Setting disabled - follow vanilla: only actual children (under 13) are restricted
+                        if (pawn.ageTracker.AgeBiologicalYears < 13)
+                        {
+                            reason = $"Children not allowed to equip weapons ({pawn.ageTracker.AgeBiologicalYears} years old)";
+                            return false;
+                        }
                     }
-
-                    int minAge = AutoArmMod.settings?.childrenMinAge ?? 13;
-                    if (pawn.ageTracker.AgeBiologicalYears < minAge)
+                    else
                     {
-                        reason = $"Too young ({pawn.ageTracker.AgeBiologicalYears} < {minAge})";
-                        return false;
+                        // Setting enabled - use custom age slider (can go up to 18)
+                        int minAge = AutoArmMod.settings?.childrenMinAge ?? Constants.ChildDefaultMinAge;
+                        if (pawn.ageTracker.AgeBiologicalYears < minAge)
+                        {
+                            reason = $"Too young ({pawn.ageTracker.AgeBiologicalYears} < {minAge})";
+                            return false;
+                        }
                     }
                 }
             }
-
-            // Note: Bonded weapons are handled separately in JobGiver_PickUpBetterWeapon
 
             return true;
         }
@@ -637,12 +644,15 @@ namespace AutoArm.Helpers
 
         /// <summary>
         /// Check if pawn can use a specific weapon
+        /// When called from JobGiver, pawn has already been validated by ThinkNode
         /// </summary>
-        public static bool CanPawnUseWeapon(Pawn pawn, ThingWithComps weapon, out string reason, bool skipSimpleSidearmsCheck = false)
+        public static bool CanPawnUseWeapon(Pawn pawn, ThingWithComps weapon, out string reason, bool skipSimpleSidearmsCheck = false, bool fromJobGiver = false)
         {
             reason = "";
 
-            if (!IsValidPawn(pawn, out reason))
+            // NOTE: When called from JobGiver path, pawn is already validated by ThinkNode
+            // We pass fromJobGiver to skip redundant validation when appropriate
+            if (!IsValidPawn(pawn, out reason, checkForWeapons: true, fromJobGiver: fromJobGiver))
                 return false;
 
             if (!IsValidWeapon(weapon, pawn, out reason, skipSimpleSidearmsCheck))
@@ -652,14 +662,6 @@ namespace AutoArm.Helpers
             if (pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) == true && weapon.def.IsRangedWeapon)
             {
                 reason = "Brawler won't use ranged weapon";
-                return false;
-            }
-
-            // Hunter explosive check
-            if (pawn.workSettings?.WorkIsActive(WorkTypeDefOf.Hunting) == true &&
-                weapon.def.IsRangedWeapon && JobGiverHelpers.IsExplosiveWeapon(weapon.def))
-            {
-                reason = "Hunter won't use explosive weapon";
                 return false;
             }
 

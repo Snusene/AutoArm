@@ -1,13 +1,16 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Runtime weapon category injection for outfit filtering
-// Merged version combining best features from all versions
+// This file: Runtime weapon filter injection for outfit filtering
+// LIGHTWEIGHT VERSION: Minimal category manipulation for performance
 
 using AutoArm.Logging;
 using AutoArm.Weapons;
 using HarmonyLib;
+using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using UnityEngine;
 using Verse;
 
 namespace AutoArm.UI
@@ -15,81 +18,33 @@ namespace AutoArm.UI
     [StaticConstructorOnStartup]
     public static class WeaponTabInjector
     {
-        // Track which mod moved weapons for debugging
-        private static string weaponsMovedBy = null;
+        private static ThingCategoryDef weaponsCategory;
+        private static ThingCategoryDef apparelCategory;
+        private static ThingCategoryDef originalWeaponsParent;
+        private static bool isMovedForUI = false;
+        private static bool isProcessing = false;
 
         static WeaponTabInjector()
         {
             try
             {
-                var apparel = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Apparel");
-                var weapons = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
-                var root = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Root");
+                apparelCategory = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Apparel");
+                weaponsCategory = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
 
-                if (apparel == null || weapons == null)
+                if (apparelCategory == null || weaponsCategory == null)
                 {
                     AutoArmLogger.Error("CRITICAL: Could not find Apparel or Weapons categories - weapon filtering will not work!");
                     return;
                 }
 
+                // Store the original parent (should be Root)
+                originalWeaponsParent = weaponsCategory.parent;
+
                 // Check if another mod already moved weapons
-                bool alreadyMoved = weapons.parent == apparel;
-                if (alreadyMoved)
+                if (weaponsCategory.parent == apparelCategory)
                 {
-                    try
-                    {
-                        // Get list of active mods that might interact with weapons/categories
-                        var suspectMods = GetModsThatMightMoveWeapons();
-
-                        if (suspectMods.Count > 0)
-                        {
-                            // Take the first suspect mod (likely loaded before us)
-                            weaponsMovedBy = suspectMods.First();
-
-                            if (suspectMods.Count > 1)
-                            {
-                                AutoArmLogger.Debug($"Multiple mods might have moved weapons: {string.Join(", ", suspectMods)}");
-                            }
-                        }
-                        else
-                        {
-                            weaponsMovedBy = "Unknown mod";
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        AutoArmLogger.Error("Failed to detect which mod moved weapons", e);
-                        weaponsMovedBy = "Unknown mod (detection failed)";
-                    }
-
-                    AutoArmLogger.Debug($"Weapons already under Apparel (likely moved by {weaponsMovedBy})");
-                }
-
-                // Always ensure weapons are under apparel
-                if (root != null && root.childCategories.Contains(weapons))
-                {
-                    root.childCategories.Remove(weapons);
-                }
-
-                if (!apparel.childCategories.Contains(weapons))
-                {
-                    apparel.childCategories.Add(weapons);
-                    weapons.parent = apparel;
-                    weaponsMovedBy = "AutoArm";
-
-                    Log.Message("<color=#4287f5>[AutoArm]</color> Weapons moved under Apparel category");
-                }
-                else
-                {
-                    // Already under apparel, but ensure it's properly set up
-                    weapons.parent = apparel;
-                }
-
-                // Validate the move was successful
-                if (weapons.parent != apparel)
-                {
-                    AutoArmLogger.Error($"CRITICAL: Failed to properly set weapons under apparel! Parent is: {weapons.parent?.defName ?? "null"}");
-                    AutoArmLogger.Error("Weapon outfit filtering will not work correctly!");
+                    AutoArmLogger.Warn("WARNING: Weapons category is already under Apparel - another mod may have moved it!");
+                    originalWeaponsParent = ThingCategoryDefOf.Root; // Assume it should be at root
                 }
 
                 // Log weapon counts for debugging
@@ -98,7 +53,6 @@ namespace AutoArm.UI
                     int rangedCount = WeaponValidation.RangedWeapons.Count;
                     int meleeCount = WeaponValidation.MeleeWeapons.Count;
                     AutoArmLogger.Debug($"Found {rangedCount} ranged and {meleeCount} melee weapon definitions");
-                    AutoArmLogger.Debug($"Weapons category setup complete. Moved by: {weaponsMovedBy}");
                 }
                 catch (Exception e)
                 {
@@ -111,126 +65,294 @@ namespace AutoArm.UI
             }
         }
 
-        private static List<string> GetModsThatMightMoveWeapons()
+        /// <summary>
+        /// Move weapons under apparel for UI (lightweight version)
+        /// </summary>
+        public static void MoveWeaponsForUI()
         {
-            var suspectMods = new List<string>();
+            if (isProcessing || isMovedForUI || weaponsCategory == null || apparelCategory == null)
+                return;
 
             try
             {
-                // Get all active mods
-                var activeMods = ModLister.AllInstalledMods.Where(m => m.Active);
+                isProcessing = true;
 
-                // Keywords that suggest a mod might interact with weapons/categories
-                var weaponKeywords = new[] {
-                    "weapon", "sidearm", "equip", "loadout", "outfit",
-                    "apparel", "gear", "inventory", "combat", "armory",
-                    "arsenal", "equipment"
-                };
-
-                foreach (var mod in activeMods)
+                if (weaponsCategory.parent != apparelCategory)
                 {
-                    try
+                    // Simple parent swap
+                    weaponsCategory.parent = apparelCategory;
+
+                    // Update child lists
+                    if (!apparelCategory.childCategories.Contains(weaponsCategory))
                     {
-                        // Skip AutoArm itself
-                        if (mod.PackageIdPlayerFacing?.IndexOf("autoarm", StringComparison.OrdinalIgnoreCase) >= 0)
-                            continue;
-
-                        // Check both package ID and name for keywords
-                        string modIdentifier = mod.PackageIdPlayerFacing?.ToLower() ?? "";
-                        string modName = mod.Name?.ToLower() ?? "";
-
-                        bool mightInteract = weaponKeywords.Any(keyword =>
-                            modIdentifier.Contains(keyword) || modName.Contains(keyword));
-
-                        if (mightInteract)
-                        {
-                            // Use PackageId if available, otherwise use Name
-                            string identifier = !string.IsNullOrEmpty(mod.PackageIdPlayerFacing)
-                                ? mod.PackageIdPlayerFacing
-                                : mod.Name ?? "Unknown";
-
-                            suspectMods.Add(identifier);
-                        }
+                        apparelCategory.childCategories.Add(weaponsCategory);
                     }
-                    catch (Exception e)
+
+                    if (originalWeaponsParent != null && originalWeaponsParent.childCategories.Contains(weaponsCategory))
                     {
-                        // Log but continue checking other mods
-                        AutoArmLogger.Debug($"Error checking mod {mod.Name}: {e.Message}");
+                        originalWeaponsParent.childCategories.Remove(weaponsCategory);
                     }
-                }
 
-                // Sort by load order (mods loaded before AutoArm are more likely suspects)
-                try
-                {
-                    // Get AutoArm's position in active mods
-                    var activeModsInOrder = ModsConfig.ActiveModsInLoadOrder.ToList();
-                    var autoArmIndex = activeModsInOrder.FindIndex(m =>
-                        m.PackageIdPlayerFacing?.IndexOf("autoarm", StringComparison.OrdinalIgnoreCase) >= 0);
-
-                    if (autoArmIndex >= 0)
-                    {
-                        // Only include mods that loaded before AutoArm
-                        suspectMods = suspectMods
-                            .Where(modId =>
-                            {
-                                var modIndex = activeModsInOrder.FindIndex(m =>
-                                    m.PackageIdPlayerFacing == modId || m.Name == modId);
-                                return modIndex >= 0 && modIndex < autoArmIndex;
-                            })
-                            .ToList();
-                    }
-                }
-                catch (Exception e)
-                {
-                    // If load order sorting fails, just return unsorted list
-                    AutoArmLogger.Debug($"Failed to sort mods by load order: {e.Message}");
+                    isMovedForUI = true;
+                    AutoArmLogger.Debug("Moved weapons under apparel for UI");
                 }
             }
             catch (Exception e)
             {
-                AutoArmLogger.Error("Failed to get mods that might move weapons", e);
+                AutoArmLogger.Error($"Failed to move weapons for UI: {e.Message}", e);
             }
+            finally
+            {
+                isProcessing = false;
+            }
+        }
 
-            return suspectMods;
+        /// <summary>
+        /// Restore weapons to original position (lightweight version)
+        /// </summary>
+        public static void RestoreWeaponsPosition()
+        {
+            if (isProcessing || !isMovedForUI || weaponsCategory == null || originalWeaponsParent == null)
+                return;
+
+            try
+            {
+                isProcessing = true;
+
+                if (weaponsCategory.parent != originalWeaponsParent)
+                {
+                    // Simple parent swap back
+                    weaponsCategory.parent = originalWeaponsParent;
+
+                    // Update child lists
+                    if (!originalWeaponsParent.childCategories.Contains(weaponsCategory))
+                    {
+                        originalWeaponsParent.childCategories.Add(weaponsCategory);
+                    }
+
+                    if (apparelCategory != null && apparelCategory.childCategories.Contains(weaponsCategory))
+                    {
+                        apparelCategory.childCategories.Remove(weaponsCategory);
+                    }
+
+                    isMovedForUI = false;
+                    AutoArmLogger.Debug("Restored weapons to original position");
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Error($"Failed to restore weapons position: {e.Message}", e);
+            }
+            finally
+            {
+                isProcessing = false;
+            }
         }
     }
 
-    // Force the tree node database to rebuild after we move categories
-    [HarmonyPatch(typeof(ThingCategoryNodeDatabase), "FinalizeInit")]
-    public static class ThingCategoryNodeDatabase_FinalizeInit_Patch
+    // ============================================================================
+    // UI PATCHES - Move weapons only when outfit dialog opens/closes
+    // ============================================================================
+
+    /// <summary>
+    /// Move weapons when outfit dialog opens
+    /// </summary>
+    [HarmonyPatch(typeof(Dialog_ManageApparelPolicies), "PreOpen")]
+    public static class Dialog_ManageApparelPolicies_PreOpen_Patch
     {
         [HarmonyPostfix]
         public static void Postfix()
         {
-            try
-            {
-                var weapons = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
-                var apparel = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Apparel");
+            WeaponTabInjector.MoveWeaponsForUI();
+        }
+    }
 
-                if (weapons != null && apparel != null && weapons.parent == apparel)
-                {
-                    // Force the tree node to be properly set up
-                    if (weapons.treeNode == null)
-                    {
-                        AutoArmLogger.Warn("Weapons tree node was null after finalization!");
-
-                        // The tree node being null is a serious issue but we can't force a rebuild
-                        // The game will handle this internally
-                        AutoArmLogger.Warn("Category tree structure may not display correctly in UI");
-                    }
-                    else
-                    {
-                        weapons.treeNode.SetOpen(-1, true);
-                        AutoArmLogger.Debug("Weapons tree node finalized under apparel");
-                    }
-                }
-            }
-            catch (Exception e)
+    /// <summary>
+    /// Restore weapons when any window closes (if it's the apparel dialog)
+    /// </summary>
+    [HarmonyPatch(typeof(Window), "Close")]
+    public static class Window_Close_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(Window __instance, bool doCloseSound = true)
+        {
+            if (__instance is Dialog_ManageApparelPolicies)
             {
-                AutoArmLogger.Error("Failed in ThingCategoryNodeDatabase finalization", e);
+                WeaponTabInjector.RestoreWeaponsPosition();
             }
         }
     }
+
+    /// <summary>
+    /// Ensure weapons are restored if dialog is closed abnormally
+    /// </summary>
+    [HarmonyPatch(typeof(WindowStack), "TryRemove", new Type[] { typeof(Window), typeof(bool) })]
+    public static class WindowStack_TryRemove_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Window window, bool doCloseSound)
+        {
+            if (window is Dialog_ManageApparelPolicies)
+            {
+                WeaponTabInjector.RestoreWeaponsPosition();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ensure weapons are in correct position for bill filters
+    /// </summary>
+    [HarmonyPatch(typeof(Dialog_BillConfig), "PreOpen")]
+    public static class Dialog_BillConfig_PreOpen_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            // Make sure weapons are NOT under apparel for bill dialogs
+            WeaponTabInjector.RestoreWeaponsPosition();
+        }
+    }
+
+    /// <summary>
+    /// Ensure weapons are in correct position for storage filters
+    /// </summary>
+    [HarmonyPatch(typeof(ITab_Storage), "FillTab")]
+    public static class ITab_Storage_FillTab_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix()
+        {
+            // Make sure weapons are NOT under apparel for storage tabs
+            WeaponTabInjector.RestoreWeaponsPosition();
+        }
+    }
+
+    // ============================================================================
+    // FILTER PATCHES - Make weapons work in outfit filters
+    // ============================================================================
+
+    /// <summary>
+    /// Make ThingFilter.Allows work for weapons in outfit filters
+    /// </summary>
+    [HarmonyPatch(typeof(ThingFilter), "Allows", new Type[] { typeof(Thing) })]
+    public static class ThingFilter_Allows_Thing_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ThingFilter __instance, Thing t, ref bool __result)
+        {
+            // If already allowed, nothing to do
+            if (__result)
+                return;
+
+            // Only modify for outfit filters
+            if (!IsOutfitFilter(__instance))
+                return;
+
+            // Check if this is a weapon
+            if (t is ThingWithComps weapon && WeaponValidation.IsProperWeapon(weapon))
+            {
+                // Check if weapons are allowed in this filter
+                try
+                {
+                    var allowedDefsField = typeof(ThingFilter).GetField("allowedDefs",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+                    var allowedDefs = allowedDefsField?.GetValue(__instance) as HashSet<ThingDef>;
+
+                    if (allowedDefs != null && allowedDefs.Contains(weapon.def))
+                    {
+                        // Also check quality and hitpoints if configured
+                        if (!CheckQualityFilter(__instance, weapon))
+                            return;
+
+                        if (!CheckHitPointsFilter(__instance, weapon))
+                            return;
+
+                        // Weapon passes all checks
+                        __result = true;
+                    }
+                }
+                catch (Exception e)
+                {
+                    AutoArmLogger.Debug($"Failed to check weapon in outfit filter: {e.Message}");
+                }
+            }
+        }
+
+        private static bool CheckQualityFilter(ThingFilter filter, ThingWithComps weapon)
+        {
+            try
+            {
+                var allowedQualities = filter.AllowedQualityLevels;
+
+                if (allowedQualities != QualityRange.All)
+                {
+                    QualityCategory quality;
+                    if (weapon.TryGetQuality(out quality))
+                    {
+                        if (!allowedQualities.Includes(quality))
+                            return false;
+                    }
+                }
+            }
+            catch { }
+
+            return true;
+        }
+
+        private static bool CheckHitPointsFilter(ThingFilter filter, ThingWithComps weapon)
+        {
+            try
+            {
+                var allowedHitPointsPercents = filter.AllowedHitPointsPercents;
+
+                if (allowedHitPointsPercents != FloatRange.ZeroToOne)
+                {
+                    float hitPointsPercent = (float)weapon.HitPoints / weapon.MaxHitPoints;
+
+                    // ASYMMETRIC FILTER: Respect maximum HP but skip minimum HP for weapons
+
+                    // If filter has a MAXIMUM (e.g., "up to 50%" for slaves)
+                    if (allowedHitPointsPercents.max < 1.0f)
+                    {
+                        // RESPECT the maximum - slaves only get damaged weapons
+                        if (hitPointsPercent > allowedHitPointsPercents.max)
+                            return false;
+                    }
+
+                    // If filter has a MINIMUM (e.g., "51%+" for anti-tainted)
+                    // IGNORE the minimum for weapons - they don't have tainted penalties
+                    // The penalty will be applied in scoring instead
+
+                    return true;
+                }
+            }
+            catch { }
+
+            return true;
+        }
+
+        private static bool IsOutfitFilter(ThingFilter filter)
+        {
+            if (filter == null)
+                return false;
+
+            var outfitDatabase = Current.Game?.outfitDatabase;
+            if (outfitDatabase != null)
+            {
+                foreach (var outfit in outfitDatabase.AllOutfits)
+                {
+                    if (outfit.filter == filter)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // ============================================================================
+    // GAME LOADING PATCHES - Add weapons to outfit filters
+    // ============================================================================
 
     [HarmonyPatch(typeof(Game), "LoadGame")]
     public static class Game_LoadGame_AddWeaponsToOutfits_Patch
@@ -240,6 +362,9 @@ namespace AutoArm.UI
         {
             try
             {
+                // Ensure weapons are in correct position after loading
+                WeaponTabInjector.RestoreWeaponsPosition();
+
                 OutfitWeaponHelper.AddWeaponsToOutfits();
 
                 // Check for bonded weapons if setting is enabled
@@ -265,6 +390,9 @@ namespace AutoArm.UI
         {
             try
             {
+                // Ensure weapons are in correct position after init
+                WeaponTabInjector.RestoreWeaponsPosition();
+
                 OutfitWeaponHelper.AddWeaponsToOutfits();
             }
             catch (Exception e)
@@ -280,120 +408,140 @@ namespace AutoArm.UI
         {
             try
             {
-                var weaponsCat = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
-                if (weaponsCat == null || Current.Game?.outfitDatabase == null)
+                if (Current.Game?.outfitDatabase == null)
                     return;
 
-                int outfitsModified = 0;
-                int outfitsSkipped = 0;
+                // Temporarily move weapons to make filter operations work
+                WeaponTabInjector.MoveWeaponsForUI();
 
-                foreach (var outfit in Current.Game.outfitDatabase.AllOutfits)
+                try
                 {
-                    try
-                    {
-                        if (outfit.filter != null)
-                        {
-                            // IMPORTANT: Use WeaponValidation.AllWeapons which properly filters out problematic items
-                            bool alreadyHasWeapons = WeaponValidation.AllWeapons
-                                .Any(weapon => outfit.filter.Allows(weapon));
+                    int outfitsModified = 0;
+                    int outfitsSkipped = 0;
 
-                            if (!alreadyHasWeapons)
+                    foreach (var outfit in Current.Game.outfitDatabase.AllOutfits)
+                    {
+                        try
+                        {
+                            if (outfit.filter != null)
                             {
-                                // This is a fresh outfit with no weapon configuration
-                                
-                                // Smart detection: Check if outfit allows most apparel (indicating a general-purpose outfit)
-                                bool allowsMostApparel = false;
-                                try
+                                // Check if outfit already has weapon configuration
+                                bool alreadyHasWeapons = WeaponValidation.AllWeapons
+                                    .Any(weapon => outfit.filter.Allows(weapon));
+
+                                if (!alreadyHasWeapons)
                                 {
-                                    // Get all apparel defs (excluding weapons since we moved them)
-                                    var apparelDefs = DefDatabase<ThingDef>.AllDefs
-                                        .Where(def => def.IsApparel && !def.IsWeapon && def.category == ThingCategory.Item)
-                                        .ToList();
-                                    
-                                    if (apparelDefs.Count > 0)
+                                    // Determine if this outfit should have weapons
+                                    bool shouldHaveWeapons = ShouldOutfitHaveWeapons(outfit);
+
+                                    if (shouldHaveWeapons)
                                     {
-                                        int allowedCount = apparelDefs.Count(def => outfit.filter.Allows(def));
-                                        float allowedPercentage = (float)allowedCount / apparelDefs.Count;
-                                        
-                                        // If outfit allows more than 70% of apparel, it's probably a general outfit
-                                        allowsMostApparel = allowedPercentage > 0.7f;
-                                        
-                                        if (AutoArmMod.settings?.debugLogging == true && allowsMostApparel)
+                                        // Add all weapon types to the filter
+                                        var weaponsCategory = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
+                                        if (weaponsCategory != null)
                                         {
-                                            AutoArmLogger.Debug($"Outfit '{outfit.label}' allows {allowedPercentage:P0} of apparel - adding weapons");
+                                            outfit.filter.SetAllow(weaponsCategory, true);
+                                            outfitsModified++;
+                                            AutoArmLogger.Debug($"Added default weapons to new outfit: {outfit.label}");
                                         }
                                     }
                                 }
-                                catch (Exception e)
+                                else
                                 {
-                                    AutoArmLogger.Debug($"Failed to check apparel allowance for outfit '{outfit.label}': {e.Message}");
+                                    outfitsSkipped++;
                                 }
-                                
-                                // Name-based detection as fallback (or for specific roles)
-                                bool isNudist = outfit.label.IndexOf("nudist", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                               outfit.label.IndexOf("nude", StringComparison.OrdinalIgnoreCase) >= 0;
-                                
-                                bool hasWeaponKeyword = outfit.label.IndexOf("anything", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("soldier", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("worker", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("spacefarer", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("guard", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("fighter", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("battle", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                        outfit.label.IndexOf("combat", StringComparison.OrdinalIgnoreCase) >= 0;
-                                
-                                // Add weapons if:
-                                // 1. Outfit allows most apparel (general purpose outfit) AND not nudist
-                                // 2. OR outfit name suggests it should have weapons AND not nudist
-                                bool shouldHaveWeapons = !isNudist && (allowsMostApparel || hasWeaponKeyword);
-
-                                if (shouldHaveWeapons)
-                                {
-                                    outfit.filter.SetAllow(weaponsCat, true);
-                                    outfitsModified++;
-                                    AutoArmLogger.Debug($"Added default weapons to new outfit: {outfit.label}");
-                                }
-                                else if (isNudist)
-                                {
-                                    AutoArmLogger.Debug($"Skipped adding weapons to nudist outfit: {outfit.label}");
-                                }
-                            }
-                            else
-                            {
-                                outfitsSkipped++;
                             }
                         }
+                        catch (Exception e)
+                        {
+                            AutoArmLogger.Error($"Failed to process outfit '{outfit?.label ?? "null"}'", e);
+                        }
                     }
-                    catch (Exception e)
+
+                    // Log results
+                    if (outfitsModified > 0 || outfitsSkipped > 0)
                     {
-                        AutoArmLogger.Error($"Failed to process outfit '{outfit?.label ?? "null"}'", e);
+                        if (outfitsModified > 0 && outfitsSkipped == 0)
+                        {
+                            // Likely a new game
+                            AutoArmLogger.Debug($"Added default weapons to {outfitsModified} new outfits");
+                        }
+                        else if (outfitsSkipped > 0 && outfitsModified == 0)
+                        {
+                            // Likely a loaded save with all outfits configured
+                            AutoArmLogger.Debug($"Preserved {outfitsSkipped} player-configured outfit filters (no modifications made)");
+                        }
+                        else
+                        {
+                            // Mixed - some new, some existing
+                            AutoArmLogger.Debug($"Modified {outfitsModified} new outfits, preserved {outfitsSkipped} player-configured outfit filters");
+                        }
                     }
                 }
-
-                // Log results based on what happened
-                if (outfitsModified > 0 || outfitsSkipped > 0)
+                finally
                 {
-                    if (outfitsModified > 0 && outfitsSkipped == 0)
-                    {
-                        // Likely a new game
-                        AutoArmLogger.Debug($"Added default weapons to {outfitsModified} new outfits");
-                    }
-                    else if (outfitsSkipped > 0 && outfitsModified == 0)
-                    {
-                        // Likely a loaded save with all outfits configured
-                        AutoArmLogger.Debug($"Preserved {outfitsSkipped} player-configured outfit filters (no modifications made)");
-                    }
-                    else
-                    {
-                        // Mixed - some new, some existing
-                        AutoArmLogger.Debug($"Modified {outfitsModified} new outfits, preserved {outfitsSkipped} player-configured outfit filters");
-                    }
+                    // Always restore weapons position
+                    WeaponTabInjector.RestoreWeaponsPosition();
                 }
             }
             catch (Exception e)
             {
                 AutoArmLogger.Error("Failed to add weapons to outfits", e);
+                // Make sure to restore position even on error
+                WeaponTabInjector.RestoreWeaponsPosition();
             }
+        }
+
+        private static bool ShouldOutfitHaveWeapons(ApparelPolicy outfit)
+        {
+            // Check for nudist outfits
+            bool isNudist = outfit.label.IndexOf("nudist", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                           outfit.label.IndexOf("nude", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (isNudist)
+                return false;
+
+            // Check if outfit allows most apparel (general purpose outfit)
+            bool allowsMostApparel = false;
+            try
+            {
+                var apparelDefs = DefDatabase<ThingDef>.AllDefs
+                    .Where(def => def.IsApparel && !def.IsWeapon && def.category == ThingCategory.Item)
+                    .ToList();
+
+                if (apparelDefs.Count > 0)
+                {
+                    int allowedCount = apparelDefs.Count(def => outfit.filter.Allows(def));
+                    float allowedPercentage = (float)allowedCount / apparelDefs.Count;
+
+                    // If outfit allows more than 70% of apparel, it's probably a general outfit
+                    allowsMostApparel = allowedPercentage > 0.7f;
+
+                    if (AutoArmMod.settings?.debugLogging == true && allowsMostApparel)
+                    {
+                        AutoArmLogger.Debug($"Outfit '{outfit.label}' allows {allowedPercentage:P0} of apparel - adding weapons");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Debug($"Failed to check apparel allowance for outfit '{outfit.label}': {e.Message}");
+            }
+
+            // Name-based detection as fallback (or for specific roles)
+            bool hasWeaponKeyword = outfit.label.IndexOf("anything", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("soldier", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("worker", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("spacefarer", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("guard", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("fighter", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("battle", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    outfit.label.IndexOf("combat", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // Add weapons if:
+            // 1. Outfit allows most apparel (general purpose outfit) AND not nudist
+            // 2. OR outfit name suggests it should have weapons AND not nudist
+            return !isNudist && (allowsMostApparel || hasWeaponKeyword);
         }
     }
 }

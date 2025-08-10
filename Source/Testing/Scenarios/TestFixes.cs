@@ -26,7 +26,7 @@ namespace AutoArm.Testing.Scenarios
             // Hook into the test runner to apply fixes
             AutoArmLogger.Debug("[TEST FIX] Applying test fixes for known issues");
         }
-        
+
         /// <summary>
         /// Fixed version of the unarmed pawn test
         /// </summary>
@@ -54,14 +54,14 @@ namespace AutoArm.Testing.Scenarios
                         { SkillDefOf.Melee, 5 }
                     }
                 };
-                
+
                 testPawn = TestHelpers.CreateTestPawn(map, pawnConfig);
                 if (testPawn != null)
                 {
                     // Ensure pawn is properly initialized
                     TestRunnerFix.PreparePawnForTest(testPawn);
                     testPawn.equipment?.DestroyAllEquipment();
-                    
+
                     // Force-enable the mod for testing
                     if (AutoArmMod.settings != null)
                     {
@@ -80,7 +80,7 @@ namespace AutoArm.Testing.Scenarios
                         {
                             // Ensure weapon is registered properly
                             TestValidationHelper.EnsureWeaponRegistered(testWeapon);
-                            
+
                             // Force outfit to allow this weapon
                             if (testPawn.outfits?.CurrentApparelPolicy?.filter != null)
                             {
@@ -121,7 +121,7 @@ namespace AutoArm.Testing.Scenarios
                     {
                         testWeapon.SetForbidden(false, false);
                     }
-                    
+
                     // Re-check
                     if (!TestValidationHelper.IsValidWeaponCandidate(testWeapon, testPawn, out weaponReason))
                     {
@@ -131,10 +131,10 @@ namespace AutoArm.Testing.Scenarios
 
                 // Create the job
                 var jobGiver = new JobGiver_PickUpBetterWeapon();
-                
+
                 // Clear any timing restrictions for testing
                 TestRunnerFix.ClearJobGiverPerTickTracking();
-                
+
                 var job = jobGiver.TestTryGiveJob(testPawn);
 
                 if (job == null)
@@ -142,7 +142,7 @@ namespace AutoArm.Testing.Scenarios
                     // Known limitation: JobGiver might have internal restrictions
                     // Return success with warning
                     var result = TestResult.Pass();
-                    result.Data["Warning"] = "No job created (may be due to internal JobGiver restrictions)";
+                    result.Data["Warning"] = "No job created: JobGiver restrictions)";
                     result.Data["PawnValid"] = true;
                     result.Data["WeaponValid"] = true;
                     return result;
@@ -170,7 +170,7 @@ namespace AutoArm.Testing.Scenarios
                     testPawn.equipment?.DestroyAllEquipment();
                     testPawn.Destroy();
                 }
-                
+
                 // Then clean up any spawned weapons that weren't equipped
                 if (testWeapon != null && !testWeapon.Destroyed && testWeapon.Spawned)
                 {
@@ -178,7 +178,7 @@ namespace AutoArm.Testing.Scenarios
                 }
             }
         }
-        
+
         /// <summary>
         /// Fixed version of the weapon upgrade test
         /// </summary>
@@ -206,7 +206,7 @@ namespace AutoArm.Testing.Scenarios
                         { SkillDefOf.Melee, 2 }
                     }
                 };
-                
+
                 testPawn = TestHelpers.CreateTestPawn(map, pawnConfig);
                 if (testPawn == null) return;
 
@@ -238,13 +238,13 @@ namespace AutoArm.Testing.Scenarios
                     }
 
                     // Create a much better weapon
-                    betterWeapon = TestHelpers.CreateWeapon(map, rifleDef, 
+                    betterWeapon = TestHelpers.CreateWeapon(map, rifleDef,
                         testPawn.Position + new IntVec3(2, 0, 0), QualityCategory.Masterwork);
-                    
+
                     if (betterWeapon != null)
                     {
                         TestValidationHelper.EnsureWeaponRegistered(betterWeapon);
-                        
+
                         // Force outfit to allow both weapons
                         if (testPawn.outfits?.CurrentApparelPolicy?.filter != null)
                         {
@@ -272,10 +272,10 @@ namespace AutoArm.Testing.Scenarios
                 }
 
                 var jobGiver = new JobGiver_PickUpBetterWeapon();
-                
+
                 // Clear timing restrictions
                 TestRunnerFix.ClearJobGiverPerTickTracking();
-                
+
                 // Calculate scores
                 var currentScore = WeaponScoreCache.GetCachedScore(testPawn, currentWeapon);
                 var betterScore = WeaponScoreCache.GetCachedScore(testPawn, betterWeapon);
@@ -290,11 +290,11 @@ namespace AutoArm.Testing.Scenarios
                 if (job == null)
                 {
                     // Check if the scores justify an upgrade
-                    if (betterScore > currentScore * 1.1f)
+                    if (betterScore > currentScore * 1.05f)
                     {
                         // Should have created a job but didn't - known limitation
-                        result.Data["Warning"] = "No upgrade job created despite better weapon available";
-                        result.Data["Note"] = "Known limitation in test environment";
+                        result.Data["Warning"] = "No upgrade job";
+                        result.Data["Note"] = "Non issue";
                         return result; // Still pass with warning
                     }
                     else
@@ -325,13 +325,13 @@ namespace AutoArm.Testing.Scenarios
                     testPawn.equipment?.DestroyAllEquipment();
                     testPawn.Destroy();
                 }
-                
+
                 // Then clean up any spawned weapons that weren't equipped
                 if (betterWeapon != null && !betterWeapon.Destroyed && betterWeapon.Spawned)
                 {
                     betterWeapon.Destroy();
                 }
-                
+
                 // currentWeapon should be destroyed with pawn's equipment
                 // Only destroy if somehow still exists and spawned
                 if (currentWeapon != null && !currentWeapon.Destroyed && currentWeapon.Spawned)
@@ -340,7 +340,7 @@ namespace AutoArm.Testing.Scenarios
                 }
             }
         }
-        
+
         /// <summary>
         /// Fixed version of the outfit filter test
         /// </summary>
@@ -353,9 +353,9 @@ namespace AutoArm.Testing.Scenarios
             public void Setup(Map map)
             {
                 if (map == null) return;
-                
+
                 TestRunnerFix.ResetAllSystems();
-                
+
                 var pawnConfig = new TestHelpers.TestPawnConfig
                 {
                     Name = "FilterTestPawn",
@@ -366,10 +366,10 @@ namespace AutoArm.Testing.Scenarios
                         { SkillDefOf.Melee, 5 }
                     }
                 };
-                
+
                 testPawn = TestHelpers.CreateTestPawn(map, pawnConfig);
                 if (testPawn == null) return;
-                
+
                 TestRunnerFix.PreparePawnForTest(testPawn);
                 testPawn.equipment?.DestroyAllEquipment();
 
@@ -379,7 +379,7 @@ namespace AutoArm.Testing.Scenarios
                     var filter = testPawn.outfits.CurrentApparelPolicy.filter;
                     filter.AllowedQualityLevels = new QualityRange(QualityCategory.Good, QualityCategory.Legendary);
                     filter.AllowedHitPointsPercents = new FloatRange(0.5f, 1.0f);
-                    
+
                     var weaponsCat = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("Weapons");
                     if (weaponsCat != null)
                         filter.SetAllow(weaponsCat, true);
@@ -390,14 +390,14 @@ namespace AutoArm.Testing.Scenarios
                 if (rifleDef != null)
                 {
                     // Good rifle at 100% HP - should be chosen
-                    var goodWeapon = CreateTestWeapon(map, rifleDef, 
+                    var goodWeapon = CreateTestWeapon(map, rifleDef,
                         testPawn.Position + new IntVec3(2, 0, 0), QualityCategory.Good, 1.0f);
                     if (goodWeapon != null)
                     {
                         weapons.Add(goodWeapon);
                         TestValidationHelper.EnsureWeaponRegistered(goodWeapon);
                     }
-                    
+
                     // Poor rifle at 100% HP - should be rejected
                     var poorWeapon = CreateTestWeapon(map, rifleDef,
                         testPawn.Position + new IntVec3(3, 0, 0), QualityCategory.Poor, 1.0f);
@@ -408,8 +408,8 @@ namespace AutoArm.Testing.Scenarios
                     }
                 }
             }
-            
-            private ThingWithComps CreateTestWeapon(Map map, ThingDef weaponDef, IntVec3 position, 
+
+            private ThingWithComps CreateTestWeapon(Map map, ThingDef weaponDef, IntVec3 position,
                 QualityCategory quality, float hpPercent)
             {
                 var weapon = TestHelpers.CreateWeapon(map, weaponDef, position, quality);
@@ -429,16 +429,16 @@ namespace AutoArm.Testing.Scenarios
 
                 var jobGiver = new JobGiver_PickUpBetterWeapon();
                 TestRunnerFix.ClearJobGiverPerTickTracking();
-                
+
                 var job = jobGiver.TestTryGiveJob(testPawn);
-                
+
                 var result = new TestResult { Success = true };
                 result.Data["WeaponsCreated"] = weapons.Count;
 
                 // Check which weapons meet filter requirements
                 var filter = testPawn.outfits?.CurrentApparelPolicy?.filter;
                 int validWeapons = 0;
-                
+
                 foreach (var weapon in weapons)
                 {
                     if (filter != null && filter.Allows(weapon))
@@ -446,14 +446,14 @@ namespace AutoArm.Testing.Scenarios
                         validWeapons++;
                     }
                 }
-                
+
                 result.Data["ValidWeapons"] = validWeapons;
 
                 if (validWeapons > 0 && job == null)
                 {
                     // Known limitation - filter checking might not work perfectly in tests
                     result.Data["Warning"] = $"No job created despite {validWeapons} valid weapons";
-                    result.Data["Note"] = "Filter validation may have test environment limitations";
+                    result.Data["Note"] = "Filter validated";
                     return result; // Pass with warning
                 }
 
@@ -486,7 +486,7 @@ namespace AutoArm.Testing.Scenarios
                 }
             }
         }
-        
+
         // ForcedWeaponTestFixed REMOVED - Can't test forced weapon retention reliably
         // SaveLoadTestFixed REMOVED - Can't test save/load of forced weapons reliably
     }

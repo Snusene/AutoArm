@@ -1,57 +1,29 @@
 // AutoArm RimWorld 1.5+ mod - automatic weapon management
-// This file: Job creation and interruption logic
-// Handles: Safe job interruption decisions, critical job detection
-// Uses: Job categories and work priorities to avoid disrupting important tasks
-// Critical: Prevents mod from interrupting emergency/critical jobs
+// This file: Job creation logic
+// Handles: Creating equip jobs for weapons and sidearms
+// Note: Interrupt logic removed - think tree priorities handle when colonists look for weapons
 
 using AutoArm.Logging;
 using RimWorld;
-using System;
-using System.Collections.Generic;
+using System.Linq;
 using Verse;
 using Verse.AI;
 
 namespace AutoArm.Jobs
 {
     /// <summary>
-    /// Centralized job handling (fixes #17, #27)
+    /// Centralized job creation
     /// </summary>
     public static class JobHelper
     {
-        // Job categories for interruption logic - initialized once
-        private static readonly HashSet<JobDef> AlwaysCriticalJobs = InitializeCriticalJobs();
-        
-        private static HashSet<JobDef> InitializeCriticalJobs()
-        {
-            return new HashSet<JobDef>
-            {
-                JobDefOf.TendPatient, JobDefOf.Rescue, JobDefOf.ExtinguishSelf,
-                JobDefOf.BeatFire, JobDefOf.GotoSafeTemperature,
-                JobDefOf.AttackMelee, JobDefOf.AttackStatic, JobDefOf.Hunt,
-                JobDefOf.ManTurret, JobDefOf.Wait_Combat, JobDefOf.FleeAndCower, JobDefOf.Reload,
-                JobDefOf.Vomit, JobDefOf.LayDown, JobDefOf.Lovin, JobDefOf.Ingest,
-                JobDefOf.EnterTransporter, JobDefOf.EnterCryptosleepCasket,
-                JobDefOf.Arrest, JobDefOf.Capture, JobDefOf.EscortPrisonerToBed,
-                JobDefOf.TakeWoundedPrisonerToBed, JobDefOf.ReleasePrisoner,
-                JobDefOf.Kidnap, JobDefOf.CarryDownedPawnToExit, JobDefOf.CarryToCryptosleepCasket,
-                JobDefOf.TradeWithPawn, JobDefOf.UseCommsConsole, JobDefOf.DropEquipment
-            };
-        }
-
-        // Cached EquipSecondary job def
+        // Cached EquipSecondary job def for SimpleSidearms
         private static readonly JobDef equipSecondaryJobDef = SimpleSidearmsCompat.IsLoaded() ? 
             DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary") : null;
 
-        // String prefix sets for performance
-        private static readonly string[] CriticalJobPatterns = new string[]
-        {
-            "Ritual", "Surgery", "Operate", "Prisoner", "Mental", "PrepareCaravan"
-        };
-
         /// <summary>
-        /// Create an equip job (fixes #27)
+        /// Create an equip job for a weapon - uses smart swap when replacing existing weapon
         /// </summary>
-        public static Job CreateEquipJob(ThingWithComps weapon, bool isSidearm = false)
+        public static Job CreateEquipJob(ThingWithComps weapon, bool isSidearm = false, Pawn pawn = null)
         {
             if (weapon == null)
             {
@@ -62,16 +34,51 @@ namespace AutoArm.Jobs
                 return null;
             }
 
+            // SMART SWAP LOGIC: If SimpleSidearms is loaded and pawn has a weapon to replace,
+            // use our custom swap job to avoid drop space issues
+            if (SimpleSidearmsCompat.IsLoaded() && !SimpleSidearmsCompat.ReflectionFailed && pawn != null)
+            {
+                var currentPrimary = pawn.equipment?.Primary;
+                
+                // Check if this is an upgrade of the primary weapon
+                if (currentPrimary != null && currentPrimary.def == weapon.def)
+                {
+                    if (AutoArmMod.settings?.debugLogging == true)
+                    {
+                        AutoArmLogger.Debug($"Creating primary swap job for upgrade: {currentPrimary.Label} -> {weapon.Label}");
+                    }
+                    return SimpleSidearmsCompat.CreateSwapPrimaryJob(pawn, weapon, currentPrimary);
+                }
+                
+                // Check if this is replacing a sidearm in inventory
+                if (pawn.inventory?.innerContainer != null)
+                {
+                    var existingSidearm = pawn.inventory.innerContainer
+                        .OfType<ThingWithComps>()
+                        .FirstOrDefault(w => w.def == weapon.def && w.def.IsWeapon);
+                    
+                    if (existingSidearm != null)
+                    {
+                        if (AutoArmMod.settings?.debugLogging == true)
+                        {
+                            AutoArmLogger.Debug($"Creating sidearm swap job for upgrade: {existingSidearm.Label} -> {weapon.Label}");
+                        }
+                        return SimpleSidearmsCompat.CreateSwapSidearmJob(pawn, weapon, existingSidearm);
+                    }
+                }
+            }
+
+            // Use SimpleSidearms EquipSecondary job if available and this is a sidearm
             if (isSidearm && equipSecondaryJobDef != null)
             {
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    AutoArmLogger.Debug($"Creating EquipSecondary job for {weapon.Label} (sidearm)");
+                    AutoArmLogger.Debug($"Creating EquipSecondary job for {weapon.Label} (new sidearm)");
                 }
                 return JobMaker.MakeJob(equipSecondaryJobDef, weapon);
             }
 
-            // Default to vanilla equip job
+            // Default to vanilla equip job (for new weapons or when SS not loaded)
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmLogger.Debug($"Creating vanilla Equip job for {weapon.Label}{(isSidearm ? " (marked as sidearm)" : "")}");
@@ -81,83 +88,9 @@ namespace AutoArm.Jobs
             return job;
         }
 
-        /// <summary>
-        /// Check if a job is critical and shouldn't be interrupted (fixes #17)
-        /// </summary>
-        public static bool IsCriticalJob(Pawn pawn, Job job = null)
-        {
-            if (job == null)
-                job = pawn?.CurJob;
-
-            if (job == null)
-                return false;
-
-            // Player forced jobs are always critical
-            if (job.playerForced)
-                return true;
-
-            var jobDef = job.def;
-
-            // Check always critical jobs
-            if (AlwaysCriticalJobs.Contains(jobDef))
-                return true;
-
-            // Check job name patterns - optimized
-            var defName = jobDef.defName;
-            for (int i = 0; i < CriticalJobPatterns.Length; i++)
-            {
-                if (defName.IndexOf(CriticalJobPatterns[i], StringComparison.Ordinal) >= 0)
-                    return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Check if current work is low priority
-        /// </summary>
-        public static bool IsLowPriorityWork(Pawn pawn)
-        {
-            if (pawn?.CurJob == null)
-                return true;
-
-            var job = pawn.CurJob;
-            var jobDef = job.def;
-
-            // Check common low priority jobs - use switch for better performance
-            if (IsLowPriorityJobDef(jobDef))
-                return true;
-
-            // Check work priority
-            if (pawn.workSettings != null && job.workGiverDef?.workType != null)
-            {
-                var workType = job.workGiverDef.workType;
-                int priority = pawn.workSettings.GetPriority(workType);
-
-                if (priority >= 4)
-                    return true;
-
-                // Check specific work types
-                if (workType == WorkTypeDefOf.Cleaning ||
-                    workType == WorkTypeDefOf.Hauling ||
-                    workType == WorkTypeDefOf.PlantCutting ||
-                    workType == WorkTypeDefOf.Research)
-                    return true;
-            }
-
-            return false;
-        }
-        
-        private static bool IsLowPriorityJobDef(JobDef jobDef)
-        {
-            return jobDef == JobDefOf.Wait || 
-                   jobDef == JobDefOf.Wait_Wander ||
-                   jobDef == JobDefOf.GotoWander || 
-                   jobDef == JobDefOf.Goto ||
-                   jobDef == JobDefOf.LayDownResting || 
-                   jobDef == JobDefOf.Clean ||
-                   jobDef == JobDefOf.ClearSnow || 
-                   jobDef == JobDefOf.RemoveFloor;
-        }
+        // Note: IsCriticalJob and IsLowPriorityWork methods removed
+        // The think tree system with priorities 5.6 (armed) and 6.9 (unarmed) 
+        // naturally ensures colonists only look for weapons between jobs,
+        // not during work or critical tasks.
     }
 }

@@ -18,10 +18,9 @@ namespace AutoArm.Patches
         [HarmonyPostfix]
         public static void Postfix(Map __instance)
         {
-            // Skip if mod disabled
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-                
+            // CRITICAL: Always initialize cache, even if mod appears disabled
+            // Settings might not be loaded yet when this runs
+            // The cache is harmless and needed when mod becomes enabled
             if (__instance == null)
                 return;
 
@@ -46,10 +45,8 @@ namespace AutoArm.Patches
         [HarmonyPostfix]
         public static void Postfix(Map __instance)
         {
-            // Skip if mod disabled
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-                
+            // CRITICAL: Always initialize cache after save load
+            // Settings might not be loaded yet
             if (__instance == null)
                 return;
 

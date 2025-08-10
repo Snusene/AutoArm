@@ -45,17 +45,17 @@ namespace AutoArm.Helpers
         {
             if (pawn == null || weapon == null)
                 return;
-                
+
             if (!SimpleSidearmsCompat.IsLoaded())
                 return;
-                
+
             // Only sync bonded weapons
             var biocomp = weapon.TryGetComp<CompBiocodable>();
             if (biocomp?.CodedPawn != pawn)
                 return;
-                
+
             SimpleSidearmsCompat.SetWeaponAsForced(pawn, weapon);
-            
+
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmLogger.Debug($"[{pawn.Name?.ToStringShort ?? "Unknown"}] Bonded weapon {weapon.Label} synced to SimpleSidearms as forced");
