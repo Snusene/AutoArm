@@ -687,24 +687,11 @@ namespace AutoArm.Caching
 
             var playerFaction = Find.FactionManager?.OfPlayer;
 
-            int forbiddenWeapons = 0;
-            bool debugLogging = AutoArmMod.settings?.debugLogging == true;
-
             foreach (var weapon in component.weapons)
             {
                 if (weapon != null && !weapon.Destroyed && weapon.Spawned)
                 {
                     bool isForbidden = playerFaction != null && weapon.IsForbidden(playerFaction);
-                    if (isForbidden)
-                    {
-                        forbiddenWeapons++;
-                        if (debugLogging && forbiddenWeapons == 1)
-                        {
-                            var comp = weapon.compForbiddable;
-                            bool compForbidden = comp?.Forbidden ?? false;
-                            AutoArmLogger.Debug(() => $"[Cache] Skipping forbidden weapon: {AutoArmLogger.GetDefLabel(weapon.def)} at {weapon.Position} (flags: IsForbidden={AutoArmLogger.FormatBool(isForbidden)}, CompForbidden={AutoArmLogger.FormatBool(compForbidden)})");
-                        }
-                    }
 
                     if (!isForbidden)
                     {
