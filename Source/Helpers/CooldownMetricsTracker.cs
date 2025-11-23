@@ -47,13 +47,6 @@ namespace AutoArm.Helpers
                     cooldownExpirySchedule[expireTick] = list;
                 }
                 list.Add(pawnId);
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[CooldownEvent] {AutoArmLogger.GetPawnName(pawn)} started cooldown, " +
-                        $"count: {activeCooldownCount}, expires: tick {expireTick}");
-                }
             }
             else
             {
@@ -65,13 +58,6 @@ namespace AutoArm.Helpers
                     cooldownExpirySchedule[expireTick] = list;
                 }
                 list.Add(pawnId);
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[CooldownEvent] {AutoArmLogger.GetPawnName(pawn)} extended cooldown, " +
-                        $"new expiry: tick {expireTick}");
-                }
             }
         }
 
@@ -90,13 +76,6 @@ namespace AutoArm.Helpers
 
                 activeCooldownCount -= expiredPawnIds.Count;
                 cooldownExpirySchedule.Remove(tick);
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[CooldownEvent] {expiredPawnIds.Count} cooldowns expired, " +
-                        $"remaining: {activeCooldownCount}");
-                }
             }
         }
 
@@ -119,14 +98,6 @@ namespace AutoArm.Helpers
             if (pawnsOnCooldown.Remove(pawnId))
             {
                 activeCooldownCount--;
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[CooldownEvent] {AutoArmLogger.GetPawnName(pawn)} removed while on cooldown, " +
-                        $"count: {activeCooldownCount}");
-                }
-
                 RemoveFromExpirySchedule(pawnId);
             }
         }

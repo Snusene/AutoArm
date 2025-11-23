@@ -424,12 +424,6 @@ namespace AutoArm.Caching
                 }
 
                 reservationExpirySchedule.Remove(tick);
-
-                if (AutoArmMod.settings?.debugLogging == true && expiredReservations.Count > 0)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[ReservationEvent] {expiredReservations.Count} reservations expired at tick {tick}");
-                }
             }
 
 
