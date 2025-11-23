@@ -259,7 +259,7 @@ namespace AutoArm.Jobs
                 {
                     int ticksSinceAttempt = currentTick - failureState.LastAttemptTick;
 
-                    if (ticksSinceAttempt < 30 &&
+                    if (ticksSinceAttempt < 250 &&
                         (pawn.jobs?.curJob == null || pawn.jobs.curJob.def != JobDefOf.Equip) &&
                         pawn.equipment?.Primary?.thingIDNumber != failureState.LastAttemptedWeaponId)
                     {
@@ -562,7 +562,14 @@ namespace AutoArm.Jobs
                 }
             }
 
-
+            // Throttle repeated attempts at same weapon
+            if (pawnState.LastAttemptedWeaponId == bestWeapon.thingIDNumber &&
+                currentTick - pawnState.LastAttemptTick < 120)
+            {
+                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Recently attempted {bestWeapon.def.defName}, waiting...");
+                if (timingStarted) AutoArmPerfOverlayWindow.EndTiming();
+                return null;
+            }
 
             Job job = Jobs.CreateEquipJob(bestWeapon, isSidearm: false, pawn: pawn);
             if (job != null)
