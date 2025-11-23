@@ -24,11 +24,8 @@ namespace AutoArm
         [HarmonyPrefix]
         public static void Prefix(Thing item, Pawn ___pawn)
         {
-            if (Current.Game == null)
-                return;
-
-            // Avoid accessing Faction.OfPlayer during world generation
-            if (Find.FactionManager == null || Find.FactionManager.AllFactionsListForReading.NullOrEmpty())
+            // Skip during world generation - only process during actual gameplay
+            if (Current.Game == null || Current.ProgramState != ProgramState.Playing)
                 return;
 
             try
@@ -81,11 +78,8 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Thing item, Pawn ___pawn)
         {
-            if (Current.Game == null)
-                return;
-
-            // Avoid accessing Faction.OfPlayer during world generation
-            if (Find.FactionManager == null || Find.FactionManager.AllFactionsListForReading.NullOrEmpty())
+            // Skip during world generation - only process during actual gameplay
+            if (Current.Game == null || Current.ProgramState != ProgramState.Playing)
                 return;
 
             try
