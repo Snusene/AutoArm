@@ -564,7 +564,7 @@ namespace AutoArm.Jobs
 
             // Throttle repeated attempts at same weapon
             if (pawnState.LastAttemptedWeaponId == bestWeapon.thingIDNumber &&
-                currentTick - pawnState.LastAttemptTick < 120)
+                currentTick - pawnState.LastAttemptTick < 180)
             {
                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Recently attempted {bestWeapon.def.defName}, waiting...");
                 if (timingStarted) AutoArmPerfOverlayWindow.EndTiming();
