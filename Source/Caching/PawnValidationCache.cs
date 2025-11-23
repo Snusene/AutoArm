@@ -391,6 +391,10 @@ namespace AutoArm.Caching
             if (pawn == null)
                 return;
 
+            // Skip non-tool users (animals, etc.)
+            if (pawn.RaceProps?.ToolUser != true)
+                return;
+
             _cache.Remove(pawn);
             _lastValidationTick.Remove(pawn);
 
