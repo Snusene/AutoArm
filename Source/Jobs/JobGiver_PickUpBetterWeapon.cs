@@ -1696,24 +1696,6 @@ namespace AutoArm.Jobs
 
                 AutoArmPerfOverlayWindow.ReportSearchStats(totalWeaponsSearched, totalWeaponsAvailable);
 
-                if (context.IdeologyRejectedWeapons.Count > 0 && AutoArmMod.settings?.debugLogging == true)
-                {
-                    var weaponNames = new System.Text.StringBuilder();
-                    int displayCount = Math.Min(context.IdeologyRejectedWeapons.Count, 10);
-                    for (int i = 0; i < displayCount; i++)
-                    {
-                        if (i > 0) weaponNames.Append(", ");
-                        weaponNames.Append(context.IdeologyRejectedWeapons[i]);
-                    }
-
-                    if (context.IdeologyRejectedWeapons.Count > displayCount)
-                    {
-                        weaponNames.Append(", etc");
-                    }
-
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {weaponNames}: Despised by ideology");
-                }
-
                 if (bestWeapon == null && rejectionReasons.Count > 0)
                 {
                     KeyValuePair<string, int> topReason = default(KeyValuePair<string, int>);
