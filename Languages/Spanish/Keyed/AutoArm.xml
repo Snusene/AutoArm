@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+	<!-- Mod Info -->
+	<AutoArm_ModName>AutoArm</AutoArm_ModName>
+	<AutoArm_SettingsCategory>Auto Arm</AutoArm_SettingsCategory>
+
+	<!-- Settings UI -->
+	<AutoArm_Settings>Configuración</AutoArm_Settings>
+	<AutoArm_ResetConfig>Restablecer configuración</AutoArm_ResetConfig>
+	<AutoArm_General>General</AutoArm_General>
+	<AutoArm_Compatibility>Compatibilidad</AutoArm_Compatibility>
+	<AutoArm_Advanced>Avanzado</AutoArm_Advanced>
+	<AutoArm_Debug>Depuración</AutoArm_Debug>
+
+	<!-- General Settings -->
+	<AutoArm_DisableDuringRaids>Desactivar durante incursiones</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>Desactiva temporalmente el auto-equipamiento cuando el juego detecta alto peligro (grandes incursiones/amenazas) para mejorar el rendimiento. También funciona mejor con otros mods.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>Solo auto-equipar desde almacenamiento</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>Cuando está habilitado, los colonos solo auto-equiparán armas que estén en zonas de almacenamiento o contenedores (pilas de almacenamiento, estantes, etc.), igual que el comportamiento de ropa vainilla.</AutoArm_OnlyEquipFromStorageDesc>
+	<AutoArm_ConfirmReset>¿Estás seguro de que deseas restablecer toda la configuración a valores predeterminados?</AutoArm_ConfirmReset>
+	<AutoArm_PocketSand>Pocket Sand</AutoArm_PocketSand>
+	<AutoArm_PocketSandDesc>AutoArm se integra con el sistema de retraso de equipamiento de Pocket Sand. Las armas se equiparán con tiempo realista basado en su peso.</AutoArm_PocketSandDesc>
+	<AutoArm_StatusOverview>Resumen de estado</AutoArm_StatusOverview>
+	<AutoArm_AllowForcedWeaponUpgrades>Permitir mejoras de calidad para armas forzadas</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>Cuando está habilitado, los colonos pueden mejorar armas forzadas a versiones de mejor calidad del mismo tipo (ej. revólver normal → revólver obra maestra).</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>Permitir a colonos temporales auto-equipar</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>Cuando está habilitado, colonos temporales sin restricciones de equipamiento (refugiados, peones prestados) pueden auto-equipar armas.</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_EnableMod>Habilitar mod</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>Cuando está habilitado, los colonos equiparán automáticamente mejores armas basándose en su política de vestimenta. Cuando está deshabilitado, toda la gestión automática de armas se desactiva.</AutoArm_EnableModDesc>
+	<AutoArm_ShowNotifications>Mostrar notificaciones</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>Muestra mensajes de notificación cuando los colonos equipan o mejoran armas.</AutoArm_ShowNotificationsDesc>
+
+	<!-- Notification Messages -->
+	<AutoArm_EquippedWeapon>{0} equipó {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} mejoró de {1} a {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_UpgradedSidearm>{0} mejoró arma secundaria de {1} a {2}</AutoArm_UpgradedSidearm>
+	<AutoArm_EquippedSidearm>{0} equipó arma secundaria {1}</AutoArm_EquippedSidearm>
+	<AutoArm_EquippingSidearm>{0} está recogiendo {1} como arma secundaria</AutoArm_EquippingSidearm>
+	<AutoArm_ReplacedWeapon>{0} reemplazó {1} con {2}</AutoArm_ReplacedWeapon>
+	<AutoArm_ForceWeapon>Auto-forzar armas vinculadas</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>Cuando está habilitado, las armas persona vinculadas se marcan automáticamente como forzadas, evitando el cambio automático.</AutoArm_ForceWeaponDesc>
+	<AutoArm_AutoequipSpeedBoost>Aceleración de auto-equipamiento</AutoArm_AutoequipSpeedBoost>
+	<AutoArm_AutoequipSpeedBoostTooltip>Los colonos corren para recoger una nueva arma (Normal = 1.0)</AutoArm_AutoequipSpeedBoostTooltip>
+	<AutoArm_DropBiocodedWeapons>Soltar armas biocodificadas</AutoArm_DropBiocodedWeapons>
+	<AutoArm_CheckEnemyCorpses>Revisar cadáveres enemigos</AutoArm_CheckEnemyCorpses>
+	<AutoArm_CheckGuestCorpses>Revisar cadáveres de invitados</AutoArm_CheckGuestCorpses>
+	<AutoArm_CheckColonistCorpses>Revisar cadáveres de colonos</AutoArm_CheckColonistCorpses>
+	<AutoArm_EnableForSlaves>Habilitar para esclavos</AutoArm_EnableForSlaves>
+	<AutoArm_OnlyArmedEnemies>Solo revisar cadáveres de enemigos armados</AutoArm_OnlyArmedEnemies>
+	<AutoArm_OnlyArmedGuests>Solo revisar cadáveres de invitados armados</AutoArm_OnlyArmedGuests>
+	<AutoArm_OnlyArmedColonists>Solo revisar cadáveres de colonos armados</AutoArm_OnlyArmedColonists>
+	<AutoArm_EnableCivilianMode>Habilitar modo civil</AutoArm_EnableCivilianMode>
+	<AutoArm_CivilianModeTooltip>Durante tiempos pacíficos, los peones soltarán sus armas con alta alegría y las recogerán cuando sean reclutados o tengan baja alegría</AutoArm_CivilianModeTooltip>
+	<AutoArm_CivilianJoyThreshold>Umbral de alegría en modo civil</AutoArm_CivilianJoyThreshold>
+
+	<!-- Pawn Settings -->
+	<AutoArm_EquipFirstWeapon>Peón → Equipar primera arma</AutoArm_EquipFirstWeapon>
+	<AutoArm_PawnSettings>Configuración de peones</AutoArm_PawnSettings>
+
+	<!-- Compatibility Settings -->
+	<AutoArm_CompatibilityPatches>Parches de compatibilidad</AutoArm_CompatibilityPatches>
+	<AutoArm_SimpleSidearms>Simple Sidearms</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>Combat Extended</AutoArm_CombatExtended>
+	<AutoArm_Loaded>Activo</AutoArm_Loaded>
+	<AutoArm_NotFound>No encontrado</AutoArm_NotFound>
+	<AutoArm_EnableSidearmAutoEquip>Habilitar auto-equipamiento de armas secundarias</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Permite a los colonos recoger automáticamente armas adicionales como armas secundarias.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>Permitir mejoras de armas secundarias</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>Cuando está habilitado, los colonos mejorarán armas secundarias existentes a mejor calidad. (Función experimental)</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_RequireAmmunition>Requerir munición</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>Cuando está habilitado, los colonos solo recogerán armas si tienen acceso a munición apropiada.</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ El sistema de munición CE está deshabilitado</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsSeparate>SimpleSidearms (v1.5.0.2): Considerar armas secundarias por separado</AutoArm_SimpleSidearmsSeparate>
+	<AutoArm_SimpleSidearmsSeparateTooltip>Cuando está habilitado, los peones buscarán y equiparán armas secundarias como una tarea separada de su arma principal</AutoArm_SimpleSidearmsSeparateTooltip>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ Integración de SimpleSidearms falló - error de reflexión. Estas características están deshabilitadas.</AutoArm_SimpleSidearmsReflectionFailed>
+	<AutoArm_CheckCEAmmo>Revisar munición</AutoArm_CheckCEAmmo>
+	<AutoArm_CheckCEAmmoDesc>Cuando está habilitado, los colonos solo recogerán armas si tienen acceso a munición apropiada. Deshabilitar esto resultará en colonos portando armas sin munición.</AutoArm_CheckCEAmmoDesc>
+	<AutoArm_CombatExtendedAmmo>CombatExtended: Requerir munición para armas</AutoArm_CombatExtendedAmmo>
+	<AutoArm_WeaponStorageSharing>WeaponStorage: Habilitar compartir armas entre contenedores</AutoArm_WeaponStorageSharing>
+
+	<!-- Detected Mods -->
+	<AutoArm_DetectedMods>Mods compatibles detectados</AutoArm_DetectedMods>
+	<AutoArm_NoCompatModsDetected>Ninguno - usando solo características del juego base</AutoArm_NoCompatModsDetected>
+
+	<!-- Advanced Settings -->
+	<AutoArm_WeaponUpgrades>Mejoras de armas</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>Umbral</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>Cuánto mejor debe ser un arma antes de que los colonos cambien. Valores más bajos significan cambios más frecuentes.</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>Preferencia de armas</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>Ajusta cuánto prefieren todos los colonos las armas a distancia vs cuerpo a cuerpo.</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_AgeRestrictions>Restricciones de edad</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>Usar restricciones de edad personalizadas para auto-equipamiento</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>Desliza a la izquierda para automatizar tu milicia infantil más temprano, desliza a la derecha para seguridad aburrida. Los niños también de alguna manera ignoran todas las verificaciones de peso del arma. Definitivamente no es un error.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>Edad mínima</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>Edad mínima para comenzar a auto-equipar armas</AutoArm_MinimumAgeDesc>
+
+	<!-- Weapon Preference Values -->
+	<AutoArm_StrongMeleePreference>Fuerte preferencia por cuerpo a cuerpo</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>Preferencia moderada por cuerpo a cuerpo</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>Ligera preferencia por cuerpo a cuerpo</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>Balanceado (sin preferencia)</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>Ligera preferencia por armas a distancia</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>Preferencia moderada por armas a distancia</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>Fuerte preferencia por armas a distancia</AutoArm_StrongRangedPreference>
+	<AutoArm_RiskOfWeaponSwapLoops>Riesgo de bucles de intercambio de armas</AutoArm_RiskOfWeaponSwapLoops>
+	<AutoArm_WhatCouldGoWrong>⚠ ¡Aprobado por Randy!</AutoArm_WhatCouldGoWrong>
+	<AutoArm_EquipDelay>Retraso de equipamiento</AutoArm_EquipDelay>
+	<AutoArm_EquipDelayTooltip>Tiempo mínimo entre verificaciones de armas (segundos)</AutoArm_EquipDelayTooltip>
+	<AutoArm_SearchRadius>Radio de búsqueda</AutoArm_SearchRadius>
+	<AutoArm_SearchRadiusTooltip>Qué tan lejos buscarán los peones armas (casillas)</AutoArm_SearchRadiusTooltip>
+	<AutoArm_ThinkTrees>Árboles de pensamiento a inyectar (separados por comas)</AutoArm_ThinkTrees>
+	<AutoArm_EnablePerformanceMode>Habilitar modo de rendimiento</AutoArm_EnablePerformanceMode>
+	<AutoArm_EnablePerformanceModeTooltip>Ajusta automáticamente la frecuencia de verificación basándose en el tamaño de la colonia para mejor rendimiento</AutoArm_EnablePerformanceModeTooltip>
+
+	<!-- Weapon Scoring -->
+	<AutoArm_WeaponScoring>Puntuación de armas</AutoArm_WeaponScoring>
+	<AutoArm_ScoreFormula>Puntuación = (Valor base × Valor) + (DPS × Peso DPS)</AutoArm_ScoreFormula>
+	<AutoArm_ValueWeight>Peso de valor</AutoArm_ValueWeight>
+	<AutoArm_DPSWeight>Peso de DPS</AutoArm_DPSWeight>
+	<AutoArm_ImportantNote>Importante: Establece ambos a 0 para deshabilitar Auto Arm</AutoArm_ImportantNote>
+
+	<!-- Debug Settings -->
+	<AutoArm_EnableVerboseLogging>Habilitar registro detallado</AutoArm_EnableVerboseLogging>
+	<AutoArm_EnableDebugLogging>Habilitar registro de depuración</AutoArm_EnableDebugLogging>
+	<AutoArm_EnableDebugLoggingDesc>Genera información detallada en el registro de depuración para solución de problemas. Esto creará muchas entradas de registro y puede afectar el rendimiento. Solo habilitar al reportar problemas.</AutoArm_EnableDebugLoggingDesc>
+	<AutoArm_DebugColumns>Columnas de depuración</AutoArm_DebugColumns>
+	<AutoArm_DumpCachedScores>Volcar puntuaciones de armas en caché al registro</AutoArm_DumpCachedScores>
+	<AutoArm_RunAllTests>Ejecutar todas las pruebas</AutoArm_RunAllTests>
+	<AutoArm_ClickToRun>Clic para ejecutar</AutoArm_ClickToRun>
+	<AutoArm_RunTestSet>Ejecutar conjunto de pruebas: {0}</AutoArm_RunTestSet>
+
+	<!-- Log Messages -->
+	<AutoArm_DebugRequiresActiveGame>Las herramientas de depuración requieren un juego activo</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>Herramientas de depuración de Auto Arm</AutoArm_DebugTools>
+	<AutoArm_RunPerformanceTest>Ejecutar prueba de rendimiento completa</AutoArm_RunPerformanceTest>
+	<AutoArm_TestWeaponDetection>Probar detección de armas &amp; validación de peones</AutoArm_TestWeaponDetection>
+	<AutoArm_CopyTestResults>Copiar resultados de pruebas</AutoArm_CopyTestResults>
+	<AutoArm_TestResultsCopied>Resultados de pruebas copiados al portapapeles</AutoArm_TestResultsCopied>
+	<AutoArm_NoTestResultsToCopy>No hay resultados de pruebas para copiar</AutoArm_NoTestResultsToCopy>
+	<AutoArm_SaveBeforeTouching>Guardar antes de tocar nada</AutoArm_SaveBeforeTouching>
+	<AutoArm_Shortcuts>Atajos: F5=Ejecutar pruebas, F6=Copiar resultados</AutoArm_Shortcuts>
+	<AutoArm_BondedWeaponsForced>Se marcó {0} arma{1} vinculada{1} como forzada.</AutoArm_BondedWeaponsForced>
+	<AutoArm_SettingsLoaded>Configuración de Auto Arm cargada.</AutoArm_SettingsLoaded>
+	<AutoArm_SettingsSaved>Configuración de Auto Arm guardada.</AutoArm_SettingsSaved>
+	<AutoArm_SettingsReset>Configuración de Auto Arm restablecida a valores predeterminados.</AutoArm_SettingsReset>
+	<AutoArm_ResetToDefaults>Restablecer a predeterminados</AutoArm_ResetToDefaults>
+	<AutoArm_NoTestDef>No se encontró AutoArmTestDef con defName: {0}</AutoArm_NoTestDef>
+	<AutoArm_NoWorkerInstance>AutoArmTestDef {0} no tiene workerInstance</AutoArm_NoWorkerInstance>
+	<AutoArm_TestCompleted>Prueba {0} completada</AutoArm_TestCompleted>
+	<AutoArm_TestError>Error ejecutando prueba {0}: {1}</AutoArm_TestError>
+	<AutoArm_AllTestsRun>Todas las pruebas de AutoArm se han ejecutado.</AutoArm_AllTestsRun>
+	<AutoArm_RunningAllTests>Ejecutando todas las pruebas de AutoArm...</AutoArm_RunningAllTests>
+	<AutoArm_CachedScoresDumped>Las puntuaciones de armas en caché se han volcado al registro.</AutoArm_CachedScoresDumped>
+	<AutoArm_TestRunner>Ejecutor de pruebas</AutoArm_TestRunner>
+	<AutoArm_RunSpecificTest>Ejecutar prueba específica</AutoArm_RunSpecificTest>
+	<AutoArm_ExportLogs>Exportar registros de depuración</AutoArm_ExportLogs>
+	<AutoArm_TestResults>Resultados de pruebas</AutoArm_TestResults>
+
+	<!-- Test Descriptions -->
+	<AutoArm_TestDescription>Prueba de {0}</AutoArm_TestDescription>
+
+	<AutoArm_ThinkTreeNotInjected>AutoArm: Árbol de pensamiento no inyectado - ¡el mod no funcionará!</AutoArm_ThinkTreeNotInjected>
+	<AutoArm_ThinkTreeInjected>AutoArm: El árbol de pensamiento está correctamente inyectado</AutoArm_ThinkTreeInjected>
+	<AutoArm_ModDisabled>AutoArm: ¡El mod está DESHABILITADO en la configuración!</AutoArm_ModDisabled>
+	<AutoArm_ColonistStatus>AutoArm: {0} colonos - {1} desarmados, {2} armados</AutoArm_ColonistStatus>
+	<AutoArm_ThinkTreeInjectionFailed>AutoArm: La inyección del árbol de pensamiento falló - el mod no funcionará correctamente. Por favor reporta este problema.</AutoArm_ThinkTreeInjectionFailed>
+</LanguageData>

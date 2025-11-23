@@ -1,0 +1,31 @@
+<Analyzer>
+	<AutoArm>
+		<Types>
+			<!-- Main entry points -->
+			<li>AutoArm.ThinkNode_ConditionalWeaponStatus</li>
+			<li>AutoArm.Caching.MemoryCleanupGameComponent</li>
+			<li>AutoArm.AutoArmGameComponent</li>
+			<li>AutoArm.Jobs.JobGiverMapComponent</li>
+			<!-- Independent patches -->
+			<li>AutoArm.Thing_SpawnSetup_Patch</li>
+			<li>AutoArm.Thing_DeSpawn_Patch</li>
+			<li>AutoArm.CompForbiddable_Forbidden_Set_Patch</li>
+			<li>AutoArm.Pawn_JobTracker_StartJob_Combined_Patch</li>
+			<li>AutoArm.Pawn_JobTracker_EndCurrentJob_Patch</li>
+			<li>AutoArm.Pawn_EquipmentTracker_DestroyEquipment_Patch</li>
+			<li>AutoArm.Thing_LabelPatches</li>
+			<li>AutoArm.SkillRecord_Level_Set_Patch</li>
+			<li>AutoArm.GenSpawn_Spawn_Patch</li>
+			<li>AutoArm.Patches.Game_UpdatePlay_Patch</li>
+			<li>AutoArm.ThingCategoryDef_DescendantThingDefs_Patch</li>
+			<li>AutoArm.ThingCategoryDef_ThisAndChildCategoryDefs_Patch</li>
+			<li>AutoArm.Pawn_InventoryTracker_Notify_ItemRemoved_Patch</li>
+			<li>AutoArm.Pawn_InventoryTracker_TryAddItemNotForSale_Patch</li>
+		</Types>
+
+		<Methods>
+			<li>AutoArm.Jobs.JobGiver_PickUpBetterWeapon:TryGiveJob</li>
+		</Methods>
+
+	</AutoArm>
+</Analyzer>
