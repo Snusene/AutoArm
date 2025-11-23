@@ -933,20 +933,14 @@ namespace AutoArm
             {
                 var jobGiverComponent = JobGiverMapComponent.GetComponent(map);
                 jobGiverComponent?.ResetTempBlacklistSchedule();
+
+                var cacheManager = map?.GetComponent<Caching.WeaponCacheManager.AutoArmWeaponMapComponent>();
+                cacheManager?.Reset();
             }
 
             if (Compatibility.SimpleSidearmsCompat.IsLoaded)
             {
                 Compatibility.SimpleSidearmsCompat.Reset();
-            }
-
-            foreach (var map in Find.Maps)
-            {
-                var cacheManager = map?.GetComponent<Caching.WeaponCacheManager.AutoArmWeaponMapComponent>();
-                if (cacheManager != null)
-                {
-                    cacheManager.Reset();
-                }
             }
 
             AutoArmLogger.Debug(() => "GameComponent initialized for new game (all event trackers reset)");
@@ -974,10 +968,7 @@ namespace AutoArm
             {
                 var jobGiverComponent = JobGiverMapComponent.GetComponent(map);
                 jobGiverComponent?.RebuildTempBlacklistSchedule();
-            }
 
-            foreach (var map in Find.Maps)
-            {
                 var cacheManager = map?.GetComponent<Caching.WeaponCacheManager.AutoArmWeaponMapComponent>();
                 if (cacheManager != null)
                 {
@@ -1036,22 +1027,19 @@ namespace AutoArm
                 {
                     cacheManager.ProcessExpiredReservations(currentTick);
                 }
-            }
 
-            WeaponScoringHelper.ProcessExpiredSkillCache(currentTick);
-
-            foreach (var map in Find.Maps)
-            {
                 var jobGiverComponent = JobGiverMapComponent.GetComponent(map);
                 jobGiverComponent?.ProcessExpiredTempBlacklists(currentTick);
             }
+
+            WeaponScoringHelper.ProcessExpiredSkillCache(currentTick);
 
             if (Compatibility.SimpleSidearmsCompat.IsLoaded)
             {
                 Compatibility.SimpleSidearmsCompat.ProcessExpiredValidations(currentTick);
             }
 
-            if (currentTick % 6000 == 0)
+            if (currentTick % 12000 == 0)
             {
                 CooldownMetrics.CorrectDrift(out int eventCount, out int actualCount);
             }
@@ -1061,7 +1049,7 @@ namespace AutoArm
                 Cleanup.PerformStaggeredCleanup();
             }
 
-            if (currentTick % 1789 == 0)
+            if (currentTick % 3600 == 0)
             {
                 AutoArmLogger.Flush();
             }

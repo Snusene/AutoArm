@@ -16,6 +16,7 @@ namespace AutoArm.Helpers
         private static HashSet<Thing> upgrades = new HashSet<Thing>();
 
         private static Dictionary<Pawn, ThingWithComps> lastDropped = new Dictionary<Pawn, ThingWithComps>();
+        private static Dictionary<Thing, Pawn> itemToPawnLookup = new Dictionary<Thing, Pawn>();
 
         private static Dictionary<int, List<Thing>> itemExpirySchedule = new Dictionary<int, List<Thing>>();
 
@@ -56,6 +57,7 @@ namespace AutoArm.Helpers
             if (pawn != null && item is ThingWithComps weapon && weapon.def.IsWeapon)
             {
                 lastDropped[pawn] = weapon;
+                itemToPawnLookup[weapon] = pawn;
             }
         }
 
@@ -85,21 +87,10 @@ namespace AutoArm.Helpers
                 {
                     droppedItems.Remove(item);
 
-                    if (item is ThingWithComps weapon)
+                    if (item is ThingWithComps weapon && itemToPawnLookup.TryGetValue(weapon, out var pawn))
                     {
-                        Pawn pawnToRemove = null;
-                        foreach (var kvp in lastDropped)
-                        {
-                            if (kvp.Value == weapon)
-                            {
-                                pawnToRemove = kvp.Key;
-                                break;
-                            }
-                        }
-                        if (pawnToRemove != null)
-                        {
-                            lastDropped.Remove(pawnToRemove);
-                        }
+                        lastDropped.Remove(pawn);
+                        itemToPawnLookup.Remove(weapon);
                     }
                 }
 
@@ -164,6 +155,10 @@ namespace AutoArm.Helpers
             }
             foreach (var pawn in expiredPawns)
             {
+                if (lastDropped.TryGetValue(pawn, out var weapon))
+                {
+                    itemToPawnLookup.Remove(weapon);
+                }
                 lastDropped.Remove(pawn);
             }
             ListPool<Pawn>.Return(expiredPawns);
@@ -215,6 +210,7 @@ namespace AutoArm.Helpers
             itemExpirySchedule.Clear();
             upgrades.Clear();
             lastDropped.Clear();
+            itemToPawnLookup.Clear();
         }
 
         /// <summary>
@@ -233,6 +229,7 @@ namespace AutoArm.Helpers
         public static void RebuildFromExistingItems()
         {
             itemExpirySchedule.Clear();
+            itemToPawnLookup.Clear();
 
             foreach (var kvp in droppedItems)
             {
@@ -247,6 +244,14 @@ namespace AutoArm.Helpers
                         itemExpirySchedule[expireTick] = list;
                     }
                     list.Add(item);
+                }
+            }
+
+            foreach (var kvp in lastDropped)
+            {
+                if (kvp.Value != null)
+                {
+                    itemToPawnLookup[kvp.Value] = kvp.Key;
                 }
             }
 
@@ -282,6 +287,7 @@ namespace AutoArm.Helpers
             if (weapon?.Destroyed != false || !droppedItems.ContainsKey(weapon))
             {
                 lastDropped.Remove(pawn);
+                itemToPawnLookup.Remove(weapon);
                 return null;
             }
 

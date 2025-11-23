@@ -609,16 +609,6 @@ namespace AutoArm.Caching
             {
                 _lastReportTick = currentTick;
 
-                int total = _hits + _misses;
-                if (total > 0)
-                {
-                    float hitRate = (_hits / (float)total) * 100f;
-                    AutoArmLogger.Debug(() => $"PawnValidationCache stats: {_cache.Count} entries, " +
-                                      $"hits: {_hits}, misses: {_misses}, " +
-                                      $"hit rate: {hitRate:F1}% | " +
-                                      $"lord cache: {pawnsInRestrictedLords.Count} restricted, {pawnLords.Count} tracked");
-                }
-
                 _hits = 0;
                 _misses = 0;
             }

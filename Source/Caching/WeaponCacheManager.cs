@@ -320,12 +320,6 @@ namespace AutoArm.Caching
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
                 lastAllForbiddenLoggedTick = -1;
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[WeaponCacheEvent] Removed {weapon.Label} from cache (destroyed/despawned)");
-                }
             }
 
             /// <summary>
@@ -542,6 +536,10 @@ namespace AutoArm.Caching
         private const int ScoreCacheDuration = Constants.StandardCacheDuration;
         private const int TempReservationTicks = 60;
         private const int NonForbiddenCheckCacheTicks = 300;
+
+        private static int lastScoreAddedTick = -1;
+        private static int deadPawnCleanupCounter = 0;
+        private const int DeadPawnCleanupInterval = 10;
 
 
         public static void EnsureCacheExists(Map map)
@@ -826,6 +824,7 @@ namespace AutoArm.Caching
 
             entry.Score = score;
             entry.LastUpdateTick = currentTick;
+            lastScoreAddedTick = currentTick;
 
             return score;
         }
@@ -857,65 +856,86 @@ namespace AutoArm.Caching
 
         public static int CleanupScoreCache()
         {
+            // Early exit #1: Empty cache - most common case after fresh load
+            if (scoreCache.Count == 0)
+                return 0;
+
             int removedCount = 0;
             int currentTick = Find.TickManager.TicksGame;
 
-            var activePawnIds = new HashSet<int>();
-            foreach (var map in Find.Maps)
+            // Early exit #2: Dead pawn cleanup runs every 10th cycle only
+            // Prevents iterating 60-100+ pawns every cleanup (2-3ms spike)
+            deadPawnCleanupCounter++;
+            bool shouldCleanupDeadPawns = deadPawnCleanupCounter >= DeadPawnCleanupInterval;
+            if (shouldCleanupDeadPawns)
             {
-                foreach (var pawn in map.mapPawns.AllPawns)
+                deadPawnCleanupCounter = 0;
+
+                var activePawnIds = new HashSet<int>();
+                foreach (var map in Find.Maps)
                 {
-                    if (!pawn.Destroyed && !pawn.Dead)
-                        activePawnIds.Add(pawn.thingIDNumber);
-                }
-            }
-
-            var idsToRemove = ListPool<int>.Get();
-            foreach (var id in scoreCache.Keys)
-            {
-                if (!activePawnIds.Contains(id))
-                    idsToRemove.Add(id);
-            }
-
-            foreach (var id in idsToRemove)
-            {
-                removedCount += scoreCache[id]?.Count ?? 0;
-                scoreCache.Remove(id);
-            }
-            ListPool<int>.Return(idsToRemove);
-
-            var keysToRemoveLater = ListPool<int>.Get();
-            foreach (var pawnEntry in scoreCache)
-            {
-                var weaponsToRemove = ListPool<int>.Get();
-
-                foreach (var kvp in pawnEntry.Value)
-                {
-                    if (currentTick - kvp.Value.LastUpdateTick >= ScoreCacheDuration)
+                    foreach (var pawn in map.mapPawns.AllPawns)
                     {
-                        weaponsToRemove.Add(kvp.Key);
+                        if (!pawn.Destroyed && !pawn.Dead)
+                            activePawnIds.Add(pawn.thingIDNumber);
                     }
                 }
 
-                foreach (var weaponId in weaponsToRemove)
+                var idsToRemove = ListPool<int>.Get();
+                foreach (var id in scoreCache.Keys)
                 {
-                    pawnEntry.Value.Remove(weaponId);
-                    removedCount++;
+                    if (!activePawnIds.Contains(id))
+                        idsToRemove.Add(id);
                 }
 
-                ListPool<int>.Return(weaponsToRemove);
-
-                if (pawnEntry.Value.Count == 0)
+                foreach (var id in idsToRemove)
                 {
-                    keysToRemoveLater.Add(pawnEntry.Key);
+                    removedCount += scoreCache[id]?.Count ?? 0;
+                    scoreCache.Remove(id);
                 }
+                ListPool<int>.Return(idsToRemove);
             }
 
-            foreach (var key in keysToRemoveLater)
+            // Early exit #3: Skip expiration cleanup if nothing could have expired yet
+            // If last score was added less than ScoreCacheDuration ticks ago, nothing expired
+            bool shouldCleanupExpired = lastScoreAddedTick < 0 ||
+                                       (currentTick - lastScoreAddedTick >= ScoreCacheDuration);
+
+            if (shouldCleanupExpired)
             {
-                scoreCache.Remove(key);
+                var keysToRemoveLater = ListPool<int>.Get();
+                foreach (var pawnEntry in scoreCache)
+                {
+                    var weaponsToRemove = ListPool<int>.Get();
+
+                    foreach (var kvp in pawnEntry.Value)
+                    {
+                        if (currentTick - kvp.Value.LastUpdateTick >= ScoreCacheDuration)
+                        {
+                            weaponsToRemove.Add(kvp.Key);
+                        }
+                    }
+
+                    foreach (var weaponId in weaponsToRemove)
+                    {
+                        pawnEntry.Value.Remove(weaponId);
+                        removedCount++;
+                    }
+
+                    ListPool<int>.Return(weaponsToRemove);
+
+                    if (pawnEntry.Value.Count == 0)
+                    {
+                        keysToRemoveLater.Add(pawnEntry.Key);
+                    }
+                }
+
+                foreach (var key in keysToRemoveLater)
+                {
+                    scoreCache.Remove(key);
+                }
+                ListPool<int>.Return(keysToRemoveLater);
             }
-            ListPool<int>.Return(keysToRemoveLater);
 
             if (scoreCache.Count > 400)
             {
@@ -1371,6 +1391,8 @@ namespace AutoArm.Caching
         {
             scoreCache.Clear();
             trackedMapIds.Clear();
+            lastScoreAddedTick = -1;
+            deadPawnCleanupCounter = 0;
             foreach (var map in Find.Maps)
             {
                 var component = GetMapComponent(map);
@@ -1384,6 +1406,8 @@ namespace AutoArm.Caching
         public static void ClearScoreCache()
         {
             scoreCache.Clear();
+            lastScoreAddedTick = -1;
+            deadPawnCleanupCounter = 0;
         }
 
         public static void InvalidateCache(Map map = null)

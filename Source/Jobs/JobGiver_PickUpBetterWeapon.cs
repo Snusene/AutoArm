@@ -248,8 +248,8 @@ namespace AutoArm.Jobs
 
             int currentTick = Find.TickManager.TicksGame;
 
-            var mapComponent = JobGiverMapComponent.GetComponent(pawn.Map);
-            if (mapComponent != null && mapComponent.PawnStates.TryGetValue(pawn, out var failureState))
+            var comp = JobGiverMapComponent.GetComponent(pawn.Map);
+            if (comp != null && comp.PawnStates.TryGetValue(pawn, out var failureState))
             {
                 if (failureState.LastAttemptedWeaponId != -1 && failureState.LastAttemptTick != -1)
                 {
@@ -263,16 +263,16 @@ namespace AutoArm.Jobs
 
                         if (failureState.TempBlacklistExpiry != -1)
                         {
-                            mapComponent.RemoveFromTempBlacklistSchedule(pawn, failureState.TempBlacklistExpiry);
+                            comp.RemoveFromTempBlacklistSchedule(pawn, failureState.TempBlacklistExpiry);
                         }
 
                         int expireTick = currentTick + 250;
                         failureState.TempBlacklistExpiry = expireTick;
 
-                        if (!mapComponent.tempBlacklistExpirySchedule.TryGetValue(expireTick, out var list))
+                        if (!comp.tempBlacklistExpirySchedule.TryGetValue(expireTick, out var list))
                         {
                             list = new List<Pawn>();
-                            mapComponent.tempBlacklistExpirySchedule[expireTick] = list;
+                            comp.tempBlacklistExpirySchedule[expireTick] = list;
                         }
                         list.Add(pawn);
 
@@ -385,7 +385,6 @@ namespace AutoArm.Jobs
                 AutoArmLogger.Debug(() => "Detected fresh load - rebuilding pawn states");
             }
 
-            var comp = JobGiverMapComponent.GetComponent(pawn.Map);
             if (comp == null)
             {
                 if (timingStarted) AutoArmPerfOverlayWindow.EndTiming();
@@ -453,8 +452,6 @@ namespace AutoArm.Jobs
             if (SimpleSidearmsCompat.IsLoaded && pawn.equipment?.Primary != null &&
                 bestWeapon == null && AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] No primary upgrade found, searching for sidearms...");
-
                 string sidearmFailureReason;
                 ThingWithComps potentialSidearm = FindBestSidearm(pawn, out sidearmFailureReason);
 
@@ -464,14 +461,12 @@ namespace AutoArm.Jobs
                     if (sidearmJob != null)
                     {
                         AutoEquipState.MarkAsAutoEquip(sidearmJob, pawn);
-                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Found sidearm: {potentialSidearm.def.defName}");
 
                         pawnState.LastEvaluationTick = currentTick;
 
                         return sidearmJob;
                     }
                 }
-                else AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] No sidearms found: {sidearmFailureReason}");
             }
 
             if (bestWeapon == null)
@@ -581,7 +576,6 @@ namespace AutoArm.Jobs
                 {
                     job.expiryInterval = Constants.EmergencyJobExpiry;
                     job.checkOverrideOnExpire = false;
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Emergency equip: {AutoArmLogger.GetWeaponLabelLower(bestWeapon)}");
                 }
 
 
@@ -1204,20 +1198,6 @@ namespace AutoArm.Jobs
             context.GoodThreshold = context.MinAcceptableScore;
 
             context.IdeologyRejectedWeapons = ListPool<string>.Get();
-
-            if (context.IsUnarmed && AutoArmMod.settings?.debugLogging == true)
-            {
-                string searchDesc = restrictToType != null
-                    ? $"for {AutoArmLogger.GetDefLabel(restrictToType)}"
-                    : string.Empty;
-                string forcedInfo = isForcedUpgrade ? $", forced upgrade={AutoArmLogger.FormatBool(true)}" : string.Empty;
-                string messageContent = $"Starting weapon search{(searchDesc != string.Empty ? " " + searchDesc : string.Empty)} (score={currentScore:F1}{forcedInfo})";
-
-                if (ShouldLogDebugMessage(pawn, MSG_TYPE_FIND_START, messageContent))
-                {
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] {messageContent}");
-                }
-            }
 
             if (TestRunner.IsRunningTests)
             {
@@ -2150,13 +2130,10 @@ namespace AutoArm.Jobs
         /// </summary>
         public static void CleanupCaches()
         {
-            WeaponBlacklist.CleanupOldEntries();
+            if (Find.Maps == null || Find.Maps.Count == 0)
+                return;
 
-            foreach (var map in Find.Maps)
-            {
-                var comp = JobGiverMapComponent.GetComponent(map);
-                comp?.ClearColonistCache();
-            }
+            WeaponBlacklist.CleanupOldEntries();
 
             int currentTick = Find.TickManager.TicksGame;
 
@@ -2164,6 +2141,8 @@ namespace AutoArm.Jobs
             {
                 var comp = JobGiverMapComponent.GetComponent(map);
                 if (comp == null) continue;
+
+                comp.ClearColonistCache();
 
                 var expiredKeys = ListPool<PawnWeaponKey>.Get(32);
                 foreach (var kvp in comp.ValidationCache)
@@ -2214,12 +2193,6 @@ namespace AutoArm.Jobs
 
                     AutoArmLogger.Debug(() => $"Validation cache LRU eviction: removed {removedCount} oldest entries (cache was {previousCacheCount}, max {maxCacheSize})");
                 }
-            }
-
-            foreach (var map in Find.Maps)
-            {
-                var comp = JobGiverMapComponent.GetComponent(map);
-                if (comp == null) continue;
 
                 var expiredFailures = ListPool<PawnWeaponKey>.Get(16);
                 foreach (var kvp in comp.FailedJobHistory)
@@ -2235,12 +2208,6 @@ namespace AutoArm.Jobs
                     comp.FailedJobHistory.Remove(key);
                 }
                 ListPool<PawnWeaponKey>.Return(expiredFailures);
-            }
-
-            foreach (var map in Find.Maps)
-            {
-                var comp = JobGiverMapComponent.GetComponent(map);
-                if (comp == null) continue;
 
                 var deadPawns = ListPool<Pawn>.Get(8);
                 foreach (var pawn in comp.PawnStates.Keys)
@@ -2263,12 +2230,6 @@ namespace AutoArm.Jobs
                         kvp.Value.LastEquipTick = -1;
                     }
                 }
-            }
-
-            foreach (var map in Find.Maps)
-            {
-                var comp = JobGiverMapComponent.GetComponent(map);
-                if (comp == null) continue;
 
                 var expiredProperties = ListPool<int>.Get(16);
                 foreach (var kvp in comp.ProperWeaponCache)

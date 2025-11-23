@@ -994,7 +994,7 @@ namespace AutoArm.Compatibility
             if (pawn.inventory?.innerContainer == null)
                 return null;
 
-            float newWeaponWeight = newWeapon.GetStatValue(StatDefOf.Mass);
+            float newWeaponWeight = newWeapon.GetStatValue(StatDefOf.Mass, cacheStaleAfterTicks: 2500);
             float currentFreeSpace = MassUtility.FreeSpace(pawn);
 
             float newScore = CalculateWeaponScore(pawn, newWeapon);
@@ -1030,7 +1030,7 @@ namespace AutoArm.Compatibility
                     effectiveThreshold *= 1.2f;
                 }
 
-                float weightDiff = newWeaponWeight - weapon.GetStatValue(StatDefOf.Mass);
+                float weightDiff = newWeaponWeight - weapon.GetStatValue(StatDefOf.Mass, cacheStaleAfterTicks: 2500);
                 if (weightDiff > currentFreeSpace)
                 {
                     AutoArmLogger.Debug(() => $"Can't replace {weapon.Label} with {newWeapon.Label} - would exceed weight limit");

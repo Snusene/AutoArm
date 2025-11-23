@@ -445,7 +445,7 @@ namespace AutoArm.Weapons
                               ?? DefDatabase<StatDef>.GetNamedSilentFail("ArmorPenetration");
                 if (apStat != null)
                 {
-                    float meleeAP = weapon.GetStatValue(apStat, true);
+                    float meleeAP = weapon.GetStatValue(apStat, applyPostProcess: true, cacheStaleAfterTicks: 2500);
                     if (meleeAP > Constants.MeleeHighAPThreshold)
                     {
                         props.MeleeAPBonusModifier = Constants.MeleeHighAPModifier;
@@ -1013,12 +1013,6 @@ namespace AutoArm.Weapons
                 }
 
                 skillCacheExpirySchedule.Remove(tick);
-
-                if (AutoArmMod.settings?.debugLogging == true && expiredIds.Count > 0)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[SkillCacheEvent] {expiredIds.Count} skill cache entries expired at tick {tick}");
-                }
             }
 
             if (skillIndexCacheExpirySchedule.TryGetValue(tick, out var expiredIndexIds))
@@ -1029,12 +1023,6 @@ namespace AutoArm.Weapons
                 }
 
                 skillIndexCacheExpirySchedule.Remove(tick);
-
-                if (AutoArmMod.settings?.debugLogging == true && expiredIndexIds.Count > 0)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[SkillCacheEvent] {expiredIndexIds.Count} skill index cache entries expired at tick {tick}");
-                }
             }
         }
 

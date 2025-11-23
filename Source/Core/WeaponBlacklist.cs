@@ -97,19 +97,6 @@ namespace AutoArm.Weapons
             if (pendingBlacklistLogs.Count == 0)
                 return;
 
-            foreach (var kvp in pendingBlacklistLogs)
-            {
-                var (pawn, reason) = kvp.Key;
-                var weapons = kvp.Value;
-
-                if (weapons.Count == 0)
-                    continue;
-
-                string weaponList = string.Join(", ", weapons);
-
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Blacklisted {weaponList} - Reason: {reason}");
-            }
-
             pendingBlacklistLogs.Clear();
         }
 

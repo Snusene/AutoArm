@@ -817,29 +817,24 @@ namespace AutoArm
 
                     foreach (var map in Find.Maps)
                     {
-                        if (map?.mapPawns?.FreeColonists == null) continue;
-
-                        foreach (var pawn in map.mapPawns.FreeColonists)
+                        if (map?.mapPawns?.FreeColonists != null)
                         {
-                            if (pawn == null || pawn.Dead || pawn.Downed) continue;
+                            foreach (var pawn in map.mapPawns.FreeColonists)
+                            {
+                                if (pawn == null || pawn.Dead || pawn.Downed) continue;
 
-                            WeaponCacheManager.PreWarmColonistScore(pawn, true);
-                            WeaponCacheManager.PreWarmColonistScore(pawn, false);
-                            colonistScoresWarmed++;
+                                WeaponCacheManager.PreWarmColonistScore(pawn, true);
+                                WeaponCacheManager.PreWarmColonistScore(pawn, false);
+                                colonistScoresWarmed++;
+                            }
                         }
+
+                        WeaponCacheManager.PreWarmOutfitCachesForMap(map);
                     }
 
                     if (AutoArmMod.settings?.debugLogging == true && colonistScoresWarmed > 0)
                     {
                         AutoArmLogger.Debug(() => $"Pre-warmed scores for {colonistScoresWarmed} colonists");
-                    }
-                }
-
-                if (Find.Maps != null)
-                {
-                    foreach (var map in Find.Maps)
-                    {
-                        WeaponCacheManager.PreWarmOutfitCachesForMap(map);
                     }
                 }
 

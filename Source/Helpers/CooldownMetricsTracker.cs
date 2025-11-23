@@ -208,6 +208,10 @@ namespace AutoArm.Helpers
 
         private static int CalculateActualCooldowns()
         {
+            // Early exit - most common case: no active cooldowns
+            if (activeCooldownCount == 0)
+                return 0;
+
             int count = 0;
             int currentTick = Find.TickManager.TicksGame;
 

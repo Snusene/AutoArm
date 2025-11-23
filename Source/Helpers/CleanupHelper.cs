@@ -76,56 +76,56 @@ namespace AutoArm.Helpers
                     ForcedWeaponState.Cleanup();
                     break;
                 case 3:
-                    accumulatedStats.DroppedItems += DroppedItemTracker.CleanupOldEntries();
-                    break;
-                case 4:
-                    DroppedItemTracker.ClearAllPendingUpgrades();
-                    break;
-                case 5:
-                    if (!Testing.TestRunner.IsRunningTests)
-                    {
-                        WeaponCacheManager.CleanupDestroyedMaps();
-                    }
-                    break;
-                case 6:
-                    accumulatedStats.WeaponScores = WeaponCacheManager.CleanupScoreCache();
-                    break;
-                case 7:
-                    WeaponScoringHelper.CleanupSkillCache();
-                    break;
-                case 8:
-                    AutoArm.Thing_LabelPatches.CleanupLabelCache();
-                    break;
-                case 9:
-                    break;
-                case 10:
-                    break;
-                case 11:
-                    ForcedWeaponLabelHelper.CleanupDeadPawnCaches();
-                    break;
-                case 12:
-                    WeaponBlacklist.CleanupOldEntries();
-                    break;
-                case 13:
-                    JobGiver_PickUpBetterWeapon.CleanupMessageCache();
-                    break;
-                case 14:
-                    JobGiver_PickUpBetterWeapon.CleanupCaches();
-                    break;
-                case 15:
-                    ThinkNode_ConditionalWeaponStatus.CleanupDeadPawns();
-                    break;
-                case 16:
                     if (SimpleSidearmsCompat.IsLoaded)
                     {
                         SimpleSidearmsCompat.CleanupCaches();
                     }
                     break;
-                case 17:
+                case 4:
+                    accumulatedStats.DroppedItems += DroppedItemTracker.CleanupOldEntries();
+                    break;
+                case 5:
+                    DroppedItemTracker.ClearAllPendingUpgrades();
+                    break;
+                case 6:
+                    if (!Testing.TestRunner.IsRunningTests)
+                    {
+                        WeaponCacheManager.CleanupDestroyedMaps();
+                    }
+                    break;
+                case 7:
                     PawnValidationCache.CleanupDeadPawns();
                     break;
-                case 18:
+                case 8:
+                    accumulatedStats.WeaponScores = WeaponCacheManager.CleanupScoreCache();
+                    break;
+                case 9:
+                    WeaponScoringHelper.CleanupSkillCache();
+                    break;
+                case 10:
+                    AutoArm.Thing_LabelPatches.CleanupLabelCache();
+                    break;
+                case 11:
+                    break;
+                case 12:
                     accumulatedStats.CacheEntries = GenericCache.CleanupExpired();
+                    break;
+                case 13:
+                    break;
+                case 14:
+                    ForcedWeaponLabelHelper.CleanupDeadPawnCaches();
+                    break;
+                case 15:
+                    WeaponBlacklist.CleanupOldEntries();
+                    break;
+                case 16:
+                    JobGiver_PickUpBetterWeapon.CleanupMessageCache();
+                    break;
+                case 17:
+                    JobGiver_PickUpBetterWeapon.CleanupCaches();
+                    break;
+                case 18:
+                    ThinkNode_ConditionalWeaponStatus.CleanupDeadPawns();
                     break;
             }
         }
