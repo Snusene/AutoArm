@@ -1,5 +1,4 @@
-﻿
-using AutoArm.Helpers;
+﻿using AutoArm.Helpers;
 using AutoArm.Jobs;
 using AutoArm.Logging;
 using AutoArm.Weapons;
@@ -10,7 +9,6 @@ using Verse;
 
 namespace AutoArm
 {
-
     internal static class SimpleSidearmsJobDefs
     {
         public static readonly JobDef EquipPrimary = DefDatabase<JobDef>.GetNamedSilentFail("EquipPrimary");
@@ -26,11 +24,22 @@ namespace AutoArm
         [HarmonyPrefix]
         public static void Prefix(Thing item, Pawn ___pawn)
         {
-            if (Faction.OfPlayer == null)
+            if (Current.Game == null)
                 return;
 
-            if (item == null || ___pawn?.Faction != Faction.OfPlayer)
+            // Avoid accessing Faction.OfPlayer during world generation
+            if (Find.FactionManager == null || Find.FactionManager.AllFactionsListForReading.NullOrEmpty())
                 return;
+
+            try
+            {
+                if (Faction.OfPlayer == null || item == null || ___pawn?.Faction != Faction.OfPlayer)
+                    return;
+            }
+            catch
+            {
+                return;
+            }
 
             if (AutoArmMod.settings?.modEnabled != true)
                 return;
@@ -72,16 +81,26 @@ namespace AutoArm
         [HarmonyPostfix]
         public static void Postfix(Thing item, Pawn ___pawn)
         {
-            if (Faction.OfPlayer == null)
+            if (Current.Game == null)
                 return;
 
-            if (item == null || ___pawn?.Faction != Faction.OfPlayer)
+            // Avoid accessing Faction.OfPlayer during world generation
+            if (Find.FactionManager == null || Find.FactionManager.AllFactionsListForReading.NullOrEmpty())
                 return;
+
+            try
+            {
+                if (Faction.OfPlayer == null || item == null || ___pawn?.Faction != Faction.OfPlayer)
+                    return;
+            }
+            catch
+            {
+                return;
+            }
 
             var weapon = item as ThingWithComps;
             if (weapon == null || !WeaponValidation.IsWeapon(weapon))
                 return;
-
 
             if (!___pawn.inventory.innerContainer.Contains(item))
                 return;
@@ -97,7 +116,6 @@ namespace AutoArm
             {
                 EquipCooldownTracker.Record(___pawn);
             }
-
 
             if (ForcedWeapons.IsForced(___pawn, weapon))
             {
@@ -127,7 +145,6 @@ namespace AutoArm
                 ForcedWeapons.AddSidearm(___pawn, weapon);
                 AutoArmLogger.Debug(() => $"{___pawn.LabelShort}: Forced sidearm pickup - {weapon.Label}");
             }
-
 
             if (___pawn.CurJob?.def != null &&
                 SimpleSidearmsJobDefs.EquipSecondary != null &&
