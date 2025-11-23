@@ -856,15 +856,13 @@ namespace AutoArm.Caching
 
         public static int CleanupScoreCache()
         {
-            // Early exit #1: Empty cache - most common case after fresh load
             if (scoreCache.Count == 0)
                 return 0;
 
             int removedCount = 0;
             int currentTick = Find.TickManager.TicksGame;
 
-            // Early exit #2: Dead pawn cleanup runs every 10th cycle only
-            // Prevents iterating 60-100+ pawns every cleanup (2-3ms spike)
+            // Dead pawn cleanup every 10 cycles
             deadPawnCleanupCounter++;
             bool shouldCleanupDeadPawns = deadPawnCleanupCounter >= DeadPawnCleanupInterval;
             if (shouldCleanupDeadPawns)
@@ -896,8 +894,7 @@ namespace AutoArm.Caching
                 ListPool<int>.Return(idsToRemove);
             }
 
-            // Early exit #3: Skip expiration cleanup if nothing could have expired yet
-            // If last score was added less than ScoreCacheDuration ticks ago, nothing expired
+            // Skip if nothing expired yet
             bool shouldCleanupExpired = lastScoreAddedTick < 0 ||
                                        (currentTick - lastScoreAddedTick >= ScoreCacheDuration);
 
