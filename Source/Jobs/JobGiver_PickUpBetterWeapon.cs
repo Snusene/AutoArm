@@ -64,10 +64,6 @@ namespace AutoArm.Jobs
                     cached.Count++;
                     return false;
                 }
-                else if (cached.Count > 1)
-                {
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] (previous '{messageType}' message repeated {cached.Count}x over {(currentTick - cached.FirstLoggedTick) / 60f:F0}s)");
-                }
             }
 
             messageCache[key] = new MessageDeduplicationInfo
