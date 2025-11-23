@@ -71,6 +71,7 @@ namespace AutoArm.Caching
 
             public bool lastNonForbiddenResult = false;
             public int lastNonForbiddenCount = 0;
+            public int lastAllForbiddenLoggedTick = -1;
 
             private bool initialized = false;
 
@@ -99,6 +100,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
                 cachedWeaponsForEvents.Clear();
             }
 
@@ -111,6 +113,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
                 cachedWeaponsForEvents.Clear();
                 InitializeCache();
             }
@@ -227,6 +230,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
             }
 
 
@@ -276,6 +280,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
 
                 Components.WarmupWeapon(weapon);
             }
@@ -294,6 +299,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
             }
 
             /// <summary>
@@ -313,6 +319,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
 
                 if (AutoArmMod.settings?.debugLogging == true)
                 {
@@ -353,6 +360,7 @@ namespace AutoArm.Caching
                 lastNonForbiddenCheckTick = -1;
                 lastNonForbiddenResult = false;
                 lastNonForbiddenCount = 0;
+                lastAllForbiddenLoggedTick = -1;
                 AutoArmLogger.Debug(() => $"WeaponCache reset for map {map?.uniqueID ?? -1}");
             }
 
@@ -596,11 +604,14 @@ namespace AutoArm.Caching
         {
             var playerFaction = Find.FactionManager?.OfPlayer;
             int count = 0;
+            int totalWeapons = 0;
 
             foreach (var weapon in component.weapons)
             {
                 if (weapon == null || weapon.Destroyed || !weapon.Spawned)
                     continue;
+
+                totalWeapons++;
 
                 if (playerFaction != null && weapon.IsForbidden(playerFaction))
                     continue;
@@ -611,6 +622,15 @@ namespace AutoArm.Caching
             component.lastNonForbiddenCount = count;
             component.lastNonForbiddenResult = count > 0;
             component.lastNonForbiddenCheckTick = now;
+
+            if (AutoArmMod.settings?.debugLogging == true &&
+                totalWeapons > 0 &&
+                count == 0 &&
+                component.lastAllForbiddenLoggedTick != now)
+            {
+                component.lastAllForbiddenLoggedTick = now;
+                AutoArmLogger.Debug(() => $"[Cache] All {totalWeapons} weapons are forbidden, colonists will see 'No weapons found'");
+            }
         }
 
         public static bool IsWeaponTracked(Map map, ThingWithComps weapon)
@@ -667,7 +687,6 @@ namespace AutoArm.Caching
 
             var playerFaction = Find.FactionManager?.OfPlayer;
 
-            int totalWeapons = 0;
             int forbiddenWeapons = 0;
             bool debugLogging = AutoArmMod.settings?.debugLogging == true;
 
@@ -675,8 +694,6 @@ namespace AutoArm.Caching
             {
                 if (weapon != null && !weapon.Destroyed && weapon.Spawned)
                 {
-                    totalWeapons++;
-
                     bool isForbidden = playerFaction != null && weapon.IsForbidden(playerFaction);
                     if (isForbidden)
                     {
@@ -694,11 +711,6 @@ namespace AutoArm.Caching
                         yield return weapon;
                     }
                 }
-            }
-
-            if (debugLogging && totalWeapons > 0 && forbiddenWeapons == totalWeapons)
-            {
-                AutoArmLogger.Debug(() => $"[Cache] All {totalWeapons} weapons are forbidden, colonists will see 'No weapons found'");
             }
         }
 
@@ -1044,6 +1056,7 @@ namespace AutoArm.Caching
             component.lastNonForbiddenCheckTick = -1;
             component.lastNonForbiddenResult = false;
             component.lastNonForbiddenCount = 0;
+            component.lastAllForbiddenLoggedTick = -1;
 
             component.lastChangeDetectedTick = Find.TickManager.TicksGame;
         }
