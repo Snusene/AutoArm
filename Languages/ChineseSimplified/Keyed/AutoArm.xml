@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+	<!-- Mod Info -->
+	<AutoArm_ModName>自动装备</AutoArm_ModName>
+	<AutoArm_SettingsCategory>自动装备</AutoArm_SettingsCategory>
+
+	<!-- Settings UI -->
+	<AutoArm_Settings>设置</AutoArm_Settings>
+	<AutoArm_ResetConfig>重置配置</AutoArm_ResetConfig>
+	<AutoArm_General>常规</AutoArm_General>
+	<AutoArm_Compatibility>兼容性</AutoArm_Compatibility>
+	<AutoArm_Advanced>高级</AutoArm_Advanced>
+	<AutoArm_Debug>调试</AutoArm_Debug>
+
+	<!-- General Settings -->
+	<AutoArm_DisableDuringRaids>突袭期间禁用</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>当游戏检测到高危险（大型突袭/威胁）时暂时禁用自动装备以提升性能。与其他模组的兼容性也更好。</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>仅从储存区自动装备</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>启用后，殖民者只会自动装备储存区或储存容器（储料堆、货架等）中的武器，就像原版服装行为一样。</AutoArm_OnlyEquipFromStorageDesc>
+	<AutoArm_AllowForcedWeaponUpgrades>允许强制武器的品质升级</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>启用后，殖民者可以将强制武器升级为同类型的更高品质版本（例如：普通左轮手枪 → 大师级左轮手枪）。</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>允许临时殖民者自动装备</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>启用后，无装备限制的临时殖民者（难民、借用人员）可以自动装备武器。</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_EnableMod>启用模组</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>启用后，殖民者将根据其服装策略自动装备更好的武器。禁用后，所有自动武器管理都将关闭。</AutoArm_EnableModDesc>
+	<AutoArm_ShowNotifications>显示通知</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>当殖民者装备或升级武器时显示通知消息。</AutoArm_ShowNotificationsDesc>
+
+	<!-- Notification Messages -->
+	<AutoArm_EquippedWeapon>{0} 装备了 {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} 将 {1} 升级为 {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_UpgradedSidearm>{0} 将副武器从 {1} 升级为 {2}</AutoArm_UpgradedSidearm>
+	<AutoArm_EquippedSidearm>{0} 装备了副武器 {1}</AutoArm_EquippedSidearm>
+	<AutoArm_EquippingSidearm>{0} 正在拾取 {1} 作为副武器</AutoArm_EquippingSidearm>
+	<AutoArm_ReplacedWeapon>{0} 用 {2} 替换了 {1}</AutoArm_ReplacedWeapon>
+	<AutoArm_ForceWeapon>自动强制羁绊武器</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>启用后，羁绊的人格武器会自动标记为强制，防止自动切换。</AutoArm_ForceWeaponDesc>
+	<AutoArm_AutoequipSpeedBoost>自动装备速度加成</AutoArm_AutoequipSpeedBoost>
+	<AutoArm_AutoequipSpeedBoostTooltip>殖民者跑向新武器的速度（正常 = 1.0）</AutoArm_AutoequipSpeedBoostTooltip>
+	<AutoArm_DropBiocodedWeapons>丢弃生物编码武器</AutoArm_DropBiocodedWeapons>
+	<AutoArm_CheckEnemyCorpses>检查敌人尸体</AutoArm_CheckEnemyCorpses>
+	<AutoArm_CheckGuestCorpses>检查客人尸体</AutoArm_CheckGuestCorpses>
+	<AutoArm_CheckColonistCorpses>检查殖民者尸体</AutoArm_CheckColonistCorpses>
+	<AutoArm_EnableForSlaves>为奴隶启用</AutoArm_EnableForSlaves>
+	<AutoArm_OnlyArmedEnemies>仅检查武装敌人的尸体</AutoArm_OnlyArmedEnemies>
+	<AutoArm_OnlyArmedGuests>仅检查武装客人的尸体</AutoArm_OnlyArmedGuests>
+	<AutoArm_OnlyArmedColonists>仅检查武装殖民者的尸体</AutoArm_OnlyArmedColonists>
+	<AutoArm_EnableCivilianMode>启用平民模式</AutoArm_EnableCivilianMode>
+	<AutoArm_CivilianModeTooltip>和平时期，小人会在高快乐度时放下武器，在征召或快乐度降低时拾取武器</AutoArm_CivilianModeTooltip>
+	<AutoArm_CivilianJoyThreshold>平民模式快乐度阈值</AutoArm_CivilianJoyThreshold>
+
+	<!-- Pawn Settings -->
+	<AutoArm_EquipFirstWeapon>小人 → 装备第一件武器</AutoArm_EquipFirstWeapon>
+	<AutoArm_PawnSettings>小人设置</AutoArm_PawnSettings>
+
+	<!-- Compatibility Settings -->
+	<AutoArm_CompatibilityPatches>兼容性补丁</AutoArm_CompatibilityPatches>
+	<AutoArm_SimpleSidearms>简单副武器</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>战斗扩展</AutoArm_CombatExtended>
+	<AutoArm_Loaded>已激活</AutoArm_Loaded>
+	<AutoArm_NotFound>未找到</AutoArm_NotFound>
+	<AutoArm_EnableSidearmAutoEquip>启用副武器自动装备</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>允许殖民者自动拾取额外武器作为副武器。</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>允许副武器升级</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>启用后，殖民者会将现有副武器升级为更高品质。</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_RequireAmmunition>需要弹药</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>启用后，殖民者只有在有合适弹药的情况下才会拾取武器。</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ CE弹药系统已禁用</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsSeparate>简单副武器 (v1.5.0.2): 单独考虑副武器</AutoArm_SimpleSidearmsSeparate>
+	<AutoArm_SimpleSidearmsSeparateTooltip>启用后，小人会将搜索和装备副武器作为与主武器分开的任务</AutoArm_SimpleSidearmsSeparateTooltip>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ 简单副武器集成失败 - 反射错误。这些功能已禁用。</AutoArm_SimpleSidearmsReflectionFailed>
+	<AutoArm_CheckCEAmmo>检查弹药</AutoArm_CheckCEAmmo>
+	<AutoArm_CheckCEAmmoDesc>启用后，殖民者只有在有合适弹药的情况下才会拾取武器。禁用此功能将导致殖民者携带没有弹药的武器。</AutoArm_CheckCEAmmoDesc>
+	<AutoArm_CombatExtendedAmmo>战斗扩展：武器需要弹药</AutoArm_CombatExtendedAmmo>
+	<AutoArm_WeaponStorageSharing>武器存储：启用跨储物柜武器共享</AutoArm_WeaponStorageSharing>
+
+	<!-- Detected Mods -->
+	<AutoArm_DetectedMods>检测到的兼容模组</AutoArm_DetectedMods>
+	<AutoArm_NoCompatModsDetected>无 - 仅使用基础游戏功能</AutoArm_NoCompatModsDetected>
+
+	<!-- Advanced Settings -->
+	<AutoArm_WeaponUpgrades>武器升级</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>阈值</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>武器需要好多少才会让殖民者切换。较低的值意味着更频繁的切换。</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>武器偏好</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>调整所有殖民者对远程与近战武器的偏好。</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_AgeRestrictions>年龄限制</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>使用自定义年龄限制进行自动装备</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>向左滑动可更早地自动化你的儿童民兵，向右滑动以获得无聊的安全性。孩子们还能以某种方式绕过所有武器重量检查。绝对不是bug。</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>最低年龄</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>开始自动装备武器的最低年龄</AutoArm_MinimumAgeDesc>
+
+	<!-- Weapon Preference Values -->
+	<AutoArm_StrongMeleePreference>强烈近战偏好</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>中等近战偏好</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>轻微近战偏好</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>平衡（无偏好）</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>轻微远程偏好</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>中等远程偏好</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>强烈远程偏好</AutoArm_StrongRangedPreference>
+	<AutoArm_RiskOfWeaponSwapLoops>武器交换循环风险</AutoArm_RiskOfWeaponSwapLoops>
+	<AutoArm_WhatCouldGoWrong>⚠ Randy认可！</AutoArm_WhatCouldGoWrong>
+	<AutoArm_EquipDelay>装备延迟</AutoArm_EquipDelay>
+	<AutoArm_EquipDelayTooltip>武器检查之间的最短时间（秒）</AutoArm_EquipDelayTooltip>
+	<AutoArm_SearchRadius>搜索半径</AutoArm_SearchRadius>
+	<AutoArm_SearchRadiusTooltip>小人寻找武器的距离（格）</AutoArm_SearchRadiusTooltip>
+	<AutoArm_ThinkTrees>要注入的思维树（逗号分隔）</AutoArm_ThinkTrees>
+	<AutoArm_EnablePerformanceMode>启用性能模式</AutoArm_EnablePerformanceMode>
+	<AutoArm_EnablePerformanceModeTooltip>根据殖民地规模自动调整检查频率以获得更好的性能</AutoArm_EnablePerformanceModeTooltip>
+
+	<!-- Weapon Scoring -->
+	<AutoArm_WeaponScoring>武器评分</AutoArm_WeaponScoring>
+	<AutoArm_ScoreFormula>评分 = (基础价值 × 价值) + (DPS × DPS权重)</AutoArm_ScoreFormula>
+	<AutoArm_ValueWeight>价值权重</AutoArm_ValueWeight>
+	<AutoArm_DPSWeight>DPS权重</AutoArm_DPSWeight>
+	<AutoArm_ImportantNote>重要：将两者都设为0以禁用自动装备</AutoArm_ImportantNote>
+
+	<!-- Debug Settings -->
+	<AutoArm_EnableVerboseLogging>启用详细日志</AutoArm_EnableVerboseLogging>
+	<AutoArm_EnableDebugLogging>启用调试日志</AutoArm_EnableDebugLogging>
+	<AutoArm_EnableDebugLoggingDesc>输出详细信息到调试日志以进行故障排除。这将创建许多日志条目并可能影响性能。仅在报告问题时启用。</AutoArm_EnableDebugLoggingDesc>
+	<AutoArm_DebugColumns>调试列</AutoArm_DebugColumns>
+	<AutoArm_DumpCachedScores>将缓存的武器评分转储到日志</AutoArm_DumpCachedScores>
+	<AutoArm_RunAllTests>运行所有测试</AutoArm_RunAllTests>
+	<AutoArm_ClickToRun>点击运行</AutoArm_ClickToRun>
+	<AutoArm_RunTestSet>运行测试集：{0}</AutoArm_RunTestSet>
+
+	<!-- Log Messages -->
+	<AutoArm_DebugRequiresActiveGame>调试工具需要活动游戏</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>自动装备调试工具</AutoArm_DebugTools>
+	<AutoArm_RunPerformanceTest>运行综合性能测试</AutoArm_RunPerformanceTest>
+	<AutoArm_TestWeaponDetection>测试武器检测和小人验证</AutoArm_TestWeaponDetection>
+	<AutoArm_CopyTestResults>复制测试结果</AutoArm_CopyTestResults>
+	<AutoArm_TestResultsCopied>测试结果已复制到剪贴板</AutoArm_TestResultsCopied>
+	<AutoArm_NoTestResultsToCopy>没有可复制的测试结果</AutoArm_NoTestResultsToCopy>
+	<AutoArm_SaveBeforeTouching>触碰任何东西之前请保存</AutoArm_SaveBeforeTouching>
+	<AutoArm_Shortcuts>快捷键：F5=运行测试，F6=复制结果</AutoArm_Shortcuts>
+	<AutoArm_BondedWeaponsForced>已将{0}件羁绊武器{1}标记为强制。</AutoArm_BondedWeaponsForced>
+	<AutoArm_SettingsLoaded>自动装备设置已加载。</AutoArm_SettingsLoaded>
+	<AutoArm_SettingsSaved>自动装备设置已保存。</AutoArm_SettingsSaved>
+	<AutoArm_SettingsReset>自动装备设置已重置为默认值。</AutoArm_SettingsReset>
+	<AutoArm_ResetToDefaults>重置为默认值</AutoArm_ResetToDefaults>
+	<AutoArm_NoTestDef>未找到defName为{0}的AutoArmTestDef</AutoArm_NoTestDef>
+	<AutoArm_NoWorkerInstance>AutoArmTestDef {0}没有workerInstance</AutoArm_NoWorkerInstance>
+	<AutoArm_TestCompleted>测试{0}已完成</AutoArm_TestCompleted>
+	<AutoArm_TestError>运行测试{0}时出错：{1}</AutoArm_TestError>
+	<AutoArm_AllTestsRun>所有自动装备测试已运行。</AutoArm_AllTestsRun>
+	<AutoArm_RunningAllTests>正在运行所有自动装备测试...</AutoArm_RunningAllTests>
+	<AutoArm_CachedScoresDumped>缓存的武器评分已转储到日志。</AutoArm_CachedScoresDumped>
+	<AutoArm_TestRunner>测试运行器</AutoArm_TestRunner>
+	<AutoArm_RunSpecificTest>运行特定测试</AutoArm_RunSpecificTest>
+	<AutoArm_ExportLogs>导出调试日志</AutoArm_ExportLogs>
+	<AutoArm_TestResults>测试结果</AutoArm_TestResults>
+
+	<!-- Test Descriptions -->
+	<AutoArm_TestDescription>{0}测试</AutoArm_TestDescription>
+
+	<AutoArm_ConfirmReset>确定要将所有设置重置为默认值吗？</AutoArm_ConfirmReset>
+	<AutoArm_PocketSand>Pocket Sand</AutoArm_PocketSand>
+	<AutoArm_PocketSandDesc>AutoArm 与 Pocket Sand 的装备延迟系统集成。武器将根据其重量以更真实的时间被装备。</AutoArm_PocketSandDesc>
+	<AutoArm_StatusOverview>状态概览</AutoArm_StatusOverview>
+
+	<AutoArm_ThinkTreeNotInjected>AutoArm：思维树未注入——模组将无法工作！</AutoArm_ThinkTreeNotInjected>
+	<AutoArm_ThinkTreeInjected>AutoArm：思维树已正确注入</AutoArm_ThinkTreeInjected>
+	<AutoArm_ModDisabled>AutoArm：模组在设置中已禁用！</AutoArm_ModDisabled>
+	<AutoArm_ColonistStatus>AutoArm：殖民者 {0} 名——{1} 无武器，{2} 已武装</AutoArm_ColonistStatus>
+	<AutoArm_ThinkTreeInjectionFailed>AutoArm：思维树注入失败——模组将无法正常运行。请报告此问题。</AutoArm_ThinkTreeInjectionFailed>
+</LanguageData>
