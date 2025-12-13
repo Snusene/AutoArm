@@ -82,11 +82,13 @@ namespace AutoArm.Caching
             if (pawn == null || weapon == null)
                 return false;
 
-            // Fast path: No DLCs = no restrictions from EquipmentUtility.CanEquip
-            // Biocode/bladelink = Royalty, Role restrictions = Ideology
-            // We already check biocode separately in ShouldConsiderWeapon
             if (!RoyaltyActive && !IdeologyActive)
             {
+                if (CompBiocodable.IsBiocoded(weapon) && !CompBiocodable.IsBiocodedFor(weapon, pawn))
+                {
+                    cantReason = "biocoded to another pawn";
+                    return false;
+                }
                 AutoArmPerfOverlayWindow.ReportEligibilityCacheHit();
                 return true;
             }
