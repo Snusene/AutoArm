@@ -834,8 +834,9 @@ namespace AutoArm.Jobs
                 if (currentTick < cached.ExpiryTick)
                 {
                     bool currentlyHasOwner = weaponHolder != null;
+                    bool biocodeChanged = cached.IsValid && Caching.Components.IsBiocodedToOther(weapon, pawn);
 
-                    if (weapon.Destroyed || cached.HadOwner != currentlyHasOwner)
+                    if (weapon.Destroyed || cached.HadOwner != currentlyHasOwner || biocodeChanged)
                     {
                         comp.ValidationCache.Remove(cacheKey);
                         AutoArmPerfOverlayWindow.ReportCacheMiss();

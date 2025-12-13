@@ -49,20 +49,17 @@ namespace AutoArm.Caching
 
         /// <summary>
         /// Checks biocode match
-        /// Uses RimWorld's static helper for cleaner code
         /// </summary>
         public static bool IsBiocodedTo(ThingWithComps weapon, Pawn pawn)
         {
-            if (!RoyaltyActive) return false;
             return CompBiocodable.IsBiocodedFor(weapon, pawn);
         }
 
         /// <summary>
-        /// Checks wrong biocode
+        /// Checks if weapon is biocoded to someone other than this pawn
         /// </summary>
         public static bool IsBiocodedToOther(ThingWithComps weapon, Pawn pawn)
         {
-            if (!RoyaltyActive) return false;
             if (!CompBiocodable.IsBiocoded(weapon))
                 return false;
 
