@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+	<!-- Mod Info -->
+	<AutoArm_ModName>АвтоВооружение</AutoArm_ModName>
+	<AutoArm_SettingsCategory>Авто Вооружение</AutoArm_SettingsCategory>
+
+	<!-- Settings UI -->
+	<AutoArm_Settings>Настройки</AutoArm_Settings>
+	<AutoArm_ResetConfig>Сбросить конфигурацию</AutoArm_ResetConfig>
+	<AutoArm_General>Основные</AutoArm_General>
+	<AutoArm_Compatibility>Совместимость</AutoArm_Compatibility>
+	<AutoArm_Advanced>Расширенные</AutoArm_Advanced>
+	<AutoArm_Debug>Отладка</AutoArm_Debug>
+
+	<!-- General Settings -->
+	<AutoArm_DisableDuringRaids>Отключать во время рейдов</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>Временно отключает автоэкипировку при обнаружении высокой опасности (крупные рейды/угрозы) для повышения производительности. Также улучшает совместимость с другими модами.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>Автоэкипировка только из складов</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>При включении колонисты будут автоматически экипировать только оружие, находящееся в зонах хранения или контейнерах (склады, полки и т.д.), как в обычной механике одежды.</AutoArm_OnlyEquipFromStorageDesc>
+	<AutoArm_AllowForcedWeaponUpgrades>Разрешить улучшение качества принудительного оружия</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>При включении колонисты могут улучшать принудительное оружие до версий того же типа с лучшим качеством (например, обычный револьвер → мастерский револьвер).</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>Разрешить временным колонистам автоэкипировку</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>При включении временные колонисты без ограничений на экипировку (беженцы, заимствованные пешки) могут автоматически экипировать оружие.</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_EnableMod>Включить мод</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>При включении колонисты будут автоматически экипировать лучшее оружие в соответствии с их политикой одежды. При отключении всё автоматическое управление оружием отключается.</AutoArm_EnableModDesc>
+	<AutoArm_ShowNotifications>Показывать уведомления</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>Показывает уведомления, когда колонисты экипируют или улучшают оружие.</AutoArm_ShowNotificationsDesc>
+
+	<!-- Notification Messages -->
+	<AutoArm_EquippedWeapon>{0} экипировал(а) {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} улучшил(а) {1} до {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_UpgradedSidearm>{0} улучшил(а) запасное оружие с {1} до {2}</AutoArm_UpgradedSidearm>
+	<AutoArm_EquippedSidearm>{0} экипировал(а) запасное оружие {1}</AutoArm_EquippedSidearm>
+	<AutoArm_EquippingSidearm>{0} подбирает {1} как запасное оружие</AutoArm_EquippingSidearm>
+	<AutoArm_ReplacedWeapon>{0} заменил(а) {1} на {2}</AutoArm_ReplacedWeapon>
+	<AutoArm_ForceWeapon>Автопринуждение связанного оружия</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>При включении связанное личностное оружие автоматически помечается как принудительное, предотвращая автоматическую замену.</AutoArm_ForceWeaponDesc>
+	<AutoArm_AutoequipSpeedBoost>Ускорение автоэкипировки</AutoArm_AutoequipSpeedBoost>
+	<AutoArm_AutoequipSpeedBoostTooltip>Колонисты бегут за новым оружием (Нормально = 1.0)</AutoArm_AutoequipSpeedBoostTooltip>
+	<AutoArm_DropBiocodedWeapons>Сбрасывать биокодированное оружие</AutoArm_DropBiocodedWeapons>
+	<AutoArm_CheckEnemyCorpses>Проверять трупы врагов</AutoArm_CheckEnemyCorpses>
+	<AutoArm_CheckGuestCorpses>Проверять трупы гостей</AutoArm_CheckGuestCorpses>
+	<AutoArm_CheckColonistCorpses>Проверять трупы колонистов</AutoArm_CheckColonistCorpses>
+	<AutoArm_EnableForSlaves>Включить для рабов</AutoArm_EnableForSlaves>
+	<AutoArm_OnlyArmedEnemies>Проверять только трупы вооружённых врагов</AutoArm_OnlyArmedEnemies>
+	<AutoArm_OnlyArmedGuests>Проверять только трупы вооружённых гостей</AutoArm_OnlyArmedGuests>
+	<AutoArm_OnlyArmedColonists>Проверять только трупы вооружённых колонистов</AutoArm_OnlyArmedColonists>
+	<AutoArm_EnableCivilianMode>Включить гражданский режим</AutoArm_EnableCivilianMode>
+	<AutoArm_CivilianModeTooltip>В мирное время пешки будут откладывать оружие при высокой радости и подбирать его при призыве или при снижении радости</AutoArm_CivilianModeTooltip>
+	<AutoArm_CivilianJoyThreshold>Порог радости гражданского режима</AutoArm_CivilianJoyThreshold>
+
+	<!-- Pawn Settings -->
+	<AutoArm_EquipFirstWeapon>Пешка → Экипировать первое оружие</AutoArm_EquipFirstWeapon>
+	<AutoArm_PawnSettings>Настройки пешек</AutoArm_PawnSettings>
+
+	<!-- Compatibility Settings -->
+	<AutoArm_CompatibilityPatches>Патчи совместимости</AutoArm_CompatibilityPatches>
+	<AutoArm_SimpleSidearms>Simple Sidearms</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>Combat Extended</AutoArm_CombatExtended>
+	<AutoArm_Loaded>Активен</AutoArm_Loaded>
+	<AutoArm_NotFound>Не найден</AutoArm_NotFound>
+	<AutoArm_EnableSidearmAutoEquip>Включить автоэкипировку запасного оружия</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Позволяет колонистам автоматически подбирать дополнительное оружие как запасное.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>Разрешить улучшение запасного оружия</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>При включении колонисты будут улучшать существующее запасное оружие до лучшего качества.</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_RequireAmmunition>Требовать боеприпасы</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>При включении колонисты будут подбирать оружие только при наличии подходящих боеприпасов.</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ Система боеприпасов CE отключена</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsSeparate>SimpleSidearms (v1.5.0.2): Рассматривать запасное оружие отдельно</AutoArm_SimpleSidearmsSeparate>
+	<AutoArm_SimpleSidearmsSeparateTooltip>При включении пешки будут искать и экипировать запасное оружие как отдельную задачу от основного оружия</AutoArm_SimpleSidearmsSeparateTooltip>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ Интеграция SimpleSidearms не удалась - ошибка рефлексии. Эти функции отключены.</AutoArm_SimpleSidearmsReflectionFailed>
+	<AutoArm_CheckCEAmmo>Проверять наличие боеприпасов</AutoArm_CheckCEAmmo>
+	<AutoArm_CheckCEAmmoDesc>При включении колонисты будут подбирать оружие только при наличии подходящих боеприпасов. Отключение приведёт к тому, что колонисты будут носить оружие без боеприпасов.</AutoArm_CheckCEAmmoDesc>
+	<AutoArm_CombatExtendedAmmo>CombatExtended: Требовать боеприпасы для оружия</AutoArm_CombatExtendedAmmo>
+	<AutoArm_WeaponStorageSharing>WeaponStorage: Включить обмен оружием между хранилищами</AutoArm_WeaponStorageSharing>
+
+	<!-- Detected Mods -->
+	<AutoArm_DetectedMods>Обнаружены совместимые моды</AutoArm_DetectedMods>
+	<AutoArm_NoCompatModsDetected>Нет - используются только базовые функции игры</AutoArm_NoCompatModsDetected>
+
+	<!-- Advanced Settings -->
+	<AutoArm_WeaponUpgrades>Улучшения оружия</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>Порог</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>Насколько лучше должно быть оружие, чтобы колонисты переключились. Меньшие значения означают более частое переключение.</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>Предпочтение оружия</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>Настройте предпочтения всех колонистов между дальнобойным и ближним оружием.</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_AgeRestrictions>Возрастные ограничения</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>Использовать пользовательские возрастные ограничения для автоэкипировки</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>Сдвиньте влево, чтобы раньше автоматизировать детское ополчение, вправо - для скучной безопасности. Дети также каким-то образом обходят все проверки веса оружия. Определённо не баг.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>Минимальный возраст</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>Минимальный возраст для начала автоэкипировки оружия</AutoArm_MinimumAgeDesc>
+
+	<!-- Weapon Preference Values -->
+	<AutoArm_StrongMeleePreference>Сильное предпочтение ближнего боя</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>Умеренное предпочтение ближнего боя</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>Лёгкое предпочтение ближнего боя</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>Сбалансировано (без предпочтений)</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>Лёгкое предпочтение дальнего боя</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>Умеренное предпочтение дальнего боя</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>Сильное предпочтение дальнего боя</AutoArm_StrongRangedPreference>
+	<AutoArm_RiskOfWeaponSwapLoops>Риск циклов смены оружия</AutoArm_RiskOfWeaponSwapLoops>
+	<AutoArm_WhatCouldGoWrong>⚠ Одобрено Рэнди!</AutoArm_WhatCouldGoWrong>
+	<AutoArm_EquipDelay>Задержка экипировки</AutoArm_EquipDelay>
+	<AutoArm_EquipDelayTooltip>Минимальное время между проверками оружия (секунды)</AutoArm_EquipDelayTooltip>
+	<AutoArm_SearchRadius>Радиус поиска</AutoArm_SearchRadius>
+	<AutoArm_SearchRadiusTooltip>Как далеко пешки будут искать оружие (клетки)</AutoArm_SearchRadiusTooltip>
+	<AutoArm_ThinkTrees>Деревья мышления для внедрения (через запятую)</AutoArm_ThinkTrees>
+	<AutoArm_EnablePerformanceMode>Включить режим производительности</AutoArm_EnablePerformanceMode>
+	<AutoArm_EnablePerformanceModeTooltip>Автоматически настраивает частоту проверки в зависимости от размера колонии для лучшей производительности</AutoArm_EnablePerformanceModeTooltip>
+
+	<!-- Weapon Scoring -->
+	<AutoArm_WeaponScoring>Оценка оружия</AutoArm_WeaponScoring>
+	<AutoArm_ScoreFormula>Оценка = (Базовая стоимость × Стоимость) + (УВС × Вес УВС)</AutoArm_ScoreFormula>
+	<AutoArm_ValueWeight>Вес стоимости</AutoArm_ValueWeight>
+	<AutoArm_DPSWeight>Вес УВС</AutoArm_DPSWeight>
+	<AutoArm_ImportantNote>Важно: Установите оба значения на 0, чтобы отключить АвтоВооружение</AutoArm_ImportantNote>
+
+	<!-- Debug Settings -->
+	<AutoArm_EnableVerboseLogging>Включить подробное логирование</AutoArm_EnableVerboseLogging>
+	<AutoArm_EnableDebugLogging>Включить отладочное логирование</AutoArm_EnableDebugLogging>
+	<AutoArm_EnableDebugLoggingDesc>Выводит подробную информацию в журнал отладки для устранения неполадок. Это создаст много записей журнала и может повлиять на производительность. Включайте только при сообщении о проблемах.</AutoArm_EnableDebugLoggingDesc>
+	<AutoArm_DebugColumns>Колонки отладки</AutoArm_DebugColumns>
+	<AutoArm_DumpCachedScores>Выгрузить кэшированные оценки оружия в журнал</AutoArm_DumpCachedScores>
+	<AutoArm_RunAllTests>Запустить все тесты</AutoArm_RunAllTests>
+	<AutoArm_ClickToRun>Нажмите для запуска</AutoArm_ClickToRun>
+	<AutoArm_RunTestSet>Запустить набор тестов: {0}</AutoArm_RunTestSet>
+
+	<!-- Log Messages -->
+	<AutoArm_DebugRequiresActiveGame>Инструменты отладки требуют активной игры</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>Инструменты отладки АвтоВооружения</AutoArm_DebugTools>
+	<AutoArm_RunPerformanceTest>Запустить комплексный тест производительности</AutoArm_RunPerformanceTest>
+	<AutoArm_TestWeaponDetection>Тестировать обнаружение оружия и проверку пешек</AutoArm_TestWeaponDetection>
+	<AutoArm_CopyTestResults>Копировать результаты тестов</AutoArm_CopyTestResults>
+	<AutoArm_TestResultsCopied>Результаты тестов скопированы в буфер обмена</AutoArm_TestResultsCopied>
+	<AutoArm_NoTestResultsToCopy>Нет результатов тестов для копирования</AutoArm_NoTestResultsToCopy>
+	<AutoArm_SaveBeforeTouching>Сохранитесь перед изменениями</AutoArm_SaveBeforeTouching>
+	<AutoArm_Shortcuts>Горячие клавиши: F5=Запустить тесты, F6=Копировать результаты</AutoArm_Shortcuts>
+	<AutoArm_BondedWeaponsForced>Помечено {0} связанное(ых) оружие(й){1} как принудительное(ые).</AutoArm_BondedWeaponsForced>
+	<AutoArm_SettingsLoaded>Настройки АвтоВооружения загружены.</AutoArm_SettingsLoaded>
+	<AutoArm_SettingsSaved>Настройки АвтоВооружения сохранены.</AutoArm_SettingsSaved>
+	<AutoArm_SettingsReset>Настройки АвтоВооружения сброшены к значениям по умолчанию.</AutoArm_SettingsReset>
+	<AutoArm_ResetToDefaults>Сбросить к значениям по умолчанию</AutoArm_ResetToDefaults>
+	<AutoArm_NoTestDef>Не найден AutoArmTestDef с defName: {0}</AutoArm_NoTestDef>
+	<AutoArm_NoWorkerInstance>AutoArmTestDef {0} не имеет workerInstance</AutoArm_NoWorkerInstance>
+	<AutoArm_TestCompleted>Тест {0} завершён</AutoArm_TestCompleted>
+	<AutoArm_TestError>Ошибка при выполнении теста {0}: {1}</AutoArm_TestError>
+	<AutoArm_AllTestsRun>Все тесты АвтоВооружения выполнены.</AutoArm_AllTestsRun>
+	<AutoArm_RunningAllTests>Запуск всех тестов АвтоВооружения...</AutoArm_RunningAllTests>
+	<AutoArm_CachedScoresDumped>Кэшированные оценки оружия выгружены в журнал.</AutoArm_CachedScoresDumped>
+	<AutoArm_TestRunner>Запуск тестов</AutoArm_TestRunner>
+	<AutoArm_RunSpecificTest>Запустить конкретный тест</AutoArm_RunSpecificTest>
+	<AutoArm_ExportLogs>Экспортировать журналы отладки</AutoArm_ExportLogs>
+	<AutoArm_TestResults>Результаты тестов</AutoArm_TestResults>
+
+	<!-- Test Descriptions -->
+	<AutoArm_TestDescription>Тест {0}</AutoArm_TestDescription>
+
+	<AutoArm_ConfirmReset>Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?</AutoArm_ConfirmReset>
+	<AutoArm_PocketSand>Pocket Sand</AutoArm_PocketSand>
+	<AutoArm_PocketSandDesc>AutoArm интегрируется с системой задержки снаряжения мода Pocket Sand. Оружие будет экипироваться с реалистичной задержкой в зависимости от его веса.</AutoArm_PocketSandDesc>
+	<AutoArm_StatusOverview>Сводка состояния</AutoArm_StatusOverview>
+
+	<AutoArm_ThinkTreeNotInjected>AutoArm: Дерево мыслей не внедрено — мод не будет работать!</AutoArm_ThinkTreeNotInjected>
+	<AutoArm_ThinkTreeInjected>AutoArm: Дерево мыслей успешно внедрено</AutoArm_ThinkTreeInjected>
+	<AutoArm_ModDisabled>AutoArm: Мод ОТКЛЮЧЕН в настройках!</AutoArm_ModDisabled>
+	<AutoArm_ColonistStatus>AutoArm: колонистов: {0} — без оружия: {1}, с оружием: {2}</AutoArm_ColonistStatus>
+	<AutoArm_ThinkTreeInjectionFailed>AutoArm: Не удалось внедрить дерево мыслей — мод будет работать некорректно. Пожалуйста, сообщите об этой проблеме.</AutoArm_ThinkTreeInjectionFailed>
+</LanguageData>

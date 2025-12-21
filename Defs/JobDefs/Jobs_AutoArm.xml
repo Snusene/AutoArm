@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+
+	<!-- Job for swapping primary weapons -->
+	<JobDef>
+		<defName>AutoArmSwapPrimary</defName>
+		<driverClass>AutoArm.JobDriver_SwapPrimary</driverClass>
+		<reportString>swapping primary weapon.</reportString>
+		<casualInterruptible>false</casualInterruptible>
+		<suspendable>false</suspendable>
+		<allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+		<collideWithPawns>false</collideWithPawns>
+		<playerInterruptible>true</playerInterruptible>
+	</JobDef>
+
+	<!-- Job for swapping sidearms -->
+	<JobDef>
+		<defName>AutoArmSwapSidearm</defName>
+		<driverClass>AutoArm.JobDriver_SwapSidearm</driverClass>
+		<reportString>swapping sidearm.</reportString>
+		<casualInterruptible>false</casualInterruptible>
+		<suspendable>false</suspendable>
+		<allowOpportunisticPrefix>false</allowOpportunisticPrefix>
+		<collideWithPawns>false</collideWithPawns>
+		<playerInterruptible>true</playerInterruptible>
+	</JobDef>
+</Defs>
