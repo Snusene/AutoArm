@@ -28,14 +28,14 @@
 		<li>UnlimitedHugs.HugsLib</li>
 		<li>jecrell.jecstools</li>
 		<li>oskarpotocki.vanillafactionsexpanded.core</li>
-		<!-- Mods we have compatibility with -->
+		<!-- Mods with compatibility -->
 		<li>CETeam.CombatExtended</li>
 		<li>PeteTimesSix.SimpleSidearms</li>
 		<li>NotFood.Infusion2</li>
 		<li>NotFood.InfusedTwo</li>
 		<li>Infusion.Core</li>
 		<li>reisen.pocketsand</li>
-		<!-- Mods we check for in code -->
+		<!-- Other mods checked for in code -->
 		<li>Mehni.PickUpAndHaul</li>
 		<li>mehni.pickupandhaul</li>
 		<li>Fluffy.WorkTab</li>
@@ -43,26 +43,30 @@
 		<li>oelsart.ChooseYourOutfit</li>
 	</loadAfter>
 	<loadBefore>
-		<!-- Profiling mods (ensures assembly loads before Analyzer.xml parsing) -->
+		<!-- Profiling -->
 		<li>Dubwise.DubsPerformanceAnalyzer</li>
-		<!-- Equipment management mods that might conflict -->
+		<!-- Equipment mods that might conflict -->
 		<li>SmartEquip.KV.RimWorld</li>
 		<li>GearUpAndGo</li>
 		<li>killface.outfitted</li>
 		<li>Mlie.KillForMe</li>
-		<!-- Inventory system mods -->
+		<!-- Inventory mods -->
 		<li>Mlie.AwesomeInventory</li>
 		<li>sandy.rpgstyleinventory</li>
 		<li>Sandy.RPGStyleInventory.avilmask.Revamped</li>
-		<!-- AI behavior mods just in case -->
+		<!-- Behavior mods just in case -->
 		<li>VouLT.BetterPawnControl</li>
 		<li>Achtung.MainButton</li>
 		<li>Fluffy.ColonyManager</li>
 	</loadBefore>
 	<incompatibleWith>
-		<!-- any truly incompatible mods here if discovered -->
+		<!-- any truly incompatible mods if discovered -->
 	</incompatibleWith>
 	<description>
-		<![CDATA[<color=#FFD700>Automatic weapon management</color> that respects outfits, ideology restrictions, traits, skills and upgrades sensibly. Set weapons in your Apparel Policy and pawns auto equip weapons from that. Right-click equip any weapon to force it and pause automation.]]>
+		<![CDATA[<color=#FFD700>Automatic weapon equipping</color> that respects outfits, ideology restrictions, traits, skills and upgrades sensibly.
+
+Brawlers get melee, shooters grab guns etc. Smart selection that won't trade assault rifles for wood logs.
+
+Set weapons in your Apparel Policy and colonists auto equip weapons from that. Right-click equip any weapon to force it and pause automation.]]>
 	</description>
 </ModMetaData>
