@@ -776,6 +776,13 @@ namespace AutoArm.Jobs
                 return false;
             }
 
+            if (Caching.Components.IsBiocodedToOther(weapon, pawn))
+            {
+                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: biocoded to another pawn");
+                return false;
+            }
+
             if (weapon.Map != pawn.Map)
             {
                 if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
