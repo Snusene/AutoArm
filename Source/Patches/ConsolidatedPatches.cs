@@ -306,7 +306,8 @@ namespace AutoArm.Patches
                     AutoEquipState.Clear(curJob);
                     AutoEquipState.ClearPreviousWeapon(___pawn);
 
-                    if (SimpleSidearmsCompat.CanAutoEquipSidearms())
+                    if (SimpleSidearmsCompat.CanAutoEquipSidearms() &&
+                        curJob?.def != AutoArmDefOf.AutoArmSwapPrimary)
                     {
                         var lastDropped = DroppedItemTracker.GetLastDropped(___pawn);
                         if (lastDropped != null && lastDropped.def == newEq.def &&
@@ -317,7 +318,7 @@ namespace AutoArm.Patches
                                 if (SimpleSidearmsCompat.IsManagingPawn(___pawn))
                                 {
                                     SimpleSidearmsCompat.InformOfDroppedWeapon(___pawn, lastDropped);
-                                    SimpleSidearmsCompat.InformOfAddedSidearm(___pawn, newEq);
+                                    SimpleSidearmsCompat.InformOfAddedPrimary(___pawn, newEq);
 
                                     if (settings.debugLogging)
                                     {
@@ -535,7 +536,11 @@ namespace AutoArm.Patches
 
                 bool isEquipJob = ___curJob.def == JobDefOf.Equip ||
                                  ___curJob.def == AutoArmDefOf.EquipSecondary;
-                if (isEquipJob && condition == JobCondition.Succeeded)
+                bool isSwapJob = ___curJob.def == AutoArmDefOf.AutoArmSwapPrimary ||
+                                 ___curJob.def == AutoArmDefOf.AutoArmSwapSidearm;
+                bool isWeaponJob = isEquipJob || isSwapJob;
+
+                if (isWeaponJob && condition == JobCondition.Succeeded)
             {
                 JobGiver_PickUpBetterWeapon.RecordWeaponEquip(___pawn);
                 EquipCooldownTracker.Record(___pawn);
@@ -546,10 +551,12 @@ namespace AutoArm.Patches
                 }
             }
 
-            if (isEquipJob && ___curJob.targetA.Thing is ThingWithComps weapon)
+            if (isWeaponJob && ___curJob.targetA.Thing is ThingWithComps weapon)
             {
                 if (condition == JobCondition.Errored)
                 {
+                    JobGiver_PickUpBetterWeapon.RecordFailedJob(___pawn, weapon);
+
                     if (AutoEquipState.IsAutoEquip(___curJob))
                     {
                         string cantReason;
@@ -563,20 +570,22 @@ namespace AutoArm.Patches
                         }
                     }
                 }
-                else if (condition == JobCondition.Incompletable && AutoEquipState.IsAutoEquip(___curJob))
+                else if (condition == JobCondition.Incompletable)
                 {
-                    if (settings.debugLogging)
+                    JobGiver_PickUpBetterWeapon.RecordFailedJob(___pawn, weapon);
+
+                    if (AutoEquipState.IsAutoEquip(___curJob) && settings.debugLogging)
                     {
                         string issue = weapon.IsForbidden(___pawn) ? "forbidden" :
                                       !___pawn.CanReserve(weapon) ? "reservation conflict" :
                                       !___pawn.CanReach(weapon, PathEndMode.Touch, Danger.Deadly) ? "unreachable" :
                                       "unknown";
-                        AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Equip job incompletable for {AutoArmLogger.GetWeaponLabelLower(weapon)} ({issue}, not blacklisting)");
+                        AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Equip job incompletable for {AutoArmLogger.GetWeaponLabelLower(weapon)} ({issue})");
                     }
                 }
             }
 
-            if (isEquipJob && AutoEquipState.IsAutoEquip(___curJob))
+            if (isWeaponJob && AutoEquipState.IsAutoEquip(___curJob))
             {
                 if (condition != JobCondition.Ongoing &&
                     condition != JobCondition.QueuedNoLongerValid)

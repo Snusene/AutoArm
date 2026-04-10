@@ -28,12 +28,13 @@ namespace AutoArm
         {
             this.FailOnDestroyedNullOrForbidden(TargetIndex.A);
             this.FailOnDespawnedNullOrForbidden(TargetIndex.A);
+            this.FailOnBurningImmobile(TargetIndex.A);
 
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.ClosestTouch)
                 .FailOnDespawnedNullOrForbidden(TargetIndex.A)
                 .FailOnSomeonePhysicallyInteracting(TargetIndex.A)
                 .FailOn(() => pawn.Downed)
-                .FailOn(() => !pawn.CanReach(NewWeapon, PathEndMode.Touch, Danger.Deadly));
+                .FailOn(() => !pawn.CanReach(NewWeapon, PathEndMode.Touch, pawn.NormalMaxDanger()));
 
             var swapToil = new Toil
             {
@@ -156,9 +157,6 @@ namespace AutoArm
                 ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
             }
 
-            JobGiver_PickUpBetterWeapon.RecordWeaponEquip(pawn);
-            EquipCooldownTracker.Record(pawn);
-
             AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Sidearm swap complete and reordered");
         }
     }
@@ -180,12 +178,13 @@ namespace AutoArm
         {
             this.FailOnDestroyedNullOrForbidden(TargetIndex.A);
             this.FailOnDespawnedNullOrForbidden(TargetIndex.A);
+            this.FailOnBurningImmobile(TargetIndex.A);
 
             yield return Toils_Goto.GotoThing(TargetIndex.A, PathEndMode.ClosestTouch)
                 .FailOnDespawnedNullOrForbidden(TargetIndex.A)
                 .FailOnSomeonePhysicallyInteracting(TargetIndex.A)
                 .FailOn(() => pawn.Downed)
-                .FailOn(() => !pawn.CanReach(NewWeapon, PathEndMode.Touch, Danger.Deadly));
+                .FailOn(() => !pawn.CanReach(NewWeapon, PathEndMode.Touch, pawn.NormalMaxDanger()));
 
             var swapToil = new Toil
             {
@@ -250,7 +249,12 @@ namespace AutoArm
             if (SimpleSidearmsCompat.IsLoaded)
             {
                 SimpleSidearmsCompat.InformOfDroppedWeapon(pawn, droppedWeapon);
+                SimpleSidearmsCompat.InformOfAddedPrimary(pawn, newWeapon);
 
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    SimpleSidearmsCompat.LogRememberedWeapons(pawn, "after primary swap");
+                }
             }
 
             DroppedItemTracker.MarkAsDropped(droppedWeapon, 600, pawn);
@@ -258,20 +262,7 @@ namespace AutoArm
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Primary swap successful: {oldWeapon.Label} -> {newWeapon.Label}");
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Dropped {droppedWeapon.Label} at {dropPosition}");
-            }
-
-            JobGiver_PickUpBetterWeapon.RecordWeaponEquip(pawn);
-            EquipCooldownTracker.Record(pawn);
-
-            if (AutoArmMod.settings?.showNotifications == true &&
-                PawnUtility.ShouldSendNotificationAbout(pawn))
-            {
-                Messages.Message("AutoArm_UpgradedWeapon".Translate(
-                    pawn.LabelShort.CapitalizeFirst(),
-                    oldWeapon.Label,
-                    newWeapon.Label
-                ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
+                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Dropped weapon spawned={droppedWeapon?.Spawned}, pos={droppedWeapon?.Position}");
             }
         }
     }

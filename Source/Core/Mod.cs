@@ -20,7 +20,7 @@ namespace AutoArm
     public class AutoArmMod : Mod, IDisposable
     {
         public static AutoArmMod Instance { get; private set; }
-        public static string Version => "1.0.0";
+        public static string Version => "1.2.0";
         private bool disposed = false;
 
         public static AutoArmSettings settings;
@@ -409,10 +409,6 @@ namespace AutoArm
 
                     DroppedItemTracker.ClearAll();
 
-                    if (SimpleSidearmsCompat.IsLoaded)
-                    {
-                    }
-
                     Cleanup.ClearAllCaches();
 
                     foreach (var map in Find.Maps)
@@ -447,6 +443,11 @@ namespace AutoArm
 
             DrawCheckbox(listing, "AutoArm_ShowNotifications".Translate(), ref settings.showNotifications,
                 "AutoArm_ShowNotificationsDesc".Translate());
+
+            listing.Gap(Constants.UI_SMALL_GAP);
+
+            DrawCheckbox(listing, "AutoArm_ShowForcedLabels".Translate(), ref settings.showForcedLabels,
+                "AutoArm_ShowForcedLabelsDesc".Translate());
 
             listing.Gap(Constants.UI_SMALL_GAP);
 
@@ -904,6 +905,8 @@ namespace AutoArm
 
     public class AutoArmLoggerWindow : Window
     {
+        private bool refocusing = false;
+
         public AutoArmLoggerWindow()
         {
             doCloseX = true;
@@ -929,7 +932,10 @@ namespace AutoArm
 
         public void SetFocus()
         {
-            Find.WindowStack.ImmediateWindow(GetHashCode(), windowRect, WindowLayer.Dialog, () => DoWindowContents(windowRect.AtZero()));
+            refocusing = true;
+            Find.WindowStack.TryRemove(this, doCloseSound: false);
+            Find.WindowStack.Add(this);
+            refocusing = false;
         }
 
         public override void DoWindowContents(Rect inRect)
@@ -979,7 +985,10 @@ namespace AutoArm
         {
             base.PostClose();
 
-            StatusOverviewRenderer.ResetState();
+            if (!refocusing)
+            {
+                StatusOverviewRenderer.ResetState();
+            }
         }
 
     }

@@ -20,7 +20,7 @@ namespace AutoArm.Definitions
         public const float WeaponUpgradeThresholdMax = 1.50f;
 
 
-        public const float MarketValueCubeRootMultiplier = 21f;
+        public const float MarketValueFourthRootMultiplier = 21f;
 
         public const float WeaponFallbackMarketValue = 50f;
 
@@ -81,17 +81,8 @@ namespace AutoArm.Definitions
         public const float SkillBonusGrowthRate = 1.50f;
         public const float SkillBonusMax = 500f;
         public const float SkillMismatchMultiplier = 0.85f;
-        public const float WrongWeaponTypePenalty = 0.5f;
         public const float OutfitFilterDisallowedPenalty = -1000f;
 
-        public const float HPBelowMinimumBasePenalty = -10f;
-
-        public const float HPDeficitScalingFactor = 40f;
-        public const float HPBelowMinimumMaxPenalty = -30f;
-
-        public const float OdysseyUniqueBaseBonus = 50f;
-
-        public const float OdysseyUniqueTraitBonus = 25f;
 
 
         public const int WeaponScoreCacheLifetime = int.MaxValue;

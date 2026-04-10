@@ -49,9 +49,6 @@ namespace AutoArm
         public bool disableDuringRaids = DEFAULT_DISABLE_DURING_RAIDS;
         public bool respectWeaponBonds = DEFAULT_RESPECT_WEAPON_BONDS;
 
-        public bool preferSimilarWeapons = true;
-
-        public bool allowGrenadeEquip = false;
 
         public override void ExposeData()
         {

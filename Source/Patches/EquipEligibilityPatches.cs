@@ -110,7 +110,7 @@ namespace AutoArm.Patches
 
             if (canEquipMethod == null)
             {
-                return true;
+                return false;
             }
 
             try
@@ -128,7 +128,7 @@ namespace AutoArm.Patches
                 {
                     AutoArmLogger.Debug(() => $"[EquipEligibility] CanEquip invocation failed for {target?.LabelShort ?? "null"} on {pawn?.LabelShort ?? "null"}: {ex.Message}");
                 }
-                return true;
+                return false;
             }
         }
 

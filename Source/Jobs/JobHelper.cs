@@ -107,6 +107,13 @@ namespace AutoArm.Jobs
                 }
             }
 
+            if (pawn != null && pawn.equipment?.Primary != null && !isSidearm)
+            {
+                var oldPrimary = pawn.equipment.Primary;
+                AutoArmLogger.Debug(() => $"Creating cross-def primary swap: {oldPrimary.Label} -> {weapon.Label}");
+                return CreateSwapPrimaryJob(pawn, weapon, oldPrimary);
+            }
+
             if (isSidearm && AutoArmDefOf.EquipSecondary != null)
             {
                 AutoArmLogger.Debug(() => $"Creating EquipSecondary job for {weapon.Label} (new sidearm)");

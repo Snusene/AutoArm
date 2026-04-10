@@ -507,8 +507,6 @@ namespace AutoArm.Caching
         }
 
         private static readonly Dictionary<OutfitDefKey, bool> outfitFilterCache = new Dictionary<OutfitDefKey, bool>();
-        private static int outfitFilterCacheLastClearedTick = -1;
-        private const int OutfitFilterCacheDuration = 2500; // Same as standard cache
 
         private static int lastScoreAddedTick = -1;
         private static int deadPawnCleanupCounter = 0;
@@ -694,15 +692,6 @@ namespace AutoArm.Caching
             }
             else
             {
-                int currentTick = Find.TickManager?.TicksGame ?? 0;
-
-                // Clear stale cache periodically
-                if (currentTick - outfitFilterCacheLastClearedTick > OutfitFilterCacheDuration)
-                {
-                    outfitFilterCache.Clear();
-                    outfitFilterCacheLastClearedTick = currentTick;
-                }
-
                 int outfitId = outfit.id;
 
                 foreach (var weapon in GetAllWeapons(map))
@@ -734,14 +723,6 @@ namespace AutoArm.Caching
             }
             else
             {
-                int currentTick = Find.TickManager?.TicksGame ?? 0;
-
-                if (currentTick - outfitFilterCacheLastClearedTick > OutfitFilterCacheDuration)
-                {
-                    outfitFilterCache.Clear();
-                    outfitFilterCacheLastClearedTick = currentTick;
-                }
-
                 int outfitId = outfit.id;
 
                 foreach (var weapon in GetAllWeapons(map))
@@ -1416,7 +1397,6 @@ namespace AutoArm.Caching
             scoreCache.Clear();
             trackedMapIds.Clear();
             outfitFilterCache.Clear();
-            outfitFilterCacheLastClearedTick = -1;
             lastScoreAddedTick = -1;
             deadPawnCleanupCounter = 0;
             foreach (var map in Find.Maps)

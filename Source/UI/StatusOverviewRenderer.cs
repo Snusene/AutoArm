@@ -456,6 +456,7 @@ namespace AutoArm.UI
         private static string testResultsText = "";
 
         private static System.Reflection.FieldInfo cachedRootPosField = null;
+        private static System.Reflection.FieldInfo cachedVelocityField = null;
 
         private struct WeaponGroupInfo
         {
@@ -553,28 +554,31 @@ namespace AutoArm.UI
                 }
                 else if (cameraFollowTarget.Spawned && Find.CurrentMap == cameraFollowTarget.Map)
                 {
-                    var targetPos = cameraFollowTarget.Position.ToVector3Shifted();
-
-                    if (cachedRootPosField == null)
+                    if (Event.current.type == EventType.Repaint)
                     {
-                        cachedRootPosField = typeof(CameraDriver).GetField("rootPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    }
+                        var targetPos = cameraFollowTarget.DrawPos;
 
-                    var cameraDriver = Find.CameraDriver;
-                    if (cachedRootPosField != null)
-                    {
-                        var currentPos = (Vector3)cachedRootPosField.GetValue(cameraDriver);
-                        targetPos.y = currentPos.y;
+                        if (cachedRootPosField == null)
+                        {
+                            cachedRootPosField = typeof(CameraDriver).GetField("rootPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            cachedVelocityField = typeof(CameraDriver).GetField("velocity", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        }
 
-                        float distance = Vector3.Distance(currentPos, targetPos);
-                        float lerpSpeed = Mathf.Lerp(0.15f, 0.35f, Mathf.Clamp01(distance / 20f));
+                        var cameraDriver = Find.CameraDriver;
+                        if (cachedRootPosField != null)
+                        {
+                            var currentPos = (Vector3)cachedRootPosField.GetValue(cameraDriver);
+                            targetPos.y = currentPos.y;
 
-                        var smoothPos = Vector3.Lerp(currentPos, targetPos, lerpSpeed);
-                        cachedRootPosField.SetValue(cameraDriver, smoothPos);
-                    }
-                    else
-                    {
-                        CameraJumper.TryJump(cameraFollowTarget);
+                            cachedRootPosField.SetValue(cameraDriver, targetPos);
+
+                            if (cachedVelocityField != null)
+                                cachedVelocityField.SetValue(cameraDriver, Vector3.zero);
+                        }
+                        else
+                        {
+                            CameraJumper.TryJump(cameraFollowTarget);
+                        }
                     }
                 }
                 else
@@ -643,6 +647,26 @@ namespace AutoArm.UI
             isGatheringDebugData = false;
         }
 
+        private static float GetExpandedHeight(Pawn pawn)
+        {
+            var map = Find.CurrentMap;
+            if (map == null) return LINE_HEIGHT;
+
+            int weaponCount = 0;
+            foreach (var w in StatusOverviewDataGatherer.GetTopWeapons(map, pawn, 10))
+            {
+                if (!w.isForbidden && ++weaponCount >= 3) break;
+            }
+
+            if (weaponCount == 0)
+                return LINE_HEIGHT;
+
+            float headerHeight = LINE_HEIGHT * 0.8f;
+            float weaponLinesHeight = weaponCount * (LINE_HEIGHT * 0.8f);
+            float padding = LINE_HEIGHT * 0.7f;
+            return headerHeight + weaponLinesHeight + padding;
+        }
+
         private static float CalculateContentHeight(StatusOverviewData data)
         {
             float height = 0f;
@@ -677,7 +701,7 @@ namespace AutoArm.UI
                 {
                     height += LINE_HEIGHT * 1.4f;
                     if (expandedPawn == colonist.pawn)
-                        height += (LINE_HEIGHT * 3) + 30f;
+                        height += GetExpandedHeight(colonist.pawn);
                 }
                 height += SECTION_GAP;
             }
@@ -689,7 +713,7 @@ namespace AutoArm.UI
                 {
                     height += LINE_HEIGHT * 1.4f;
                     if (expandedPawn == colonist.pawn)
-                        height += (LINE_HEIGHT * 3) + 30f;
+                        height += GetExpandedHeight(colonist.pawn);
                 }
                 height += SECTION_GAP;
             }
@@ -701,7 +725,7 @@ namespace AutoArm.UI
                 {
                     height += LINE_HEIGHT * 1.4f;
                     if (expandedPawn == colonist.pawn)
-                        height += (LINE_HEIGHT * 3) + 30f;
+                        height += GetExpandedHeight(colonist.pawn);
                 }
             }
 
@@ -975,12 +999,15 @@ namespace AutoArm.UI
             float expandedWeaponsHeight = 0f;
             if (isExpanded)
             {
-                var topWeapons = StatusOverviewDataGatherer.GetTopWeapons(map, colonist.pawn, 10);
-                int weaponCount = Math.Min(topWeapons.Count(), 3);
+                int weaponCount = 0;
+                foreach (var w in StatusOverviewDataGatherer.GetTopWeapons(map, colonist.pawn, 10))
+                {
+                    if (!w.isForbidden && ++weaponCount >= 3) break;
+                }
 
                 if (weaponCount == 0)
                 {
-                    expandedWeaponsHeight = LINE_HEIGHT * 1.5f;
+                    expandedWeaponsHeight = LINE_HEIGHT;
                 }
                 else
                 {

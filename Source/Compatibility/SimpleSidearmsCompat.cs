@@ -1,6 +1,7 @@
 using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Logging;
+using AutoArm.Weapons;
 using HarmonyLib;
 using RimWorld;
 using System;
@@ -32,6 +33,7 @@ namespace AutoArm.Compatibility
         private static MethodInfo _equipSpecificWeaponMethod;
         private static MethodInfo _forgetSidearmMethod;
         private static MethodInfo _informAddedSidearmMethod;
+        private static MethodInfo _informAddedPrimaryMethod;
 
         private static PropertyInfo _rememberedWeaponsProp;
 
@@ -57,6 +59,7 @@ namespace AutoArm.Compatibility
         private static Func<Pawn, ThingWithComps, bool, bool, bool> _equipWeaponDelegate;
         private static Action<object, Thing, bool> _informDroppedDelegate;
         private static Action<object, Thing> _informAddedDelegate;
+        private static Action<object, Thing> _informAddedPrimaryDelegate;
 
         // Swap validation (no limit checks)
         private static MethodInfo _canUseSidearmInstanceMethod;
@@ -93,12 +96,13 @@ namespace AutoArm.Compatibility
         {
             public readonly ThingDef Thing;
             public readonly ThingDef Stuff;
+            public readonly int WeaponCount;
 
-            public PairKey(ThingDef thing, ThingDef stuff)
-            { Thing = thing; Stuff = stuff; }
+            public PairKey(ThingDef thing, ThingDef stuff, int weaponCount = 0)
+            { Thing = thing; Stuff = stuff; WeaponCount = weaponCount; }
 
             public bool Equals(PairKey other)
-            { return Thing == other.Thing && Stuff == other.Stuff; }
+            { return Thing == other.Thing && Stuff == other.Stuff && WeaponCount == other.WeaponCount; }
 
             public override bool Equals(object obj)
             { return obj is PairKey other && Equals(other); }
@@ -109,11 +113,10 @@ namespace AutoArm.Compatibility
                 {
                     int h = Thing != null ? Thing.shortHash : 0;
                     int s = Stuff != null ? Stuff.shortHash : 0;
-                    return (h * 397) ^ s;
+                    return ((h * 397) ^ s) * 31 + WeaponCount;
                 }
             }
 
-            // Encode for TickScheduler
             public int ToEncodedInt()
             {
                 int thingHash = Thing?.shortHash ?? 0;
@@ -227,7 +230,8 @@ namespace AutoArm.Compatibility
                     new Type[] { typeof(Thing), typeof(bool) });
                 _informAddedSidearmMethod = AccessTools.Method(_compSidearmMemoryType, "InformOfAddedSidearm",
                     new Type[] { typeof(Thing) });
-
+                _informAddedPrimaryMethod = AccessTools.Method(_compSidearmMemoryType, "InformOfAddedPrimary",
+                    new Type[] { typeof(Thing) });
                 _rememberedWeaponsProp = AccessTools.Property(_compSidearmMemoryType, "RememberedWeapons");
 
                 if (_ssModType != null)
@@ -243,6 +247,22 @@ namespace AutoArm.Compatibility
                 {
                     _pairThingField = AccessTools.Field(_thingDefStuffDefPairType, "thing");
                     _pairStuffField = AccessTools.Field(_thingDefStuffDefPairType, "stuff");
+                }
+
+                if (_canPickupSidearmMethod == null)
+                {
+                    AutoArmLogger.Warn("SimpleSidearms CanPickupSidearm method not found - sidearm limit checks will be unavailable");
+                    _reflectionFailed = true;
+                    _initialized = true;
+                    return;
+                }
+
+                if (_getMemoryCompMethod == null)
+                {
+                    AutoArmLogger.Warn("SimpleSidearms GetMemoryCompForPawn method not found - integration disabled");
+                    _reflectionFailed = true;
+                    _initialized = true;
+                    return;
                 }
 
                 TryCompileDelegates();
@@ -384,6 +404,23 @@ namespace AutoArm.Compatibility
                 }
             }
 
+            if (_informAddedPrimaryMethod != null)
+            {
+                try
+                {
+                    _informAddedPrimaryDelegate = (Action<object, Thing>)
+                        Delegate.CreateDelegate(typeof(Action<object, Thing>), _informAddedPrimaryMethod, throwOnBindFailure: false);
+                }
+                catch (Exception e)
+                {
+                    AutoArmLogger.Debug(() => $"[SimpleSidearms] InformAddedPrimary delegate bind failed, using reflection: {e.Message}");
+                    _informAddedPrimaryDelegate = (memory, thing) =>
+                    {
+                        _informAddedPrimaryMethod.Invoke(memory, new object[] { thing });
+                    };
+                }
+            }
+
             // Biocoding/roles check
             if (_canUseSidearmInstanceMethod != null)
             {
@@ -514,12 +551,16 @@ namespace AutoArm.Compatibility
             reason = "";
             if (!IsLoaded || weapon == null || pawn == null) return true;
             Initialize();
-            if (_reflectionFailed) return true;
+            if (_reflectionFailed)
+            {
+                reason = "SimpleSidearms reflection failed";
+                return false;
+            }
 
             int currentTick = Find.TickManager.TicksGame;
 
             var cache = GetOrCreateCache(pawn);
-            var key = new PairKey(weapon.def, weapon.Stuff);
+            var key = new PairKey(weapon.def, weapon.Stuff, CountCarriedWeapons(pawn));
 
             if (cache.ValidationCache.TryGetValue(key, out var cached))
             {
@@ -680,16 +721,17 @@ namespace AutoArm.Compatibility
 
             if (AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                // Check for duplicates first
                 var inv = pawn.inventory?.innerContainer;
                 if (inv != null)
                 {
                     ThingWithComps worstSameDef = null;
                     float worstScore = float.MaxValue;
+                    int sidearmCount = 0;
                     foreach (var thing in inv)
                     {
                         var w = thing as ThingWithComps;
-                        if (w == null || !w.def.IsWeapon) continue;
+                        if (w == null || !WeaponValidation.IsWeapon(w.def)) continue;
+                        sidearmCount++;
                         if (w.def != weapon.def) continue;
 
                         float s = CalculateWeaponScore(pawn, w);
@@ -706,7 +748,6 @@ namespace AutoArm.Compatibility
 
                         if (newScore > worstScore)
                         {
-                            // Pre-validate
                             string swapReason;
                             if (!CanUseSidearmForSwap(weapon, worstSameDef, pawn, out swapReason))
                             {
@@ -722,9 +763,14 @@ namespace AutoArm.Compatibility
                             return null;
                         }
                     }
+
+                    if (!IsReady)
+                    {
+                        AutoArmLogger.Debug(() => "[SimpleSidearms] Sidearm add blocked - SS reflection unavailable");
+                        return null;
+                    }
                 }
 
-                // Add as new sidearm
                 string reason;
                 if (CanPickupSidearm(weapon, pawn, out reason))
                 {
@@ -789,6 +835,16 @@ namespace AutoArm.Compatibility
             if (_informDroppedDelegate != null)
             {
                 _informDroppedDelegate(memory, weapon, true);
+                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] SS InformOfDroppedSidearm: forgot {weapon.Label}");
+            }
+            else if (_forgetSidearmMethod != null)
+            {
+                _forgetSidearmMethod.Invoke(memory, new object[] { weapon, true });
+                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] SS InformOfDroppedSidearm (reflection): forgot {weapon.Label}");
+            }
+            else
+            {
+                AutoArmLogger.Warn($"[{pawn.LabelShort}] SS InformOfDroppedSidearm FAILED: no delegate or method available for {weapon.Label}");
             }
 
             InvalidateCanPickupCache(pawn);
@@ -816,6 +872,58 @@ namespace AutoArm.Compatibility
             }
 
             InvalidateCanPickupCache(pawn);
+        }
+
+        public static void InformOfAddedPrimary(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded || pawn == null || weapon == null) return;
+            Initialize();
+            if (_reflectionFailed) return;
+
+            if (!IsSimpleSidearmsActive())
+                return;
+
+            var memory = GetMemoryComp(pawn);
+            if (memory == null) return;
+
+            if (_informAddedPrimaryDelegate != null)
+            {
+                _informAddedPrimaryDelegate(memory, weapon);
+            }
+            else if (_informAddedPrimaryMethod != null)
+            {
+                _informAddedPrimaryMethod.Invoke(memory, new object[] { weapon });
+            }
+            else
+            {
+                InformOfAddedSidearm(pawn, weapon);
+            }
+
+            InvalidateCanPickupCache(pawn);
+        }
+
+        public static void LogRememberedWeapons(Pawn pawn, string context)
+        {
+            if (!IsLoaded || pawn == null) return;
+            Initialize();
+            var memory = GetMemoryComp(pawn);
+            if (memory == null) return;
+
+            var remembered = _rememberedWeaponsProp?.GetValue(memory) as System.Collections.IEnumerable;
+            if (remembered == null) return;
+
+            var names = new System.Text.StringBuilder();
+            int count = 0;
+            foreach (var item in remembered)
+            {
+                if (item == null) continue;
+                var thingDef = _pairThingField?.GetValue(item) as ThingDef;
+                if (thingDef == null) continue;
+                if (count > 0) names.Append(", ");
+                names.Append(thingDef.defName);
+                count++;
+            }
+            AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] SS remembered ({context}): [{count}] {names}");
         }
 
         public static void ClearAllCaches()
@@ -1028,6 +1136,21 @@ namespace AutoArm.Compatibility
             return instance;
         }
 
+        private static int CountCarriedWeapons(Pawn pawn)
+        {
+            int count = pawn.equipment?.Primary != null ? 1 : 0;
+            var inv = pawn.inventory?.innerContainer;
+            if (inv != null)
+            {
+                foreach (var thing in inv)
+                {
+                    if (WeaponValidation.IsWeapon(thing.def))
+                        count++;
+                }
+            }
+            return count;
+        }
+
         private static WeaponCheckCache GetOrCreateCache(Pawn pawn)
         {
             if (!_pawnCaches.TryGetValue(pawn, out var cache))
@@ -1116,7 +1239,7 @@ namespace AutoArm.Compatibility
             foreach (Thing thing in pawn.inventory.innerContainer)
             {
                 var weapon = thing as ThingWithComps;
-                if (weapon == null || !weapon.def.IsWeapon)
+                if (weapon == null || !WeaponValidation.IsWeapon(weapon.def))
                     continue;
 
                 bool isForced = Helpers.ForcedWeapons.IsForced(pawn, weapon);
@@ -1129,6 +1252,12 @@ namespace AutoArm.Compatibility
 
                 bool isSameType = weapon.def.IsRangedWeapon == newWeapon.def.IsRangedWeapon;
                 bool isSameDefUpgrade = weapon.def == newWeapon.def;
+
+                if (isForced && !isSameDefUpgrade)
+                {
+                    AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping forced sidearm {weapon.Label} for cross-def swap");
+                    continue;
+                }
 
                 float effectiveThreshold;
                 if (isSameDefUpgrade)
@@ -1304,6 +1433,34 @@ namespace AutoArm.Compatibility
 
     [HarmonyPatch]
     [HarmonyPatchCategory(Patches.PatchCategories.Compatibility)]
+    public static class CompSidearmMemory_InformOfDroppedSidearm_Patch
+    {
+        public static bool Prepare()
+        {
+            return SimpleSidearmsCompat.IsLoaded && !SimpleSidearmsCompat.ReflectionFailed;
+        }
+
+        public static MethodBase TargetMethod()
+        {
+            var type = AccessTools.TypeByName("SimpleSidearms.rimworld.CompSidearmMemory")
+                ?? AccessTools.TypeByName("PeteTimesSix.SimpleSidearms.CompSidearmMemory");
+            if (type == null) return null;
+            return AccessTools.Method(type, "InformOfDroppedSidearm", new Type[] { typeof(Thing), typeof(bool) });
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(object __instance)
+        {
+            var comp = __instance as ThingComp;
+            var pawn = comp?.parent as Pawn;
+            if (pawn == null) return;
+
+            SimpleSidearmsCompat.InvalidatePawnCache(pawn);
+        }
+    }
+
+    [HarmonyPatch]
+    [HarmonyPatchCategory(Patches.PatchCategories.Compatibility)]
     public static class JobGiver_RetrieveWeapon_TryGiveJob_Patch
     {
         private static Type _jobGiverType;
@@ -1352,7 +1509,6 @@ namespace AutoArm.Compatibility
 
                     if (newScore <= existingScore)
                     {
-                        // Target is not better - block the job
                         AutoArm.Logging.AutoArmLogger.Debug(() =>
                             $"[{pawn.LabelShort}] Blocked SS re-equip: already has {w.Label} ({existingScore:F1}), target {targetWeapon.Label} ({newScore:F1}) not better");
                         __result = null;
@@ -1360,10 +1516,6 @@ namespace AutoArm.Compatibility
                     }
                     else
                     {
-                        // Let AutoArm handle the swap
-                        AutoArm.Logging.AutoArmLogger.Debug(() =>
-                            $"[{pawn.LabelShort}] Blocked SS re-equip: has {w.Label} ({existingScore:F1}), letting AutoArm swap to {targetWeapon.Label} ({newScore:F1})");
-                        __result = null;
                         return;
                     }
                 }

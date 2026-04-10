@@ -29,6 +29,8 @@
 	<AutoArm_EnableModDesc>When enabled, colonists will automatically equip better weapons based on their outfit policy. When disabled, all automatic weapon management is turned off.</AutoArm_EnableModDesc>
 	<AutoArm_ShowNotifications>Show notifications</AutoArm_ShowNotifications>
 	<AutoArm_ShowNotificationsDesc>Shows notification messages when colonists equip or upgrade weapons.</AutoArm_ShowNotificationsDesc>
+	<AutoArm_ShowForcedLabels>Show forced weapon labels</AutoArm_ShowForcedLabels>
+	<AutoArm_ShowForcedLabelsDesc>Adds a "forced" tag to weapon names that have been manually assigned to a colonist.</AutoArm_ShowForcedLabelsDesc>
 
 	<!-- Notification Messages -->
 	<AutoArm_EquippedWeapon>{0} equipped {1}</AutoArm_EquippedWeapon>

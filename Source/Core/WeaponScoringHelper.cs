@@ -225,7 +225,7 @@ namespace AutoArm.Weapons
 
             float baseScore = 0f;
 
-            baseScore = (float)Math.Pow(baseProps.BaseMarketValue, 1.0 / 4.0) * Constants.MarketValueCubeRootMultiplier;
+            baseScore = (float)Math.Pow(baseProps.BaseMarketValue, 1.0 / 4.0) * Constants.MarketValueFourthRootMultiplier;
 
             baseScore *= baseProps.RangeModifier;
             baseScore *= baseProps.WarmupModifier;

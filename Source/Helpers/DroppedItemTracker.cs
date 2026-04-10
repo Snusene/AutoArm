@@ -12,7 +12,10 @@ namespace AutoArm.Helpers
         private static HashSet<Thing> upgrades = new HashSet<Thing>();
 
         private static Dictionary<Pawn, ThingWithComps> lastDropped = new Dictionary<Pawn, ThingWithComps>();
+        private static Dictionary<Pawn, int> lastDroppedExpiry = new Dictionary<Pawn, int>();
         private static Dictionary<Thing, Pawn> itemToPawnLookup = new Dictionary<Thing, Pawn>();
+
+        private const int PawnDropCooldownTicks = 2500;
 
         private static Dictionary<int, Thing> idToThingLookup = new Dictionary<int, Thing>();
 
@@ -47,6 +50,7 @@ namespace AutoArm.Helpers
             if (pawn != null && item is ThingWithComps weapon && weapon.def.IsWeapon)
             {
                 lastDropped[pawn] = weapon;
+                lastDroppedExpiry[pawn] = currentTick + PawnDropCooldownTicks;
                 itemToPawnLookup[weapon] = pawn;
             }
         }
@@ -138,6 +142,7 @@ namespace AutoArm.Helpers
                     itemToPawnLookup.Remove(weapon);
                 }
                 lastDropped.Remove(pawn);
+                lastDroppedExpiry.Remove(pawn);
             }
             ListPool<Pawn>.Return(expiredPawns);
 
@@ -152,6 +157,7 @@ namespace AutoArm.Helpers
             idToThingLookup.Clear();
             upgrades.Clear();
             lastDropped.Clear();
+            lastDroppedExpiry.Clear();
             itemToPawnLookup.Clear();
             // TickScheduler clears events
         }
@@ -229,9 +235,12 @@ namespace AutoArm.Helpers
             if (pawn == null || !lastDropped.TryGetValue(pawn, out var weapon))
                 return null;
 
-            if (weapon?.Destroyed != false || !droppedItems.ContainsKey(weapon))
+            int currentTick = Find.TickManager.TicksGame;
+            if (weapon?.Destroyed != false ||
+                (lastDroppedExpiry.TryGetValue(pawn, out int expiry) && currentTick >= expiry))
             {
                 lastDropped.Remove(pawn);
+                lastDroppedExpiry.Remove(pawn);
                 itemToPawnLookup.Remove(weapon);
                 return null;
             }
@@ -332,6 +341,7 @@ namespace AutoArm.Helpers
             {
                 itemToPawnLookup.Remove(weapon);
                 lastDropped.Remove(pawn);
+                lastDroppedExpiry.Remove(pawn);
             }
         }
     }

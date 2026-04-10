@@ -159,10 +159,11 @@ namespace AutoArm
                     ListPool<ScheduledEvent>.Return(list);
                     schedule.Remove(tick);
                 }
+                ticks.Remove(tick);
             }
             ListPool<int>.Return(emptyTicks);
 
-            if (secondaryId == 0)
+            if (ticks.Count == 0 || secondaryId == 0)
                 reverseIndex.Remove(key);
         }
 
