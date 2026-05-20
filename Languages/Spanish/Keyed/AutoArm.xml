@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+	<AutoArm_SettingsCategory>Auto Arm</AutoArm_SettingsCategory>
+	<AutoArm_Settings>Configuración</AutoArm_Settings>
+	<AutoArm_ResetConfig>Restablecer a predeterminados</AutoArm_ResetConfig>
+	<AutoArm_ConfirmReset>¿Estás seguro de que deseas restablecer toda la configuración a valores predeterminados?</AutoArm_ConfirmReset>
+	<AutoArm_SettingsReset>Configuración de Auto Arm restablecida a valores predeterminados.</AutoArm_SettingsReset>
+	<AutoArm_HoverHint>(pasa el cursor sobre las opciones para ver descripciones)</AutoArm_HoverHint>
+	<AutoArm_General>General</AutoArm_General>
+	<AutoArm_Compatibility>Compatibilidad</AutoArm_Compatibility>
+	<AutoArm_Advanced>Avanzado</AutoArm_Advanced>
+	<AutoArm_Debug>Depuración</AutoArm_Debug>
+
+	<AutoArm_EnableMod>Habilitar mod</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>Los colonos equipan automáticamente mejores armas según su política de vestimenta.</AutoArm_EnableModDesc>
+	<AutoArm_ShowNotifications>Mostrar notificaciones</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>Muestra mensajes de notificación cuando los colonos equipan o mejoran armas.</AutoArm_ShowNotificationsDesc>
+	<AutoArm_ShowForcedLabels>Mostrar etiquetas de armas forzadas</AutoArm_ShowForcedLabels>
+	<AutoArm_ShowForcedLabelsDesc>Añade una etiqueta «forzada» a los nombres de las armas asignadas manualmente a un colono.</AutoArm_ShowForcedLabelsDesc>
+	<AutoArm_DisableDuringRaids>Desactivar durante incursiones</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>Pausa el auto-equipamiento durante incursiones y otras amenazas. Evita conflictos con mods de combate.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>Solo auto-equipar desde almacenamiento</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>Los colonos solo auto-equipan armas de pilas de almacenamiento, estantes y otros almacenes. Ignora armas en el suelo.</AutoArm_OnlyEquipFromStorageDesc>
+	<AutoArm_AllowForcedWeaponUpgrades>Mejorar armas forzadas</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>Los colonos pueden mejorar armas forzadas a versiones de mejor calidad del mismo tipo (ej. revólver normal a revólver obra maestra).</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>Armar colonos temporales</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>Colonos temporales sin restricciones de equipamiento (refugiados, peones prestados) pueden auto-equipar armas.</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_ForceWeapon>Marcar vinculadas como forzadas</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>Las armas persona vinculadas se marcan automáticamente como forzadas, evitando el cambio automático.</AutoArm_ForceWeaponDesc>
+
+	<AutoArm_CompatibilityPatches>Parches de compatibilidad</AutoArm_CompatibilityPatches>
+	<AutoArm_NoCompatModsDetected>Ninguno — usando solo características del juego base</AutoArm_NoCompatModsDetected>
+	<AutoArm_Loaded>Activo</AutoArm_Loaded>
+	<AutoArm_SimpleSidearms>Simple Sidearms</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>Combat Extended</AutoArm_CombatExtended>
+	<AutoArm_PocketSand>Pocket Sand</AutoArm_PocketSand>
+	<AutoArm_EnableSidearmAutoEquip>Auto-equipar armas secundarias</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Permite a los colonos recoger automáticamente armas adicionales como armas secundarias.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>Permitir mejoras de armas secundarias</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>Los colonos cambiarán armas secundarias por mejores cuando estén disponibles.</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_Experimental>(experimental)</AutoArm_Experimental>
+	<AutoArm_RequireAmmunition>Requerir munición</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>Los colonos solo recogen armas si tienen acceso a munición apropiada.</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ El sistema de munición CE está deshabilitado</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ Integración de SimpleSidearms falló, funciones de armas secundarias deshabilitadas.</AutoArm_SimpleSidearmsReflectionFailed>
+
+	<AutoArm_WeaponUpgrades>Mejoras de armas</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>Umbral de mejora</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>Cuánto mejor debe ser un arma antes de que los colonos cambien. Valores más bajos significan cambios más frecuentes.</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>Preferencia de armas</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>Inclina a los colonos hacia armas a distancia o cuerpo a cuerpo.</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_StrongMeleePreference>Fuerte preferencia por cuerpo a cuerpo</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>Preferencia moderada por cuerpo a cuerpo</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>Ligera preferencia por cuerpo a cuerpo</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>Balanceado (sin preferencia)</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>Ligera preferencia por armas a distancia</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>Preferencia moderada por armas a distancia</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>Fuerte preferencia por armas a distancia</AutoArm_StrongRangedPreference>
+	<AutoArm_AgeRestrictions>Restricciones de edad</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>Límite de edad personalizado</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>Desliza a la izquierda para automatizar tu milicia infantil más temprano, desliza a la derecha para seguridad aburrida. Los niños también de alguna manera ignoran todas las verificaciones de peso del arma. Definitivamente no es un error.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>Edad mínima</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>Edad mínima para comenzar a auto-equipar armas.</AutoArm_MinimumAgeDesc>
+	<AutoArm_WhatCouldGoWrong>⚠ ¡Aprobado por Randy!</AutoArm_WhatCouldGoWrong>
+
+	<AutoArm_EnableDebugLogging>Habilitar registro de depuración</AutoArm_EnableDebugLogging>
+	<AutoArm_DebugRequiresActiveGame>Las herramientas de depuración requieren un juego activo</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>Herramientas de depuración de Auto Arm</AutoArm_DebugTools>
+	<AutoArm_SaveBeforeDebug>Guarda primero. Quedas avisado.</AutoArm_SaveBeforeDebug>
+	<AutoArm_PerfOverlayError>Error de superposición de rendimiento</AutoArm_PerfOverlayError>
+
+	<AutoArm_StatusOverview>Resumen de estado</AutoArm_StatusOverview>
+	<AutoArm_WeaponScoresTab>Puntuaciones de armas</AutoArm_WeaponScoresTab>
+	<AutoArm_NoActiveMap>Error: No hay mapa activo</AutoArm_NoActiveMap>
+	<AutoArm_ColonistsValidActive>Válidos y activos</AutoArm_ColonistsValidActive>
+	<AutoArm_ColonistsValidActiveTooltip>Colonos a los que AutoArm puede asignar trabajos de armas inmediatamente.</AutoArm_ColonistsValidActiveTooltip>
+	<AutoArm_ColonistsValidBusy>Válidos pero ocupados</AutoArm_ColonistsValidBusy>
+	<AutoArm_ColonistsValidBusyTooltip>Colonos elegibles que están en otro trabajo (durmiendo, minando, etc.).</AutoArm_ColonistsValidBusyTooltip>
+	<AutoArm_ColonistsInvalid>No válidos</AutoArm_ColonistsInvalid>
+	<AutoArm_ColonistsInvalidTooltip>Colonos que AutoArm omite. Pasa el cursor sobre una fila para ver el motivo específico.</AutoArm_ColonistsInvalidTooltip>
+	<AutoArm_ReasonRaidActive>Incursión activa</AutoArm_ReasonRaidActive>
+
+	<AutoArm_StatusReason>Motivo: {0}</AutoArm_StatusReason>
+	<AutoArm_StatusSkillsShort>D:{0} C:{1}</AutoArm_StatusSkillsShort>
+	<AutoArm_StatusBaseScore>Base: {0}</AutoArm_StatusBaseScore>
+	<AutoArm_StatusOutfitWeapons>Vestimenta: {0} ({1} tipos de arma)</AutoArm_StatusOutfitWeapons>
+	<AutoArm_StatusScore>Puntuación: {0}</AutoArm_StatusScore>
+	<AutoArm_StatusOK>OK</AutoArm_StatusOK>
+
+	<AutoArm_AllWeaponsOnMap>Todas las armas en el mapa ({0})</AutoArm_AllWeaponsOnMap>
+	<AutoArm_AllWeaponsTooltip>Todas las armas que AutoArm ve.</AutoArm_AllWeaponsTooltip>
+	<AutoArm_EffectivenessScore>Puntuación de efectividad</AutoArm_EffectivenessScore>
+	<AutoArm_NoValidWeapons>  No hay armas adecuadas en el mapa</AutoArm_NoValidWeapons>
+	<AutoArm_JumpedTo>Saltado a {0}</AutoArm_JumpedTo>
+	<AutoArm_VariantsFound>{0} variantes encontradas</AutoArm_VariantsFound>
+	<AutoArm_TooltipPosition>Posición: {0}</AutoArm_TooltipPosition>
+	<AutoArm_PillForbidden>prohibida</AutoArm_PillForbidden>
+	<AutoArm_PillRanged>distancia</AutoArm_PillRanged>
+	<AutoArm_PillMelee>cuerpo</AutoArm_PillMelee>
+	<AutoArm_ClickToJump>Clic para saltar al arma</AutoArm_ClickToJump>
+
+	<AutoArm_ScoreType>Tipo: {0}</AutoArm_ScoreType>
+	<AutoArm_TypeRanged>A distancia</AutoArm_TypeRanged>
+	<AutoArm_TypeMelee>Cuerpo a cuerpo</AutoArm_TypeMelee>
+	<AutoArm_ScoreComponents>Componentes:</AutoArm_ScoreComponents>
+	<AutoArm_ScoreBase>  Base (DPS × prec × PA):   {0}</AutoArm_ScoreBase>
+	<AutoArm_ScoreSkillBonus>  Bonus de habilidad:       {0}</AutoArm_ScoreSkillBonus>
+	<AutoArm_ScoreHunterBonus>  Bonus de cazador:         {0}</AutoArm_ScoreHunterBonus>
+	<AutoArm_ScoreOutfitPolicy>  Política de vestimenta:   {0}</AutoArm_ScoreOutfitPolicy>
+	<AutoArm_ScoreMultipliers>Multiplicadores:</AutoArm_ScoreMultipliers>
+	<AutoArm_ScoreSkillMatch>  Coincidencia habilidad:   {0}</AutoArm_ScoreSkillMatch>
+	<AutoArm_ScorePersona>  Persona:                  {0}</AutoArm_ScorePersona>
+	<AutoArm_ScoreCEAmmo>  Munición CE:              {0}</AutoArm_ScoreCEAmmo>
+	<AutoArm_ScoreTotalLine>Total: {0}</AutoArm_ScoreTotalLine>
+	<AutoArm_ScoreForcedLocked>Arma forzada (bloqueada)</AutoArm_ScoreForcedLocked>
+	<AutoArm_ScoreBlocked>Bloqueada por política de vestimenta</AutoArm_ScoreBlocked>
+
+	<AutoArm_PawnUnknown>Desconocido</AutoArm_PawnUnknown>
+	<AutoArm_TooltipSkills>Habilidades: Disparo {0}, Cuerpo a cuerpo {1}</AutoArm_TooltipSkills>
+	<AutoArm_TooltipWeapon>Arma: {0}</AutoArm_TooltipWeapon>
+	<AutoArm_TooltipWeaponNone>Arma: ninguna</AutoArm_TooltipWeaponNone>
+	<AutoArm_TooltipBonded>Vinculada</AutoArm_TooltipBonded>
+	<AutoArm_TooltipSidearms>Armas secundarias: {0}</AutoArm_TooltipSidearms>
+	<AutoArm_TooltipOutfit>Vestimenta: {0}</AutoArm_TooltipOutfit>
+	<AutoArm_TooltipAllows>La vestimenta permite {0} tipos de arma</AutoArm_TooltipAllows>
+	<AutoArm_TooltipInvalid>No válido: {0}</AutoArm_TooltipInvalid>
+
+	<AutoArm_EquippedWeapon>{0} equipó {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} mejoró de {1} a {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_EquippedSidearm>{0} equipó arma secundaria {1}</AutoArm_EquippedSidearm>
+	<AutoArm_UpgradedSidearm>{0} mejoró arma secundaria de {1} a {2}</AutoArm_UpgradedSidearm>
+
+	<AutoArm_ThinkTreeInjectionFailed>AutoArm: La inyección del árbol de pensamiento falló, el mod no funcionará. Por favor reporta este problema.</AutoArm_ThinkTreeInjectionFailed>
+
+</LanguageData>

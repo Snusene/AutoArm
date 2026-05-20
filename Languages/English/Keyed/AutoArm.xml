@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+	<AutoArm_SettingsCategory>Auto Arm</AutoArm_SettingsCategory>
+	<AutoArm_Settings>Settings</AutoArm_Settings>
+	<AutoArm_ResetConfig>Reset to defaults</AutoArm_ResetConfig>
+	<AutoArm_ConfirmReset>Are you sure you want to reset all settings to defaults?</AutoArm_ConfirmReset>
+	<AutoArm_SettingsReset>Auto Arm settings reset to defaults.</AutoArm_SettingsReset>
+	<AutoArm_HoverHint>(hover over options for descriptions)</AutoArm_HoverHint>
+	<AutoArm_General>General</AutoArm_General>
+	<AutoArm_Compatibility>Compatibility</AutoArm_Compatibility>
+	<AutoArm_Advanced>Advanced</AutoArm_Advanced>
+	<AutoArm_Debug>Debug Tools</AutoArm_Debug>
+
+	<AutoArm_EnableMod>Enable mod</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>Colonists automatically equip better weapons based on their apparel policy.</AutoArm_EnableModDesc>
+	<AutoArm_ShowNotifications>Show notifications</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>Shows notification messages when colonists equip or upgrade weapons.</AutoArm_ShowNotificationsDesc>
+	<AutoArm_ShowForcedLabels>Show forced weapon labels</AutoArm_ShowForcedLabels>
+	<AutoArm_ShowForcedLabelsDesc>Adds a "forced" label to weapon names that have been manually assigned to a colonist.</AutoArm_ShowForcedLabelsDesc>
+	<AutoArm_DisableDuringRaids>Disable during raids</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>Pauses auto equip during raids and other threats. Avoids conflicts with combat mods.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>Only auto equip from storage</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>Colonists only auto equip weapons from stockpiles, shelves, and other storage. Ignores weapons lying on the ground.</AutoArm_OnlyEquipFromStorageDesc>
+	<AutoArm_AllowForcedWeaponUpgrades>Upgrade forced weapons</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>Colonists can upgrade forced weapons to better quality versions of the same type (e.g., normal revolver to masterwork revolver).</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>Arm temporary colonists</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>Temporary colonists without equipment restrictions (refugees, borrowed pawns) can auto equip weapons.</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_ForceWeapon>Mark bonded as forced</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>Bonded persona weapons are automatically marked as forced, preventing automatic switching.</AutoArm_ForceWeaponDesc>
+
+	<AutoArm_CompatibilityPatches>Compatibility Patches</AutoArm_CompatibilityPatches>
+	<AutoArm_NoCompatModsDetected>None - using base game features only</AutoArm_NoCompatModsDetected>
+	<AutoArm_Loaded>Active</AutoArm_Loaded>
+	<AutoArm_SimpleSidearms>Simple Sidearms</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>Combat Extended</AutoArm_CombatExtended>
+	<AutoArm_PocketSand>Pocket Sand</AutoArm_PocketSand>
+	<AutoArm_EnableSidearmAutoEquip>Auto equip sidearms</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Allows colonists to automatically pick up additional weapons as sidearms.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>Allow sidearm upgrades</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>Colonists will swap sidearms for better ones when available.</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_Experimental>(experimental)</AutoArm_Experimental>
+	<AutoArm_RequireAmmunition>Require ammunition</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>Colonists only pick up weapons if they have access to appropriate ammunition.</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ CE ammo system is disabled</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ SimpleSidearms integration failed, sidearm features disabled.</AutoArm_SimpleSidearmsReflectionFailed>
+
+	<AutoArm_WeaponUpgrades>Weapon Upgrades</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>Upgrade threshold</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>How much better a weapon needs to be before colonists will switch. Lower values mean more frequent switching.</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>Weapon preference</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>Bias colonists toward ranged or melee weapons.</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_StrongMeleePreference>Strong melee preference</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>Moderate melee preference</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>Slight melee preference</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>Balanced (no preference)</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>Slight ranged preference</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>Moderate ranged preference</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>Strong ranged preference</AutoArm_StrongRangedPreference>
+	<AutoArm_AgeRestrictions>Age Restrictions</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>Custom age limit</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>Slide left to automate your child militia earlier, slide right for boring safety. Kids also somehow bypass all weapon weight checks. Definitely not a bug.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>Minimum age</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>Minimum age to start auto equipping weapons.</AutoArm_MinimumAgeDesc>
+	<AutoArm_WhatCouldGoWrong>⚠ Randy approved!</AutoArm_WhatCouldGoWrong>
+
+	<AutoArm_EnableDebugLogging>Enable debug logging</AutoArm_EnableDebugLogging>
+	<AutoArm_DebugRequiresActiveGame>Debug tools require an active game</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>Auto Arm Debug Tools</AutoArm_DebugTools>
+	<AutoArm_SaveBeforeDebug>Save first. You've been warned.</AutoArm_SaveBeforeDebug>
+	<AutoArm_PerfOverlayError>Performance overlay error</AutoArm_PerfOverlayError>
+
+	<AutoArm_StatusOverview>Status Overview</AutoArm_StatusOverview>
+	<AutoArm_WeaponScoresTab>Weapon Scores</AutoArm_WeaponScoresTab>
+	<AutoArm_NoActiveMap>Error: No active map</AutoArm_NoActiveMap>
+	<AutoArm_ColonistsValidActive>Valid &amp; active</AutoArm_ColonistsValidActive>
+	<AutoArm_ColonistsValidActiveTooltip>Colonists AutoArm can immediately assign weapon jobs to.</AutoArm_ColonistsValidActiveTooltip>
+	<AutoArm_ColonistsValidBusy>Valid but busy</AutoArm_ColonistsValidBusy>
+	<AutoArm_ColonistsValidBusyTooltip>Eligible colonists currently on another job (sleeping, mining, etc.).</AutoArm_ColonistsValidBusyTooltip>
+	<AutoArm_ColonistsInvalid>Invalid</AutoArm_ColonistsInvalid>
+	<AutoArm_ColonistsInvalidTooltip>Colonists AutoArm skips. Hover a row to see the specific reason.</AutoArm_ColonistsInvalidTooltip>
+	<AutoArm_ReasonRaidActive>Raid active</AutoArm_ReasonRaidActive>
+
+	<AutoArm_StatusReason>Reason: {0}</AutoArm_StatusReason>
+	<AutoArm_StatusSkillsShort>S:{0} M:{1}</AutoArm_StatusSkillsShort>
+	<AutoArm_StatusBaseScore>Base: {0}</AutoArm_StatusBaseScore>
+	<AutoArm_StatusOutfitWeapons>Outfit: {0} ({1} weapons)</AutoArm_StatusOutfitWeapons>
+	<AutoArm_StatusScore>Score: {0}</AutoArm_StatusScore>
+	<AutoArm_StatusOK>OK</AutoArm_StatusOK>
+
+	<AutoArm_AllWeaponsOnMap>All Weapons on Map ({0})</AutoArm_AllWeaponsOnMap>
+	<AutoArm_AllWeaponsTooltip>Every weapon AutoArm sees.</AutoArm_AllWeaponsTooltip>
+	<AutoArm_EffectivenessScore>Effectiveness score</AutoArm_EffectivenessScore>
+	<AutoArm_NoValidWeapons>  No suitable weapons available on map</AutoArm_NoValidWeapons>
+	<AutoArm_JumpedTo>Jumped to {0}</AutoArm_JumpedTo>
+	<AutoArm_VariantsFound>{0} variants found</AutoArm_VariantsFound>
+	<AutoArm_TooltipPosition>Position: {0}</AutoArm_TooltipPosition>
+	<AutoArm_PillForbidden>forbidden</AutoArm_PillForbidden>
+	<AutoArm_PillRanged>ranged</AutoArm_PillRanged>
+	<AutoArm_PillMelee>melee</AutoArm_PillMelee>
+	<AutoArm_ClickToJump>Click to jump to weapon</AutoArm_ClickToJump>
+
+	<AutoArm_ScoreType>Type: {0}</AutoArm_ScoreType>
+	<AutoArm_TypeRanged>Ranged</AutoArm_TypeRanged>
+	<AutoArm_TypeMelee>Melee</AutoArm_TypeMelee>
+	<AutoArm_ScoreComponents>Components:</AutoArm_ScoreComponents>
+	<AutoArm_ScoreBase>  Base (DPS × acc × AP):  {0}</AutoArm_ScoreBase>
+	<AutoArm_ScoreSkillBonus>  Skill bonus:            {0}</AutoArm_ScoreSkillBonus>
+	<AutoArm_ScoreHunterBonus>  Hunter bonus:           {0}</AutoArm_ScoreHunterBonus>
+	<AutoArm_ScoreOutfitPolicy>  Outfit policy:          {0}</AutoArm_ScoreOutfitPolicy>
+	<AutoArm_ScoreMultipliers>Multipliers:</AutoArm_ScoreMultipliers>
+	<AutoArm_ScoreSkillMatch>  Skill match:            {0}</AutoArm_ScoreSkillMatch>
+	<AutoArm_ScorePersona>  Persona:                {0}</AutoArm_ScorePersona>
+	<AutoArm_ScoreCEAmmo>  CE ammo:                {0}</AutoArm_ScoreCEAmmo>
+	<AutoArm_ScoreTotalLine>Total: {0}</AutoArm_ScoreTotalLine>
+	<AutoArm_ScoreForcedLocked>Forced weapon (locked)</AutoArm_ScoreForcedLocked>
+	<AutoArm_ScoreBlocked>Blocked by outfit policy</AutoArm_ScoreBlocked>
+
+	<AutoArm_PawnUnknown>Unknown</AutoArm_PawnUnknown>
+	<AutoArm_TooltipSkills>Skills: Shooting {0}, Melee {1}</AutoArm_TooltipSkills>
+	<AutoArm_TooltipWeapon>Weapon: {0}</AutoArm_TooltipWeapon>
+	<AutoArm_TooltipWeaponNone>Weapon: None</AutoArm_TooltipWeaponNone>
+	<AutoArm_TooltipBonded>Bonded</AutoArm_TooltipBonded>
+	<AutoArm_TooltipSidearms>Sidearms: {0}</AutoArm_TooltipSidearms>
+	<AutoArm_TooltipOutfit>Outfit: {0}</AutoArm_TooltipOutfit>
+	<AutoArm_TooltipAllows>Outfit allows {0} weapon types</AutoArm_TooltipAllows>
+	<AutoArm_TooltipInvalid>Invalid: {0}</AutoArm_TooltipInvalid>
+
+	<AutoArm_EquippedWeapon>{0} equipped {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} upgraded from {1} to {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_EquippedSidearm>{0} equipped sidearm {1}</AutoArm_EquippedSidearm>
+	<AutoArm_UpgradedSidearm>{0} upgraded sidearm from {1} to {2}</AutoArm_UpgradedSidearm>
+
+	<AutoArm_ThinkTreeInjectionFailed>AutoArm: Think tree injection failed, mod won't work. Please report this.</AutoArm_ThinkTreeInjectionFailed>
+
+</LanguageData>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+	<AutoArm_SettingsCategory>Авто Вооружение</AutoArm_SettingsCategory>
+	<AutoArm_Settings>Настройки</AutoArm_Settings>
+	<AutoArm_ResetConfig>Сбросить к значениям по умолчанию</AutoArm_ResetConfig>
+	<AutoArm_ConfirmReset>Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?</AutoArm_ConfirmReset>
+	<AutoArm_SettingsReset>Настройки Авто Вооружения сброшены к значениям по умолчанию.</AutoArm_SettingsReset>
+	<AutoArm_HoverHint>(наведите курсор для описания)</AutoArm_HoverHint>
+	<AutoArm_General>Основные</AutoArm_General>
+	<AutoArm_Compatibility>Совместимость</AutoArm_Compatibility>
+	<AutoArm_Advanced>Расширенные</AutoArm_Advanced>
+	<AutoArm_Debug>Отладка</AutoArm_Debug>
+
+	<AutoArm_EnableMod>Включить мод</AutoArm_EnableMod>
+	<AutoArm_EnableModDesc>Колонисты автоматически экипируют лучшее оружие в соответствии с политикой одежды.</AutoArm_EnableModDesc>
+	<AutoArm_ShowNotifications>Показывать уведомления</AutoArm_ShowNotifications>
+	<AutoArm_ShowNotificationsDesc>Показывает уведомления, когда колонисты экипируют или улучшают оружие.</AutoArm_ShowNotificationsDesc>
+	<AutoArm_ShowForcedLabels>Показывать метки принудительного оружия</AutoArm_ShowForcedLabels>
+	<AutoArm_ShowForcedLabelsDesc>Добавляет метку «принудительное» к названиям оружия, вручную назначенного колонисту.</AutoArm_ShowForcedLabelsDesc>
+	<AutoArm_DisableDuringRaids>Отключать во время рейдов</AutoArm_DisableDuringRaids>
+	<AutoArm_DisableDuringRaidsDesc>Приостанавливает автоэкипировку во время рейдов и других угроз. Избегает конфликтов с боевыми модами.</AutoArm_DisableDuringRaidsDesc>
+	<AutoArm_OnlyEquipFromStorage>Автоэкипировка только из складов</AutoArm_OnlyEquipFromStorage>
+	<AutoArm_OnlyEquipFromStorageDesc>Колонисты автоэкипируют оружие только из складов, полок и других мест хранения. Оружие на земле игнорируется.</AutoArm_OnlyEquipFromStorageDesc>
+	<AutoArm_AllowForcedWeaponUpgrades>Улучшать принудительное оружие</AutoArm_AllowForcedWeaponUpgrades>
+	<AutoArm_AllowForcedWeaponUpgradesDesc>Колонисты могут улучшать принудительное оружие до версий того же типа с лучшим качеством (например, обычный револьвер → мастерский револьвер).</AutoArm_AllowForcedWeaponUpgradesDesc>
+	<AutoArm_AllowTemporaryColonists>Вооружать временных колонистов</AutoArm_AllowTemporaryColonists>
+	<AutoArm_AllowTemporaryColonistsDesc>Временные колонисты без ограничений на экипировку (беженцы, заимствованные пешки) могут автоматически экипировать оружие.</AutoArm_AllowTemporaryColonistsDesc>
+	<AutoArm_ForceWeapon>Помечать связанные как принудительные</AutoArm_ForceWeapon>
+	<AutoArm_ForceWeaponDesc>Связанное личностное оружие автоматически помечается как принудительное, предотвращая автоматическую замену.</AutoArm_ForceWeaponDesc>
+
+	<AutoArm_CompatibilityPatches>Патчи совместимости</AutoArm_CompatibilityPatches>
+	<AutoArm_NoCompatModsDetected>Нет — используются только базовые функции игры</AutoArm_NoCompatModsDetected>
+	<AutoArm_Loaded>Активен</AutoArm_Loaded>
+	<AutoArm_SimpleSidearms>Simple Sidearms</AutoArm_SimpleSidearms>
+	<AutoArm_CombatExtended>Combat Extended</AutoArm_CombatExtended>
+	<AutoArm_PocketSand>Pocket Sand</AutoArm_PocketSand>
+	<AutoArm_EnableSidearmAutoEquip>Автоэкипировка запасного оружия</AutoArm_EnableSidearmAutoEquip>
+	<AutoArm_EnableSidearmAutoEquipDesc>Позволяет колонистам автоматически подбирать дополнительное оружие как запасное.</AutoArm_EnableSidearmAutoEquipDesc>
+	<AutoArm_AllowSidearmUpgrades>Разрешить улучшение запасного оружия</AutoArm_AllowSidearmUpgrades>
+	<AutoArm_AllowSidearmUpgradesDesc>Колонисты будут менять запасное оружие на лучшее, когда оно доступно.</AutoArm_AllowSidearmUpgradesDesc>
+	<AutoArm_Experimental>(экспериментально)</AutoArm_Experimental>
+	<AutoArm_RequireAmmunition>Требовать боеприпасы</AutoArm_RequireAmmunition>
+	<AutoArm_RequireAmmunitionDesc>Колонисты подбирают оружие только при наличии подходящих боеприпасов.</AutoArm_RequireAmmunitionDesc>
+	<AutoArm_CEAmmoSystemDisabled>⚠ Система боеприпасов CE отключена</AutoArm_CEAmmoSystemDisabled>
+	<AutoArm_SimpleSidearmsReflectionFailed>⚠ Интеграция SimpleSidearms не удалась, функции запасного оружия отключены.</AutoArm_SimpleSidearmsReflectionFailed>
+
+	<AutoArm_WeaponUpgrades>Улучшения оружия</AutoArm_WeaponUpgrades>
+	<AutoArm_Threshold>Порог улучшения</AutoArm_Threshold>
+	<AutoArm_ThresholdDesc>Насколько лучше должно быть оружие, чтобы колонисты переключились. Меньшие значения означают более частое переключение.</AutoArm_ThresholdDesc>
+	<AutoArm_WeaponPreference>Предпочтение оружия</AutoArm_WeaponPreference>
+	<AutoArm_WeaponPreferenceDesc>Склоняет колонистов к дальнобойному или ближнему оружию.</AutoArm_WeaponPreferenceDesc>
+	<AutoArm_StrongMeleePreference>Сильное предпочтение ближнего боя</AutoArm_StrongMeleePreference>
+	<AutoArm_ModerateMeleePreference>Умеренное предпочтение ближнего боя</AutoArm_ModerateMeleePreference>
+	<AutoArm_SlightMeleePreference>Лёгкое предпочтение ближнего боя</AutoArm_SlightMeleePreference>
+	<AutoArm_Balanced>Сбалансировано (без предпочтений)</AutoArm_Balanced>
+	<AutoArm_SlightRangedPreference>Лёгкое предпочтение дальнего боя</AutoArm_SlightRangedPreference>
+	<AutoArm_ModerateRangedPreference>Умеренное предпочтение дальнего боя</AutoArm_ModerateRangedPreference>
+	<AutoArm_StrongRangedPreference>Сильное предпочтение дальнего боя</AutoArm_StrongRangedPreference>
+	<AutoArm_AgeRestrictions>Возрастные ограничения</AutoArm_AgeRestrictions>
+	<AutoArm_AllowChildrenToEquipWeapons>Пользовательский возрастной предел</AutoArm_AllowChildrenToEquipWeapons>
+	<AutoArm_AllowChildrenToEquipWeaponsDesc>Сдвиньте влево, чтобы раньше автоматизировать детское ополчение, вправо — для скучной безопасности. Дети также каким-то образом обходят все проверки веса оружия. Определённо не баг.</AutoArm_AllowChildrenToEquipWeaponsDesc>
+	<AutoArm_MinimumAge>Минимальный возраст</AutoArm_MinimumAge>
+	<AutoArm_MinimumAgeDesc>Минимальный возраст для начала автоэкипировки оружия.</AutoArm_MinimumAgeDesc>
+	<AutoArm_WhatCouldGoWrong>⚠ Одобрено Рэнди!</AutoArm_WhatCouldGoWrong>
+
+	<AutoArm_EnableDebugLogging>Включить отладочное логирование</AutoArm_EnableDebugLogging>
+	<AutoArm_DebugRequiresActiveGame>Инструменты отладки требуют активной игры</AutoArm_DebugRequiresActiveGame>
+	<AutoArm_DebugTools>Инструменты отладки Auto Arm</AutoArm_DebugTools>
+	<AutoArm_SaveBeforeDebug>Сначала сохранитесь. Вы предупреждены.</AutoArm_SaveBeforeDebug>
+	<AutoArm_PerfOverlayError>Ошибка наложения производительности</AutoArm_PerfOverlayError>
+
+	<AutoArm_StatusOverview>Сводка состояния</AutoArm_StatusOverview>
+	<AutoArm_WeaponScoresTab>Оценки оружия</AutoArm_WeaponScoresTab>
+	<AutoArm_NoActiveMap>Ошибка: нет активной карты</AutoArm_NoActiveMap>
+	<AutoArm_ColonistsValidActive>Подходящие и активные</AutoArm_ColonistsValidActive>
+	<AutoArm_ColonistsValidActiveTooltip>Колонисты, которым AutoArm может сразу назначить задание на оружие.</AutoArm_ColonistsValidActiveTooltip>
+	<AutoArm_ColonistsValidBusy>Подходящие, но занятые</AutoArm_ColonistsValidBusy>
+	<AutoArm_ColonistsValidBusyTooltip>Подходящие колонисты, занятые другой работой (сон, добыча и т.д.).</AutoArm_ColonistsValidBusyTooltip>
+	<AutoArm_ColonistsInvalid>Неподходящие</AutoArm_ColonistsInvalid>
+	<AutoArm_ColonistsInvalidTooltip>Колонисты, которых AutoArm пропускает. Наведите курсор на строку, чтобы увидеть причину.</AutoArm_ColonistsInvalidTooltip>
+	<AutoArm_ReasonRaidActive>Активный рейд</AutoArm_ReasonRaidActive>
+
+	<AutoArm_StatusReason>Причина: {0}</AutoArm_StatusReason>
+	<AutoArm_StatusSkillsShort>С:{0} Б:{1}</AutoArm_StatusSkillsShort>
+	<AutoArm_StatusBaseScore>База: {0}</AutoArm_StatusBaseScore>
+	<AutoArm_StatusOutfitWeapons>Одежда: {0} (типов оружия: {1})</AutoArm_StatusOutfitWeapons>
+	<AutoArm_StatusScore>Оценка: {0}</AutoArm_StatusScore>
+	<AutoArm_StatusOK>OK</AutoArm_StatusOK>
+
+	<AutoArm_AllWeaponsOnMap>Всё оружие на карте ({0})</AutoArm_AllWeaponsOnMap>
+	<AutoArm_AllWeaponsTooltip>Всё оружие, которое видит AutoArm.</AutoArm_AllWeaponsTooltip>
+	<AutoArm_EffectivenessScore>Оценка эффективности</AutoArm_EffectivenessScore>
+	<AutoArm_NoValidWeapons>  Подходящего оружия на карте нет</AutoArm_NoValidWeapons>
+	<AutoArm_JumpedTo>Переход к {0}</AutoArm_JumpedTo>
+	<AutoArm_VariantsFound>Найдено вариантов: {0}</AutoArm_VariantsFound>
+	<AutoArm_TooltipPosition>Позиция: {0}</AutoArm_TooltipPosition>
+	<AutoArm_PillForbidden>запрещено</AutoArm_PillForbidden>
+	<AutoArm_PillRanged>дальний</AutoArm_PillRanged>
+	<AutoArm_PillMelee>ближний</AutoArm_PillMelee>
+	<AutoArm_ClickToJump>Нажмите для перехода к оружию</AutoArm_ClickToJump>
+
+	<AutoArm_ScoreType>Тип: {0}</AutoArm_ScoreType>
+	<AutoArm_TypeRanged>Дальний</AutoArm_TypeRanged>
+	<AutoArm_TypeMelee>Ближний</AutoArm_TypeMelee>
+	<AutoArm_ScoreComponents>Компоненты:</AutoArm_ScoreComponents>
+	<AutoArm_ScoreBase>  База (УВС × точ × БП):    {0}</AutoArm_ScoreBase>
+	<AutoArm_ScoreSkillBonus>  Бонус навыка:             {0}</AutoArm_ScoreSkillBonus>
+	<AutoArm_ScoreHunterBonus>  Бонус охотника:           {0}</AutoArm_ScoreHunterBonus>
+	<AutoArm_ScoreOutfitPolicy>  Политика одежды:          {0}</AutoArm_ScoreOutfitPolicy>
+	<AutoArm_ScoreMultipliers>Множители:</AutoArm_ScoreMultipliers>
+	<AutoArm_ScoreSkillMatch>  Соответствие навыка:      {0}</AutoArm_ScoreSkillMatch>
+	<AutoArm_ScorePersona>  Личностное:               {0}</AutoArm_ScorePersona>
+	<AutoArm_ScoreCEAmmo>  Боеприпасы CE:            {0}</AutoArm_ScoreCEAmmo>
+	<AutoArm_ScoreTotalLine>Итог: {0}</AutoArm_ScoreTotalLine>
+	<AutoArm_ScoreForcedLocked>Принудительное оружие (заблокировано)</AutoArm_ScoreForcedLocked>
+	<AutoArm_ScoreBlocked>Заблокировано политикой одежды</AutoArm_ScoreBlocked>
+
+	<AutoArm_PawnUnknown>Неизвестный</AutoArm_PawnUnknown>
+	<AutoArm_TooltipSkills>Навыки: Стрельба {0}, Ближний бой {1}</AutoArm_TooltipSkills>
+	<AutoArm_TooltipWeapon>Оружие: {0}</AutoArm_TooltipWeapon>
+	<AutoArm_TooltipWeaponNone>Оружие: нет</AutoArm_TooltipWeaponNone>
+	<AutoArm_TooltipBonded>Связано</AutoArm_TooltipBonded>
+	<AutoArm_TooltipSidearms>Запасное оружие: {0}</AutoArm_TooltipSidearms>
+	<AutoArm_TooltipOutfit>Одежда: {0}</AutoArm_TooltipOutfit>
+	<AutoArm_TooltipAllows>Одежда разрешает типов оружия: {0}</AutoArm_TooltipAllows>
+	<AutoArm_TooltipInvalid>Не подходит: {0}</AutoArm_TooltipInvalid>
+
+	<AutoArm_EquippedWeapon>{0} экипировал(а) {1}</AutoArm_EquippedWeapon>
+	<AutoArm_UpgradedWeapon>{0} улучшил(а) {1} до {2}</AutoArm_UpgradedWeapon>
+	<AutoArm_EquippedSidearm>{0} экипировал(а) запасное оружие {1}</AutoArm_EquippedSidearm>
+	<AutoArm_UpgradedSidearm>{0} улучшил(а) запасное оружие с {1} до {2}</AutoArm_UpgradedSidearm>
+
+	<AutoArm_ThinkTreeInjectionFailed>AutoArm: не удалось внедрить дерево мыслей, мод не будет работать. Пожалуйста, сообщите об этой проблеме.</AutoArm_ThinkTreeInjectionFailed>
+
+</LanguageData>
