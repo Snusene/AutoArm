@@ -28,7 +28,6 @@ namespace AutoArm.UI
             ("blacklisted", "Blacklisted"),
             ("dropped", "Recently dropped"),
             ("SimpleSidearms", "SimpleSidearms"),
-            ("Score too low", "Score too low"),
             ("No weapons found", "No weapons found"),
             ("Failed validation", "Failed validation"),
         };

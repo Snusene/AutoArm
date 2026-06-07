@@ -861,16 +861,6 @@ namespace AutoArm.Jobs
             var comp = mapComp ?? JobGiverMapComponent.GetComponent(pawn.Map);
             if (comp == null) return false;
 
-            bool isProperWeapon = ResolveProperWeapon(comp, weapon, currentTick);
-
-            if (!isProperWeapon)
-            {
-                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: not a valid weapon");
-                return false;
-            }
-
-
             if (weapon.Destroyed)
             {
                 if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
@@ -878,17 +868,119 @@ namespace AutoArm.Jobs
                 return false;
             }
 
-            if (weapon.IsBurning())
-            {
-                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: on fire");
-                return false;
-            }
-
             if (weapon.Map != pawn.Map)
             {
                 if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
                     AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: on different map");
+                return false;
+            }
+
+            if (!weapon.Position.IsValid || !weapon.Position.InBounds(pawn.Map))
+            {
+                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: invalid position");
+                return false;
+            }
+
+            var weaponHolder = weapon.holdingOwner;
+
+            if (weaponHolder != null)
+            {
+                var holder = weaponHolder.Owner;
+
+                if (holder is Pawn otherPawn && otherPawn != pawn)
+                {
+                    if (otherPawn.equipment?.Primary == weapon)
+                    {
+                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: equipped by someone else");
+                        return false;
+                    }
+
+                    if (otherPawn.inventory?.innerContainer?.Contains(weapon) == true)
+                    {
+                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: in someone's inventory");
+                        return false;
+                    }
+
+                    if (otherPawn.carryTracker?.CarriedThing == weapon)
+                    {
+                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: being carried");
+                        return false;
+                    }
+                }
+            }
+
+            var cacheKey = new PawnWeaponKey(pawn.thingIDNumber, weapon.thingIDNumber);
+
+            bool bypassCache = isForcedUpgrade;
+            if (bypassCache)
+            {
+                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: skipping validation cache for {weapon.Label}");
+            }
+            else if (comp.ValidationCache.TryGetValue(cacheKey, out var cached))
+            {
+                if (currentTick < cached.ExpiryTick)
+                {
+                    bool currentlyHasOwner = weaponHolder != null;
+                    bool biocodeChanged = cached.IsValid && Caching.Components.IsBiocodedToOther(weapon, pawn);
+
+                    if (weapon.Destroyed || cached.HadOwner != currentlyHasOwner || biocodeChanged)
+                    {
+                        comp.ValidationCache.Remove(cacheKey);
+                    }
+                    else
+                    {
+                        if (cached.IsValid)
+                        {
+                            if (weapon.IsBurning())
+                                return false;
+                            if (CECompat.IsLoaded && CECompat.ShouldSkipWeaponForCE(weapon, pawn))
+                                return false;
+
+                            var forbiddenHit = pawn.genes?.Xenotype?.forbiddenWeaponClasses;
+                            if (forbiddenHit != null && !weapon.def.weaponClasses.NullOrEmpty())
+                            {
+                                for (int i = 0; i < forbiddenHit.Count; i++)
+                                {
+                                    if (weapon.def.weaponClasses.Contains(forbiddenHit[i]))
+                                        return false;
+                                }
+                            }
+
+                            if (EquipmentUtility.AlreadyBondedToWeapon(weapon, pawn))
+                                return false;
+
+                            if (weapon.def.IsRangedWeapon)
+                            {
+                                if (!Caching.PawnValidation.CanShoot(pawn))
+                                    return false;
+                                if (Caching.PawnValidation.IsBrawler(pawn))
+                                    return false;
+                                if (HasRangedBlockingShieldCached(pawn, comp, currentTick))
+                                    return false;
+                            }
+                        }
+                        PerfMetrics.ReportCacheHit();
+                        return cached.IsValid;
+                    }
+                }
+            }
+
+            bool isProperWeapon = ResolveProperWeapon(comp, weapon, currentTick);
+            if (!isProperWeapon)
+            {
+                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: not a valid weapon");
+                return false;
+            }
+
+            if (weapon.IsBurning())
+            {
+                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: on fire");
                 return false;
             }
 
@@ -942,71 +1034,6 @@ namespace AutoArm.Jobs
                     if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
                         AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: DPS {meleeDps:F1} below unarmed threshold {UnarmedDpsThreshold:F1}");
                     return false;
-                }
-            }
-
-            if (!weapon.Position.IsValid || !weapon.Position.InBounds(pawn.Map))
-            {
-                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: invalid position");
-                return false;
-            }
-
-            var weaponHolder = weapon.holdingOwner;
-            bool cachedHasOwner = weaponHolder != null;
-
-            if (weaponHolder != null)
-            {
-                var holder = weaponHolder.Owner;
-
-                if (holder is Pawn otherPawn && otherPawn != pawn)
-                {
-                    if (otherPawn.equipment?.Primary == weapon)
-                    {
-                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: equipped by someone else");
-                        return false;
-                    }
-
-                    if (otherPawn.inventory?.innerContainer?.Contains(weapon) == true)
-                    {
-                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: in someone's inventory");
-                        return false;
-                    }
-
-                    if (otherPawn.carryTracker?.CarriedThing == weapon)
-                    {
-                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: being carried");
-                        return false;
-                    }
-                }
-            }
-
-            var cacheKey = new PawnWeaponKey(pawn.thingIDNumber, weapon.thingIDNumber);
-
-            bool bypassCache = isForcedUpgrade;
-            if (bypassCache)
-            {
-                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: skipping validation cache for {weapon.Label}");
-            }
-            else if (comp.ValidationCache.TryGetValue(cacheKey, out var cached))
-            {
-                if (currentTick < cached.ExpiryTick)
-                {
-                    bool currentlyHasOwner = weaponHolder != null;
-                    bool biocodeChanged = cached.IsValid && Caching.Components.IsBiocodedToOther(weapon, pawn);
-
-                    if (weapon.Destroyed || cached.HadOwner != currentlyHasOwner || biocodeChanged)
-                    {
-                        comp.ValidationCache.Remove(cacheKey);
-                    }
-                    else
-                    {
-                        PerfMetrics.ReportCacheHit();
-                        return cached.IsValid;
-                    }
                 }
             }
 
@@ -1489,11 +1516,6 @@ namespace AutoArm.Jobs
                     }
 
                     var currentWeapon = pawn.equipment?.Primary;
-                    float roughScore = 0f;
-                    if (!isUnarmed && currentWeapon != null)
-                    {
-                        roughScore = Scoring.GetWeaponPropertyScore(pawn, currentWeapon);
-                    }
 
                     float topRoughScore = roughQueue.Count > 0 ? roughQueue[0].roughScore : 0f;
 
@@ -1501,36 +1523,16 @@ namespace AutoArm.Jobs
                     {
                         var weapon = item.weapon;
 
-                        if (!isUnarmed && currentWeapon != null)
+                        if (!isUnarmed && currentWeapon != null
+                            && !isForcedUpgrade
+                            && weapon.def.IsRangedWeapon != currentWeapon.def.IsRangedWeapon
+                            && SimpleSidearmsCompat.IsManagingPawn(pawn)
+                            && !SimpleSidearmsCompat.CanPickupSidearm(weapon, pawn, out _))
                         {
-                            float candidateScore = item.roughScore;
-
-                            float scoreThreshold = (weapon.def == currentWeapon.def) ?
-                                Constants.RoughScoreSameTypeThreshold :
-                                Constants.RoughScoreDifferentTypeThreshold;
-
-                            if (candidateScore < roughScore * scoreThreshold)
-                            {
-                                string skipReason = weapon.def == currentWeapon.def ?
-                                    "Score too low (same type)" :
-                                    "Score too low (different type)";
-
-                                rejectionReasons.TryGetValue(skipReason, out int n);
-                                rejectionReasons[skipReason] = n + 1;
-
-                                continue;
-                            }
-
-                            if (!isForcedUpgrade
-                                && weapon.def.IsRangedWeapon != currentWeapon.def.IsRangedWeapon
-                                && SimpleSidearmsCompat.IsLoaded && !SimpleSidearmsCompat.ReflectionFailed
-                                && !SimpleSidearmsCompat.CanPickupSidearm(weapon, pawn, out _))
-                            {
-                                string skipReason = "Cross-type swap blocked by SS";
-                                rejectionReasons.TryGetValue(skipReason, out int n);
-                                rejectionReasons[skipReason] = n + 1;
-                                continue;
-                            }
+                            string skipReason = "Cross-type swap blocked by SS";
+                            rejectionReasons.TryGetValue(skipReason, out int n);
+                            rejectionReasons[skipReason] = n + 1;
+                            continue;
                         }
 
                         float newScore = GetWeaponScore(pawn, weapon);
@@ -1970,8 +1972,12 @@ namespace AutoArm.Jobs
                 int weaponsChecked = 0;
                 int extensionsFound = 0;
 
-                foreach (ThingDef weaponDef in DefDatabase<ThingDef>.AllDefs.Where(d => d.IsWeapon))
+                var allDefs = DefDatabase<ThingDef>.AllDefsListForReading;
+                for (int defIdx = 0; defIdx < allDefs.Count; defIdx++)
                 {
+                    var weaponDef = allDefs[defIdx];
+                    if (!weaponDef.IsWeapon)
+                        continue;
                     weaponsChecked++;
                     if (weaponDef.modExtensions != null)
                     {

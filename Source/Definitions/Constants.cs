@@ -22,11 +22,6 @@ namespace AutoArm.Definitions
         public const float CombatScoreMultiplier = 10f;
 
 
-        public const float RoughScoreSameTypeThreshold = 0.9f;
-
-        public const float RoughScoreDifferentTypeThreshold = 0.7f;
-
-
         public const float SituationalWeaponModifier = 0.3f;
 
         public const float DamagedWeaponPenalty = 0.95f;

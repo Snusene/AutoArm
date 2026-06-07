@@ -169,9 +169,10 @@ namespace AutoArm.Jobs
                     }
                 }
             }
-            if (Find.WorldPawns != null)
+            var worldPawns = Find.World?.worldPawns;
+            if (worldPawns != null)
             {
-                foreach (var p in Find.WorldPawns.AllPawnsAlive)
+                foreach (var p in worldPawns.AllPawnsAlive)
                 {
                     if (p != null) liveIds.Add(p.thingIDNumber);
                 }

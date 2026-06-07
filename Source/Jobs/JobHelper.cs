@@ -139,7 +139,7 @@ namespace AutoArm.Jobs
             {
                 var oldPrimary = pawn.equipment.Primary;
 
-                if (SimpleSidearmsCompat.IsLoaded && !SimpleSidearmsCompat.ReflectionFailed)
+                if (SimpleSidearmsCompat.IsManagingPawn(pawn))
                 {
                     bool isCrossType = weapon.def.IsRangedWeapon != oldPrimary.def.IsRangedWeapon;
                     if (isCrossType)

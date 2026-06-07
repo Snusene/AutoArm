@@ -1066,7 +1066,7 @@ namespace AutoArm.Caching
             if (parent is Zone_Stockpile)
                 return true;
 
-            if (parent is Building)
+            if (parent is Building_Storage)
                 return true;
 
             var parentTypeName = parent.GetType().Name;
