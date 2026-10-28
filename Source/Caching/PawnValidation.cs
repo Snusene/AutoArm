@@ -41,7 +41,13 @@ namespace AutoArm.Caching
             "LordJob_Joinable_DateLead",
 
             "LordJob_VisitColony",
-            "LordJob_HospitalityParty"
+            "LordJob_HospitalityParty",
+
+            "LordJob_SlaveRebellion",
+
+            "LordJob_LoadAndEnterTransporters",
+            "LordJob_LoadAndEnterPortal",
+            "LordJob_ExitOnShuttle"
         };
 
         private static readonly HashSet<string> restrictedPatterns = new HashSet<string>
@@ -58,7 +64,9 @@ namespace AutoArm.Caching
             "Dance",
             "Funeral",
             "Date",
-            "Bestowing"
+            "Bestowing",
+            "Rebellion",
+            "LoadAndEnter"
         };
 
 
@@ -269,9 +277,10 @@ namespace AutoArm.Caching
                 return entry;
             }
 
-            if (pawn.equipment?.Primary != null && Components.IsBiocodedTo(pawn.equipment.Primary, pawn))
+            var primary = pawn.equipment?.Primary;
+            if (primary != null && pawn.IsQuestLodger() && !EquipmentUtility.QuestLodgerCanUnequip(primary, pawn))
             {
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Blocked - has biocoded weapon (locked to this pawn)");
+                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Blocked - quest lodger with locked weapon");
                 entry.IsValidForWeapons = false;
                 return entry;
             }
@@ -372,15 +381,6 @@ namespace AutoArm.Caching
             }
         }
 
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-
-            int pawnId = pawn.thingIDNumber;
-            _cache.Remove(pawnId);
-            _lastInvalidationLogTick.Remove(pawnId);
-        }
-
         public static void FlushPendingInvalidationLogs()
         {
             if (_pendingInvalidationLogs.Count == 0)
@@ -429,52 +429,66 @@ namespace AutoArm.Caching
             }
         }
 
-        public static void CleanupDeadPawns()
+        private static int deadPawnSweepCounter;
+
+        public static void CleanupDeadPawns(bool force = false)
         {
             if (_cache.Count == 0 && _lastInvalidationLogTick.Count == 0)
                 return;
 
-            var liveIds = new HashSet<int>();
-            if (Find.Maps != null)
-            {
-                foreach (var map in Find.Maps)
-                {
-                    if (map?.mapPawns?.AllPawns == null) continue;
-                    foreach (var p in map.mapPawns.AllPawns)
-                    {
-                        if (p == null || p.Dead || p.Destroyed || p.Discarded) continue;
-                        liveIds.Add(p.thingIDNumber);
-                    }
-                }
-            }
-            if (Find.WorldPawns != null)
-            {
-                foreach (var p in Find.WorldPawns.AllPawnsAlive)
-                {
-                    if (p != null) liveIds.Add(p.thingIDNumber);
-                }
-            }
+            deadPawnSweepCounter++;
+            if (!force && !TestRunner.IsRunningTests && deadPawnSweepCounter < 8)
+                return;
+            deadPawnSweepCounter = 0;
 
-            int deadCount = _cache.RemoveWhere((id, _) => !liveIds.Contains(id));
-
-            var orphanedLogIds = ListPool<int>.Get();
+            var liveIds = HashSetPool<int>.Get();
             try
             {
-                foreach (var id in _lastInvalidationLogTick.Keys)
+                if (Find.Maps != null)
                 {
-                    if (!liveIds.Contains(id)) orphanedLogIds.Add(id);
+                    foreach (var map in Find.Maps)
+                    {
+                        if (map?.mapPawns?.AllPawns == null) continue;
+                        foreach (var p in map.mapPawns.AllPawns)
+                        {
+                            if (p == null || p.Dead || p.Destroyed || p.Discarded) continue;
+                            liveIds.Add(p.thingIDNumber);
+                        }
+                    }
                 }
-                foreach (var id in orphanedLogIds)
-                    _lastInvalidationLogTick.Remove(id);
+                if (Find.WorldPawns != null)
+                {
+                    foreach (var p in Find.WorldPawns.AllPawnsAlive)
+                    {
+                        if (p != null) liveIds.Add(p.thingIDNumber);
+                    }
+                }
+
+                int deadCount = _cache.RemoveWhere((id, _) => !liveIds.Contains(id));
+
+                var orphanedLogIds = ListPool<int>.Get();
+                try
+                {
+                    foreach (var id in _lastInvalidationLogTick.Keys)
+                    {
+                        if (!liveIds.Contains(id)) orphanedLogIds.Add(id);
+                    }
+                    foreach (var id in orphanedLogIds)
+                        _lastInvalidationLogTick.Remove(id);
+                }
+                finally
+                {
+                    ListPool<int>.Return(orphanedLogIds);
+                }
+
+                if (AutoArmMod.settings?.debugLogging == true && deadCount > 0)
+                {
+                    AutoArmLogger.Debug(() => $"PawnValidation cleaned up {deadCount} dead pawn entries");
+                }
             }
             finally
             {
-                ListPool<int>.Return(orphanedLogIds);
-            }
-
-            if (AutoArmMod.settings?.debugLogging == true && deadCount > 0)
-            {
-                AutoArmLogger.Debug(() => $"PawnValidation cleaned up {deadCount} dead pawn entries");
+                HashSetPool<int>.Return(liveIds);
             }
         }
 
@@ -482,13 +496,6 @@ namespace AutoArm.Caching
         {
             _cache.Clear();
             _lastInvalidationLogTick.Clear();
-        }
-
-
-
-        public static string GetDebugStats()
-        {
-            return $"PawnValidation: {_cache.Count} cached";
         }
     }
 

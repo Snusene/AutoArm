@@ -8,6 +8,7 @@ using AutoArm.Testing;
 using AutoArm.UI;
 using RimWorld;
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Verse;
 
@@ -24,17 +25,8 @@ namespace AutoArm
         private const string AutoArmDiscordUrl = "https://discord.gg/xp2f3YFKMY";
 
         public static AutoArmSettings settings;
-        private SettingsTab currentTab = SettingsTab.General;
 
         private DebugTools debugWindow;
-
-        private enum SettingsTab
-        {
-            General,
-            Compatibility,
-            Advanced,
-            Debug
-        }
 
         static AutoArmMod()
         {
@@ -78,39 +70,82 @@ namespace AutoArm
             DrawSettingsWindow(inRect);
         }
 
+        private static Vector2 settingsScroll = Vector2.zero;
+        private static float settingsViewHeight = 1000f;
+
         private void DrawSettingsWindow(Rect inRect)
         {
-            var listing = new Listing_Standard();
-            listing.Begin(inRect);
+            var headerListing = new Listing_Standard();
+            headerListing.Begin(inRect);
+            DrawHeader(headerListing, inRect);
+            float headerHeight = headerListing.CurHeight;
+            headerListing.End();
 
-            DrawHeader(listing, inRect);
-            DrawTabButtons(listing);
+            var scrollRect = new Rect(inRect.x, inRect.y + headerHeight, inRect.width, inRect.height - headerHeight);
+            var viewRect = new Rect(0f, 0f, scrollRect.width - 16f, settingsViewHeight);
+            Widgets.BeginScrollView(scrollRect, ref settingsScroll, viewRect);
 
-            var contentRect = listing.GetRect(inRect.height - listing.CurHeight - Constants.UI_LINE_HEIGHT);
-            DrawTabContent(contentRect);
+            var listing = new Listing_Standard { maxOneColumn = true };
+            listing.Begin(viewRect);
 
-            listing.End();
+            Color oldColor = GUI.color;
+            bool wasEnabled = GUI.enabled;
+            try
+            {
+                DrawGeneralTab(listing);
+
+                if (!settings.modEnabled)
+                {
+                    GUI.color = Color.gray;
+                    GUI.enabled = false;
+                }
+
+                DrawCompatibilityTab(listing);
+
+                settingsViewHeight = listing.CurHeight;
+            }
+            finally
+            {
+                GUI.color = oldColor;
+                GUI.enabled = wasEnabled;
+
+                listing.End();
+                Widgets.EndScrollView();
+            }
+        }
+
+        private void DrawDebugRow(Listing_Standard listing)
+        {
+            var row = listing.GetRect(Constants.UI_LINE_HEIGHT);
+            if (Mouse.IsOver(row))
+                Widgets.DrawHighlight(row);
+
+            using (new TextBlock(TextAnchor.MiddleLeft))
+                Widgets.Label(new Rect(row.x, row.y, row.width - 110f, row.height), "AutoArm_Debug".Translate());
+
+            bool hasMap = Current.Game?.CurrentMap != null;
+            var buttonRect = new Rect(row.xMax - 84f, row.y + 1f, 80f, row.height - 2f);
+
+            if (!hasMap)
+                TooltipHandler.TipRegion(buttonRect, "AutoArm_DebugRequiresActiveGame".Translate());
+
+            Color oldColor = GUI.color;
+            if (!hasMap)
+                GUI.color = Color.gray;
+            bool clicked = Widgets.ButtonText(buttonRect, "AutoArm_DebugOpen".Translate(), true, true, hasMap);
+            GUI.color = oldColor;
+
+            if (clicked)
+                OpenDebugWindow();
         }
 
         private void DrawHeader(Listing_Standard listing, Rect inRect)
         {
             DrawResetButton(inRect);
 
-            var titleRect = listing.GetRect(Text.LineHeight * 1.5f);
+            var titleRect = listing.GetRect(30f);
+            DrawDiscordLink(new Rect(titleRect.x, titleRect.y + 2f, 170f, 24f));
 
-            Text.Font = GameFont.Medium;
-            var settingsLabelRect = new Rect(titleRect.x, titleRect.y, 100f, titleRect.height);
-            Widgets.Label(settingsLabelRect, "AutoArm_Settings".Translate());
-
-            DrawDiscordLink(new Rect(settingsLabelRect.xMax + 10f, titleRect.y + 2f, 140f, 24f));
-
-            Text.Font = GameFont.Tiny;
-            var hintColor = new Color(Constants.UI_GRAY_ALPHA, Constants.UI_GRAY_ALPHA, Constants.UI_GRAY_ALPHA, Constants.UI_TEXT_ALPHA);
-            var hintRect = new Rect(settingsLabelRect.xMax + 160f, titleRect.y + 4f, 200f, titleRect.height);
-            using (new TextBlock(hintColor))
-                Widgets.Label(hintRect, "AutoArm_HoverHint".Translate());
-
-            Text.Font = GameFont.Small;
             listing.Gap(Constants.UI_SMALL_GAP);
         }
 
@@ -144,7 +179,7 @@ namespace AutoArm
         {
             Rect resetButtonRect = new Rect(
                 inRect.width - Constants.UI_RESET_BUTTON_WIDTH - 5f,
-                5f,
+                0f,
                 Constants.UI_RESET_BUTTON_WIDTH,
                 Constants.UI_RESET_BUTTON_HEIGHT
             );
@@ -159,130 +194,69 @@ namespace AutoArm
                         {
                             settings.ResetToDefaults();
                             WeaponCache.ClearScoreCache();
+                            EquipEligibility.Clear();
+                            PawnValidation.ClearCache();
                             Messages.Message("AutoArm_SettingsReset".Translate(), MessageTypeDefOf.NeutralEvent, false);
                         }));
                 }
             }
         }
 
-        private void DrawTabButtons(Listing_Standard listing)
-        {
-            var tabRect = listing.GetRect(Constants.UI_TAB_BUTTON_HEIGHT);
-            var tabWidth = tabRect.width / 4f - 5f;
-
-            DrawTabButton(tabRect, 0, tabWidth, "AutoArm_General", SettingsTab.General, () => currentTab = SettingsTab.General);
-            DrawTabButton(tabRect, 1, tabWidth, "AutoArm_Compatibility", SettingsTab.Compatibility, () => currentTab = SettingsTab.Compatibility);
-            DrawTabButton(tabRect, 2, tabWidth, "AutoArm_Advanced", SettingsTab.Advanced, () => currentTab = SettingsTab.Advanced);
-            DrawTabButton(tabRect, 3, tabWidth, "AutoArm_Debug", SettingsTab.Debug, () =>
-            {
-                if (Current.Game?.CurrentMap != null)
-                    OpenDebugWindow();
-                else
-                    Messages.Message("AutoArm_DebugRequiresActiveGame".Translate(), MessageTypeDefOf.RejectInput, false);
-            });
-
-            listing.Gap(Constants.UI_SMALL_GAP);
-        }
-
-        private void DrawTabButton(Rect tabRect, int index, float tabWidth, string labelKey, SettingsTab tab, Action onClick)
-        {
-            var rect = new Rect(tabRect.x + (tabWidth + 5f) * index, tabRect.y, tabWidth, Constants.UI_TAB_BUTTON_HEIGHT);
-            using (new TextBlock(currentTab == tab ? Color.white : UIColors.TabInactive))
-            {
-                if (Widgets.ButtonText(rect, labelKey.Translate()))
-                    onClick();
-            }
-        }
-
-        private void DrawTabContent(Rect contentRect)
-        {
-            var innerRect = contentRect.ContractedBy(Constants.UI_CONTENT_PADDING);
-
-            Widgets.DrawBoxSolid(contentRect, new Color(0.1f, 0.1f, 0.1f, Constants.UI_BOX_ALPHA));
-
-            var innerListing = new Listing_Standard();
-            innerListing.Begin(innerRect);
-
-            Color oldColor = GUI.color;
-            bool wasEnabled = GUI.enabled;
-            if (!settings.modEnabled && currentTab != SettingsTab.General)
-            {
-                GUI.color = Color.gray;
-                GUI.enabled = false;
-            }
-
-            switch (currentTab)
-            {
-                case SettingsTab.General:
-                    DrawGeneralTab(innerListing);
-                    break;
-
-                case SettingsTab.Compatibility:
-                    DrawCompatibilityTab(innerListing);
-                    break;
-
-                case SettingsTab.Advanced:
-                    DrawAdvancedTab(innerListing);
-                    break;
-            }
-
-            GUI.color = oldColor;
-            GUI.enabled = wasEnabled;
-
-            innerListing.End();
-        }
 
         private static void DrawSectionHeader(Listing_Standard listing, string labelKey)
         {
-            using (new TextBlock(GameFont.Medium))
-            {
-                var rect = listing.GetRect(Text.LineHeight);
-                Widgets.Label(rect, labelKey.Translate());
-            }
+            var rect = listing.GetRect(24f);
+            using (new TextBlock(Widgets.SeparatorLabelColor))
+                Widgets.Label(new Rect(rect.x, rect.y, rect.width, 20f), labelKey.Translate());
+            Color oldColor = GUI.color;
+            GUI.color = Widgets.SeparatorLineColor;
+            Widgets.DrawLineHorizontal(rect.x, rect.yMax - 2f, rect.width);
+            GUI.color = oldColor;
+            listing.Gap(Constants.UI_TINY_GAP);
         }
 
-        private void DrawCheckbox(Listing_Standard listing, string label, ref bool value, string tooltip = null, float indent = 0f, bool isSubOption = false)
+        private void DrawCheckbox(Listing_Standard listing, string label, ref bool value, string tooltip = null, float indent = 0f, string suffix = null)
         {
             Rect fullRect = listing.GetRect(Constants.UI_LINE_HEIGHT);
 
-            float checkboxSize = isSubOption ? Constants.UI_CHECKBOX_SIZE * 0.8f : Constants.UI_CHECKBOX_SIZE;
+            if (Mouse.IsOver(fullRect))
+            {
+                Widgets.DrawHighlight(fullRect);
+                if (tooltip != null)
+                    TooltipHandler.TipRegion(fullRect, tooltip);
+            }
 
-            Rect checkRect = new Rect(
-                fullRect.x + indent,
-                fullRect.y + (Constants.UI_LINE_HEIGHT - checkboxSize) / 2f,
-                checkboxSize,
-                checkboxSize
-            );
-
-            float labelHeight = Text.LineHeight;
-            float labelY = fullRect.y + (Constants.UI_LINE_HEIGHT - labelHeight) / 2f;
+            float checkboxSize = Constants.UI_CHECKBOX_SIZE;
 
             Rect labelRect = new Rect(
-                fullRect.x + checkboxSize + 5f + indent,
-                labelY,
-                fullRect.width - checkboxSize - 5f - indent,
-                labelHeight
+                fullRect.x + indent,
+                fullRect.y,
+                fullRect.width - checkboxSize - 10f - indent,
+                fullRect.height
             );
 
+            using (new TextBlock(TextAnchor.MiddleLeft))
+            {
+                Widgets.Label(labelRect, label);
+                if (suffix != null)
+                {
+                    float labelWidth = Text.CalcSize(label).x;
+                    using (new TextBlock(UIColors.Dim))
+                        Widgets.Label(new Rect(labelRect.x + labelWidth + 6f, labelRect.y,
+                            labelRect.width - labelWidth - 6f, labelRect.height), suffix);
+                }
+            }
+
             bool oldValue = value;
-            Widgets.Checkbox(checkRect.x, checkRect.y, ref value, checkboxSize);
+            if (GUI.enabled)
+                Widgets.ToggleInvisibleDraggable(fullRect, ref value, doMouseoverSound: true);
 
-            if (isSubOption)
-            {
-                Text.Font = GameFont.Tiny;
-            }
-
-            Widgets.Label(labelRect, label);
-
-            if (isSubOption)
-            {
-                Text.Font = GameFont.Small;
-            }
-
-            if (tooltip != null && Mouse.IsOver(fullRect))
-            {
-                TooltipHandler.TipRegion(fullRect, tooltip);
-            }
+            Color oldColor = GUI.color;
+            if (!GUI.enabled)
+                GUI.color = Color.gray;
+            Widgets.CheckboxDraw(fullRect.xMax - checkboxSize - 4f,
+                fullRect.y + (Constants.UI_LINE_HEIGHT - checkboxSize) / 2f, value, false, checkboxSize);
+            GUI.color = oldColor;
 
             if (oldValue != value)
             {
@@ -293,22 +267,26 @@ namespace AutoArm
 
         private void DrawSlider(Listing_Standard listing, string label, ref float value, float min, float max, string format = "P0", string tooltip = null, bool isPercentageBetter = false, bool isWeaponPreferenceMode = false)
         {
-            Rect labelRect = listing.GetRect(Text.LineHeight);
-            Widgets.Label(labelRect, label);
+            listing.Gap(4f);
+            Rect row = listing.GetRect(Constants.UI_LINE_HEIGHT);
 
-            Rect rect = listing.GetRect(Constants.UI_LINE_HEIGHT);
+            if (Mouse.IsOver(row))
+            {
+                Widgets.DrawHighlight(row);
+                if (tooltip != null)
+                    TooltipHandler.TipRegion(row, tooltip);
+            }
 
-            float sliderWidth = rect.width / 3f;
-            Rect sliderRect = new Rect(rect.x, rect.y, sliderWidth, rect.height);
-
-            float valueWidth = 220f;
-            Rect valueRect = new Rect(sliderRect.xMax + 10f, rect.y, valueWidth, rect.height);
+            const float sliderWidth = 200f;
+            const float valueWidth = 170f;
 
             float sliderHeight = 20f;
-            Rect actualSliderRect = new Rect(sliderRect.x, sliderRect.y + (rect.height - sliderHeight) / 2f, sliderRect.width, sliderHeight);
+            Rect actualSliderRect = new Rect(row.xMax - sliderWidth - 4f, row.y + (row.height - sliderHeight) / 2f, sliderWidth, sliderHeight);
 
             float oldValue = value;
             float newValue = Widgets.HorizontalSlider(actualSliderRect, value, min, max);
+            if (isWeaponPreferenceMode)
+                newValue = Mathf.Round(newValue * 3f) / 3f;
             if (GUI.enabled) value = newValue;
 
             bool isWeaponPreference = isWeaponPreferenceMode;
@@ -352,25 +330,25 @@ namespace AutoArm
             else if (isPercentageBetter)
             {
                 float percentBetter = (value - 1f) * 100f;
-                displayValue = $"{percentBetter:F0}%";
+                displayValue = $"+{percentBetter:F0}%";
             }
             else
             {
                 displayValue = format == "P0" ? value.ToString("P0") : value.ToString(format);
             }
 
-            Color oldTextColor = GUI.color;
-            GUI.color = valueColor;
-            Widgets.Label(valueRect, displayValue);
-            GUI.color = oldTextColor;
-
             value = Mathf.Clamp(value, min, max);
 
-            if (tooltip != null && (Mouse.IsOver(labelRect) || Mouse.IsOver(rect)))
-            {
-                TooltipHandler.TipRegion(labelRect, tooltip);
-                TooltipHandler.TipRegion(rect, tooltip);
-            }
+            Rect labelRect = new Rect(row.x, row.y, row.width - sliderWidth - valueWidth - 16f, row.height);
+            using (new TextBlock(TextAnchor.MiddleLeft))
+                Widgets.Label(labelRect, label);
+
+            Rect valueRect = new Rect(labelRect.xMax + 4f, row.y, valueWidth, row.height);
+            Color oldTextColor = GUI.color;
+            GUI.color = valueColor;
+            using (new TextBlock(TextAnchor.MiddleRight))
+                Widgets.Label(valueRect, displayValue);
+            GUI.color = oldTextColor;
 
             if (Math.Abs(oldValue - value) > 0.01f)
             {
@@ -381,6 +359,8 @@ namespace AutoArm
                 else
                     AutoArmLogger.Debug(() => $"Setting changed: {label} = {v:F2}");
             }
+
+            listing.Gap(4f);
         }
 
         private void DrawGeneralTab(Listing_Standard listing)
@@ -403,44 +383,42 @@ namespace AutoArm
                     {
                         AutoArmLogger.Debug(() => "[TEST] Skipping cache clear on mod re-enable during tests");
                     }
-                    return;
-                }
-
-                if (settings.debugLogging)
-                {
-                    AutoArmLogger.Debug(() => "[SETTINGS] Mod was just re-enabled, clearing caches...");
-                }
-
-                if (Current.Game != null)
-                {
-
-                    PawnValidation.ClearCache();
-
-                    DroppedItems.ClearAll();
-
-                    Cleanup.ClearAllCaches();
-
-                    foreach (var map in Find.Maps)
-                    {
-                        WeaponCache.RebuildCache(map);
-                    }
-
-                    if (settings.debugLogging)
-                    {
-                        AutoArmLogger.Debug(() => "Mod re-enabled - cleared all caches and cooldowns, rebuilding weapon cache");
-                    }
                 }
                 else
                 {
-                    Cleanup.ClearAllCaches();
                     if (settings.debugLogging)
                     {
-                        AutoArmLogger.Debug(() => "Mod re-enabled in main menu - cleared settings cache only");
+                        AutoArmLogger.Debug(() => "[SETTINGS] Mod was just re-enabled, clearing caches...");
+                    }
+
+                    if (Current.Game != null)
+                    {
+                        PawnValidation.ClearCache();
+
+                        DroppedItems.ClearAll();
+
+                        Cleanup.ClearAllCaches();
+
+                        foreach (var map in Find.Maps)
+                        {
+                            WeaponCache.RebuildCache(map);
+                        }
+
+                        if (settings.debugLogging)
+                        {
+                            AutoArmLogger.Debug(() => "Mod re-enabled - cleared all caches and cooldowns, rebuilding weapon cache");
+                        }
+                    }
+                    else
+                    {
+                        Cleanup.ClearAllCaches();
+                        if (settings.debugLogging)
+                        {
+                            AutoArmLogger.Debug(() => "Mod re-enabled in main menu - cleared settings cache only");
+                        }
                     }
                 }
             }
-
-            listing.Gap(Constants.UI_SMALL_GAP);
 
             Color oldColor = GUI.color;
             bool wasEnabled = GUI.enabled;
@@ -453,31 +431,36 @@ namespace AutoArm
             DrawCheckbox(listing, "AutoArm_ShowNotifications".Translate(), ref settings.showNotifications,
                 "AutoArm_ShowNotificationsDesc".Translate());
 
-            listing.Gap(Constants.UI_SMALL_GAP);
-
             DrawCheckbox(listing, "AutoArm_ShowForcedLabels".Translate(), ref settings.showForcedLabels,
                 "AutoArm_ShowForcedLabelsDesc".Translate());
 
-            listing.Gap(Constants.UI_SMALL_GAP);
+            if (Prefs.DevMode)
+                DrawDebugRow(listing);
 
-            DrawCheckbox(listing, "AutoArm_DisableDuringRaids".Translate(), ref settings.disableDuringRaids,
-                "AutoArm_DisableDuringRaidsDesc".Translate());
+            listing.Gap(Constants.UI_SECTION_GAP);
+            DrawSectionHeader(listing, "AutoArm_SectionEquipping");
 
-            listing.Gap(Constants.UI_SMALL_GAP);
+            DrawCheckbox(listing, "AutoArm_UpgradeEquippedWeapons".Translate(), ref settings.upgradeEquippedWeapons,
+                "AutoArm_UpgradeEquippedWeaponsDesc".Translate());
 
-            bool prevOnlyEquipStorage = settings.onlyAutoEquipFromStorage;
-            DrawCheckbox(listing, "AutoArm_OnlyEquipFromStorage".Translate(), ref settings.onlyAutoEquipFromStorage,
-                "AutoArm_OnlyEquipFromStorageDesc".Translate());
-            if (prevOnlyEquipStorage != settings.onlyAutoEquipFromStorage)
-            {
+            bool priorUpgradeEnabled = GUI.enabled;
+            GUI.enabled = priorUpgradeEnabled && settings.upgradeEquippedWeapons;
+
+            DrawSlider(listing, "AutoArm_Threshold".Translate(), ref settings.weaponUpgradeThreshold,
+                Constants.WeaponUpgradeThresholdMin, Constants.WeaponUpgradeThresholdMax, "F2",
+                "AutoArm_ThresholdDesc".Translate(),
+                true);
+
+            bool prevAllowForced = settings.allowForcedWeaponUpgrades;
+            DrawCheckbox(listing, "AutoArm_AllowForcedWeaponUpgrades".Translate(), ref settings.allowForcedWeaponUpgrades,
+                "AutoArm_AllowForcedWeaponUpgradesDesc".Translate());
+            if (prevAllowForced != settings.allowForcedWeaponUpgrades)
                 WeaponCache.ClearScoreCache();
-                EquipEligibility.Clear();
-            }
+
+            GUI.enabled = priorUpgradeEnabled;
 
             if (ModsConfig.RoyaltyActive)
             {
-                listing.Gap(Constants.UI_SMALL_GAP);
-
                 bool oldRespectBonds = settings.respectWeaponBonds;
                 DrawCheckbox(listing, "AutoArm_ForceWeapon".Translate(), ref settings.respectWeaponBonds,
                     "AutoArm_ForceWeaponDesc".Translate());
@@ -488,39 +471,46 @@ namespace AutoArm
                 }
             }
 
-            listing.Gap(Constants.UI_SMALL_GAP);
+            DrawWeaponPreferenceSlider(listing);
 
-            bool prevAllowForced = settings.allowForcedWeaponUpgrades;
-            DrawCheckbox(listing, "AutoArm_AllowForcedWeaponUpgrades".Translate(), ref settings.allowForcedWeaponUpgrades,
-                "AutoArm_AllowForcedWeaponUpgradesDesc".Translate());
-            if (prevAllowForced != settings.allowForcedWeaponUpgrades)
+            bool prevOnlyEquipStorage = settings.onlyAutoEquipFromStorage;
+            DrawCheckbox(listing, "AutoArm_OnlyEquipFromStorage".Translate(), ref settings.onlyAutoEquipFromStorage,
+                "AutoArm_OnlyEquipFromStorageDesc".Translate());
+            if (prevOnlyEquipStorage != settings.onlyAutoEquipFromStorage)
+            {
                 WeaponCache.ClearScoreCache();
+                EquipEligibility.Clear();
+            }
 
-            listing.Gap(Constants.UI_SMALL_GAP);
+            DrawCheckbox(listing, "AutoArm_DisableDuringRaids".Translate(), ref settings.disableDuringRaids,
+                "AutoArm_DisableDuringRaidsDesc".Translate());
 
             DrawCheckbox(listing, "AutoArm_AllowTemporaryColonists".Translate(), ref settings.allowTemporaryColonists,
                 "AutoArm_AllowTemporaryColonistsDesc".Translate());
 
+            DrawAgeRestrictions(listing);
+
             GUI.color = oldColor;
             GUI.enabled = wasEnabled;
-
-            listing.Gap(Constants.UI_SECTION_GAP);
         }
 
         private void DrawCompatibilityTab(Listing_Standard listing)
         {
-            DrawSectionHeader(listing, "AutoArm_CompatibilityPatches");
-            listing.Gap(Constants.UI_SECTION_GAP);
-
-            if (!SimpleSidearmsCompat.IsLoaded && !CECompat.IsLoaded && !PocketSandCompat.IsLoaded)
-            {
-                using (new TextBlock(UIColors.Dim))
-                    listing.Label("AutoArm_NoCompatModsDetected".Translate());
+            bool ss = SimpleSidearmsCompat.IsLoaded;
+            bool ce = CECompat.IsLoaded;
+            bool ps = PocketSandCompat.IsLoaded;
+            if (!ss && !ce && !ps)
                 return;
-            }
+
+            listing.Gap(Constants.UI_SECTION_GAP);
+            DrawSectionHeader(listing, "AutoArm_Compatibility");
 
             DrawSimpleSidearmsSettings(listing);
+            if (ss && (ce || ps))
+                listing.Gap(Constants.UI_SMALL_GAP);
             DrawCombatExtendedSettings(listing);
+            if (ce && ps)
+                listing.Gap(Constants.UI_SMALL_GAP);
             DrawPocketSandSettings(listing);
         }
 
@@ -568,18 +558,19 @@ namespace AutoArm
 
             if (SimpleSidearmsCompat.CanAutoEquipSidearms())
             {
+                bool priorEnabled = GUI.enabled;
+                GUI.enabled = priorEnabled && settings.upgradeEquippedWeapons;
+
                 bool tempAllowSidearmUpgrades = settings.allowSidearmUpgrades;
 
-                string upgradeLabel = "AutoArm_AllowSidearmUpgrades".Translate() + " " + "AutoArm_Experimental".Translate();
-                DrawCheckbox(listing, upgradeLabel, ref tempAllowSidearmUpgrades,
-                    "AutoArm_AllowSidearmUpgradesDesc".Translate(), 30f);
+                DrawCheckbox(listing, "AutoArm_AllowSidearmUpgrades".Translate(), ref tempAllowSidearmUpgrades,
+                    "AutoArm_AllowSidearmUpgradesDesc".Translate(), 30f, "AutoArm_Experimental".Translate());
 
                 settings.allowSidearmUpgrades = tempAllowSidearmUpgrades;
+                GUI.enabled = priorEnabled;
             }
 
             GUI.enabled = wasEnabled;
-
-            listing.Gap(Constants.UI_SMALL_GAP);
         }
 
         private void DrawCombatExtendedSettings(Listing_Standard listing)
@@ -640,34 +631,12 @@ namespace AutoArm
                     Widgets.Label(warningRect, "AutoArm_CEAmmoSystemDisabled".Translate());
                 }
             }
-
-            listing.Gap(Constants.UI_SMALL_GAP);
         }
 
         private void DrawPocketSandSettings(Listing_Standard listing)
         {
             if (!PocketSandCompat.IsLoaded) return;
             DrawCompatStatusHeader(listing, "AutoArm_PocketSand".Translate());
-            listing.Gap(Constants.UI_SMALL_GAP);
-        }
-
-        private void DrawAdvancedTab(Listing_Standard listing)
-        {
-            DrawSectionHeader(listing, "AutoArm_WeaponUpgrades");
-            listing.Gap(Constants.UI_SMALL_GAP);
-
-            DrawSlider(listing, "AutoArm_Threshold".Translate(), ref settings.weaponUpgradeThreshold,
-                Constants.WeaponUpgradeThresholdMin, Constants.WeaponUpgradeThresholdMax, "F2",
-                "AutoArm_ThresholdDesc".Translate(),
-                true);
-
-            listing.Gap(Constants.UI_SMALL_GAP);
-
-            DrawWeaponPreferenceSlider(listing);
-
-            listing.Gap(Constants.UI_SECTION_GAP);
-
-            DrawAgeRestrictions(listing);
         }
 
         private void DrawWeaponPreferenceSlider(Listing_Standard listing)
@@ -697,8 +666,6 @@ namespace AutoArm
         {
             if (!ModsConfig.BiotechActive) return;
 
-            DrawSectionHeader(listing, "AutoArm_AgeRestrictions");
-
             DrawCheckbox(listing, "AutoArm_AllowChildrenToEquipWeapons".Translate(), ref settings.allowChildrenToEquipWeapons,
                 "AutoArm_AllowChildrenToEquipWeaponsDesc".Translate());
 
@@ -716,7 +683,8 @@ namespace AutoArm
                     using (new TextBlock(UIColors.WarningSoft))
                     {
                         var warningRect = listing.GetRect(Text.LineHeight);
-                        Widgets.Label(warningRect, "AutoArm_WhatCouldGoWrong".Translate());
+                        var underSlider = new Rect(warningRect.xMax - 204f, warningRect.y, 200f, warningRect.height);
+                        Widgets.Label(underSlider, "AutoArm_WhatCouldGoWrong".Translate());
                     }
                 }
             }
@@ -769,7 +737,8 @@ namespace AutoArm
                         count++;
                         if (settings?.debugLogging == true)
                         {
-                            AutoArmLogger.LogWeapon(pawn, pawn.equipment.Primary, "Bonded weapon marked as forced (setting enabled)");
+                            var bonded = pawn.equipment.Primary;
+                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Bonded weapon {AutoArmLogger.GetWeaponLabelLower(bonded)} marked as forced (setting enabled)");
                         }
                     }
 
@@ -785,7 +754,7 @@ namespace AutoArm
                                 count++;
                                 if (settings?.debugLogging == true)
                                 {
-                                    AutoArmLogger.LogWeapon(pawn, weapon, "Bonded weapon in inventory marked as forced (setting enabled)");
+                                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Bonded weapon {AutoArmLogger.GetWeaponLabelLower(weapon)} in inventory marked as forced (setting enabled)");
                                 }
                             }
                         }
@@ -804,6 +773,16 @@ namespace AutoArm
         }
 
 
+    }
+
+    public class AutoArmSettingsDialog : Dialog_ModSettings
+    {
+        public AutoArmSettingsDialog(Mod mod) : base(mod)
+        {
+            soundAppear = null;
+        }
+
+        public override Vector2 InitialSize => new Vector2(650f, 700f);
     }
 
 }

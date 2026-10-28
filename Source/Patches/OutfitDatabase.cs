@@ -15,7 +15,6 @@ namespace AutoArm.Patches
         {
             try
             {
-                ThingFilter_Allows_Thing_Patch.InvalidateCache();
                 OutfitFilterCache.RebuildCache();
             }
             catch (Exception e)
@@ -41,6 +40,42 @@ namespace AutoArm.Patches
         public static void Postfix() => OutfitCacheInvalidator.Invalidate("OutfitDatabase_TryDelete");
     }
 
+    [HarmonyPatch(typeof(Window), nameof(Window.PostOpen))]
+    [HarmonyPatchCategory(PatchCategories.UI)]
+    internal static class SettingsDialogResize_Patch
+    {
+        private static readonly System.Reflection.FieldInfo modField =
+            HarmonyLib.AccessTools.Field(typeof(Dialog_ModSettings), "mod");
+
+        internal static bool swapping;
+
+        [HarmonyPostfix]
+        public static void Postfix(Window __instance)
+        {
+            try
+            {
+                if (__instance is AutoArmSettingsDialog)
+                    return;
+                if (!(__instance is Dialog_ModSettings dialog))
+                    return;
+                if (modField == null)
+                    return;
+                if (!(modField.GetValue(dialog) is AutoArmMod autoArmMod))
+                    return;
+
+                swapping = true;
+                try { Find.WindowStack.TryRemove(dialog, doCloseSound: false); }
+                finally { swapping = false; }
+
+                Find.WindowStack.Add(new AutoArmSettingsDialog(autoArmMod));
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.ErrorPatch(e, "SettingsDialogResize_Patch");
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(Dialog_ModSettings), "PreClose")]
     [HarmonyPatchCategory(PatchCategories.UI)]
     internal static class Dialog_ModSettings_PreClose_Patch
@@ -51,6 +86,7 @@ namespace AutoArm.Patches
             try
             {
                 if (!(___mod is AutoArmMod)) return;
+                if (SettingsDialogResize_Patch.swapping) return;
 
                 SimpleSidearmsCompat.InvalidateAllCaches();
                 WeaponCache.ClearScoreCache();

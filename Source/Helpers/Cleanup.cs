@@ -18,12 +18,8 @@ namespace AutoArm.Helpers
 
         private static int currentCleanupIndex = 0;
         private static CleanupStats accumulatedStats = new CleanupStats();
-        private const int TOTAL_CLEANUP_OPERATIONS = 17;
-        private const int OPERATIONS_PER_BATCH = 2;
-
-        // Prevent double cleanup
-        private static int _lastCleanedPawnId = -1;
-        private static int _lastCleanupTick = -1;
+        private const int TOTAL_CLEANUP_OPERATIONS = 16;
+        private const int OPERATIONS_PER_BATCH = 1;
 
         // Warmup grace period
         private static int _warmupCompletedTick = -1;
@@ -78,7 +74,7 @@ namespace AutoArm.Helpers
                     accumulatedStats.ForcedWeapons = ForcedWeapons.Cleanup();
                     break;
                 case 1:
-                    AutoArm.Jobs.AutoEquipState.Cleanup();
+                    AutoArm.Jobs.AutoEquipState.Cleanup(force: Testing.TestRunner.IsRunningTests);
                     break;
                 case 2:
                     ForcedWeaponState.Cleanup();
@@ -86,7 +82,7 @@ namespace AutoArm.Helpers
                 case 3:
                     if (SimpleSidearmsCompat.IsLoaded)
                     {
-                        SimpleSidearmsCompat.CleanupCaches();
+                        SimpleSidearmsCompat.CleanupCaches(force: Testing.TestRunner.IsRunningTests);
                     }
                     break;
                 case 4:
@@ -102,7 +98,7 @@ namespace AutoArm.Helpers
                     }
                     break;
                 case 7:
-                    PawnValidation.CleanupDeadPawns();
+                    PawnValidation.CleanupDeadPawns(force: Testing.TestRunner.IsRunningTests);
                     break;
                 case 8:
                     accumulatedStats.WeaponScores = WeaponCache.CleanupScoreCache(forceDeadPawnCleanup: Testing.TestRunner.IsRunningTests);
@@ -126,10 +122,7 @@ namespace AutoArm.Helpers
                     JobGiver_PickUpBetterWeapon.CleanupMessageCache();
                     break;
                 case 15:
-                    JobGiver_PickUpBetterWeapon.CleanupCaches();
-                    break;
-                case 16:
-                    ThinkNode_ConditionalWeaponStatus.CleanupDeadPawns();
+                    JobGiver_PickUpBetterWeapon.CleanupCaches(force: Testing.TestRunner.IsRunningTests);
                     break;
             }
         }
@@ -157,52 +150,6 @@ namespace AutoArm.Helpers
             catch (Exception e)
             {
                 AutoArmLogger.WarnCleanup(e, "PerformFullCleanup");
-            }
-        }
-
-        public static bool IsPawnInvalid(Pawn pawn)
-        {
-            return pawn == null || pawn.Destroyed || pawn.Dead || pawn.Discarded || !pawn.Spawned;
-        }
-
-        public static void OnPawnRemoved(Pawn pawn)
-        {
-            if (pawn == null) return;
-            if (pawn.RaceProps?.ToolUser != true) return;
-
-            // Prevent double cleanup
-            int pawnId = pawn.thingIDNumber;
-            int currentTick = Find.TickManager.TicksGame;
-            if (_lastCleanedPawnId == pawnId && _lastCleanupTick == currentTick)
-                return;
-            _lastCleanedPawnId = pawnId;
-            _lastCleanupTick = currentTick;
-
-            try { ForcedWeapons.RemovePawn(pawn); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.ForcedWeapons"); }
-
-            try { Blacklist.RemovePawn(pawn); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.Blacklist"); }
-
-            try { PawnValidation.RemovePawn(pawn); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.PawnValidation"); }
-
-            try { WeaponCache.RemovePawnFromScoreCache(pawnId); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.WeaponCache"); }
-
-            try { ForcedWeaponLabelHelper.RemovePawn(pawn); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.ForcedWeaponLabelHelper"); }
-
-            try { DroppedItems.RemovePawn(pawn); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.DroppedItems"); }
-
-            try { AutoArm.Jobs.AutoEquipState.RemovePawn(pawn); }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.AutoEquipState"); }
-
-            if (SimpleSidearmsCompat.IsLoaded)
-            {
-                try { SimpleSidearmsCompat.RemovePawn(pawn); }
-                catch (Exception e) { AutoArmLogger.ErrorPatch(e, "OnPawnRemoved.SimpleSidearmsCompat"); }
             }
         }
 

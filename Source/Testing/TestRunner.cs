@@ -101,7 +101,7 @@ namespace AutoArm.Testing
             }
         }
 
-        private static TestResult ExecuteScenario(Map map, ITestScenario test)
+        internal static TestResult ExecuteScenario(Map map, ITestScenario test)
         {
             ResetTestState(map);
 
@@ -222,10 +222,31 @@ namespace AutoArm.Testing
                              && !t.IsAbstract
                              && !t.IsInterface
                              && t.GetConstructor(Type.EmptyTypes) != null)
-                    .OrderBy(t => t.Name);
+                    .OrderBy(t => t.Name)
+                    .ToList();
+
+                var grouped = new HashSet<Type>();
+                foreach (var type in scenarioTypes)
+                {
+                    if (!typeof(TestGroup).IsAssignableFrom(type))
+                        continue;
+                    try
+                    {
+                        var group = (TestGroup)Activator.CreateInstance(type);
+                        tests.Add(group);
+                        foreach (var part in group.Parts)
+                            grouped.Add(part);
+                    }
+                    catch (Exception e)
+                    {
+                        AutoArmLogger.Warn($"Failed to instantiate test group {type.Name}", e);
+                    }
+                }
 
                 foreach (var type in scenarioTypes)
                 {
+                    if (typeof(TestGroup).IsAssignableFrom(type) || grouped.Contains(type))
+                        continue;
                     try
                     {
                         tests.Add((ITestScenario)Activator.CreateInstance(type));
@@ -262,5 +283,117 @@ namespace AutoArm.Testing
             foreach (var kvp in results.GetSkippedTests())
                 AutoArmLogger.InfoFileOnly($"  SKIP {kvp.Key} - {kvp.Value.SkipReason ?? "(no reason)"}");
         }
+    }
+
+    internal sealed class CorePipelineGroup : TestGroup
+    {
+        public override string Name => "Core pipeline";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.ThinkTreeInjectionTest),
+            typeof(Scenarios.NewGameDefaultsTest),
+            typeof(Scenarios.UnarmedPawnTest),
+            typeof(Scenarios.WeaponUpgradeTest),
+            typeof(Scenarios.WeaponSwapChainTest),
+        };
+    }
+
+    internal sealed class StabilityGroup : TestGroup
+    {
+        public override string Name => "Stability and safety";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.RaceConditionTest),
+            typeof(Scenarios.WeaponDestructionMidJobTest),
+            typeof(Scenarios.InfiniteLoopTest),
+            typeof(Scenarios.NullInputSafetyTest),
+            typeof(Scenarios.WeaponDestructionSafetyTest),
+            typeof(Scenarios.FactionChangeInvalidatesScoreCacheTest),
+            typeof(Scenarios.KnownPawnEnumerationTest),
+        };
+    }
+
+    internal sealed class OutfitPolicyGroup : TestGroup
+    {
+        public override string Name => "Outfit policies";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.OutfitFilterTest),
+            typeof(Scenarios.OutfitFilterPenaltyTest),
+            typeof(Scenarios.UnarmedOutfitBypassTest),
+            typeof(Scenarios.ForbiddenWeaponHandlingTest),
+            typeof(Scenarios.PolicyDisallowedPrimaryDropsTest),
+        };
+    }
+
+    internal sealed class ForcedWeaponsGroup : TestGroup
+    {
+        public override string Name => "Forced weapons";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.ForcedWeaponPersistenceTest),
+            typeof(Scenarios.ForcedWeaponSaveLoadTest),
+            typeof(Scenarios.LegacyFormatSaveLoadTest),
+            typeof(Scenarios.OrderedEquipMarksForcedTest),
+            typeof(Scenarios.UnfinishedOrderKeepsForcedPrimaryTest),
+            typeof(Scenarios.ClearForcedPrimaryPreservesSidearmsTest),
+            typeof(Scenarios.ForcedIncineratorTest),
+            typeof(Scenarios.ForcedPrimarySameDefUpgradeTest),
+            typeof(Scenarios.ForcedPrimaryCrossDefBlockedTest),
+            typeof(Scenarios.ForcedSidearmSettingOffTest),
+            typeof(Scenarios.ForcedSidearmSameDefUpgradeTest),
+            typeof(Scenarios.ForcedSidearmCrossDefBlockedTest),
+            typeof(Scenarios.SameDefLowerQualityBlockedTest),
+        };
+    }
+
+    internal sealed class SimpleSidearmsGroup : TestGroup
+    {
+        public override string Name => "SimpleSidearms compatibility";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.SimpleSidearmsReflectionFixTest),
+            typeof(Scenarios.SimpleSidearmsIntegrationTest),
+            typeof(Scenarios.SimpleSidearmsSlotLimitTest),
+            typeof(Scenarios.SimpleSidearmsForcedWeaponTest),
+            typeof(Scenarios.SimpleSidearmsCrossTypePrimarySwapTest),
+            typeof(Scenarios.UnarmedWithSameDefSidearmTest),
+            typeof(Scenarios.PrimaryBlocksSameDefSidearmTest),
+            typeof(Scenarios.SidearmBlocksSameDefPrimaryUpgradeTest),
+            typeof(Scenarios.RetrievalDupeBlockSelfHealsTest),
+        };
+    }
+
+    internal sealed class ScoringGroup : TestGroup
+    {
+        public override string Name => "Scoring and selection";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.PersonaWeaponBonusTest),
+            typeof(Scenarios.GrenadeHandlingTest),
+            typeof(Scenarios.PistolDetectedByRangedLightTest),
+            typeof(Scenarios.ShieldBeltBlocksRangedTest),
+            typeof(Scenarios.BrawlerTest),
+            typeof(Scenarios.SkillBasedPreferenceTest),
+            typeof(Scenarios.WeaponBlacklistBasicTest),
+            typeof(Scenarios.WeaponBlacklistIntegrationTest),
+        };
+    }
+
+    internal sealed class PawnEligibilityGroup : TestGroup
+    {
+        public override string Name => "Pawn eligibility";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.TemporaryColonistTest),
+            typeof(Scenarios.FormerLodgerIsPermanentTest),
+            typeof(Scenarios.BorrowedSoldierKeepsLockedWeaponTest),
+            typeof(Scenarios.BiocodedPrimaryStillManagedTest),
+            typeof(Scenarios.ChildColonistTest),
+            typeof(Scenarios.NobilityTest),
+            typeof(Scenarios.SlaveTest),
+            typeof(Scenarios.RaidDetectionTest),
+            typeof(Scenarios.CaravanTest),
+        };
     }
 }

@@ -145,6 +145,82 @@ namespace AutoArm.Testing
         }
     }
 
+    public abstract class TestGroup : ITestScenario
+    {
+        public abstract string Name { get; }
+        public abstract Type[] Parts { get; }
+
+        private Map map;
+
+        public void Setup(Map map)
+        {
+            this.map = map;
+        }
+
+        public TestResult Run()
+        {
+            var result = new TestResult { Outcome = TestOutcome.Pass };
+            var failures = new List<string>();
+            int passed = 0, skipped = 0;
+            string firstSkipReason = null;
+
+            foreach (var partType in Parts)
+            {
+                ITestScenario part;
+                try
+                {
+                    part = (ITestScenario)Activator.CreateInstance(partType);
+                }
+                catch (Exception e)
+                {
+                    failures.Add($"{partType.Name}: could not instantiate ({e.Message})");
+                    continue;
+                }
+
+                var partResult = TestRunner.ExecuteScenario(map, part) ?? TestResult.Failure("no result");
+
+                if (partResult.Skipped)
+                {
+                    skipped++;
+                    if (firstSkipReason == null)
+                        firstSkipReason = partResult.SkipReason;
+                    result.Data[part.Name] = $"skipped ({partResult.SkipReason})";
+                }
+                else if (!partResult.Success)
+                {
+                    failures.Add($"{part.Name}: {partResult.FailureReason}");
+                }
+                else
+                {
+                    passed++;
+                }
+            }
+
+            if (failures.Count > 0)
+            {
+                result.Outcome = TestOutcome.Fail;
+                result.FailureReason = failures.Count == 1
+                    ? failures[0]
+                    : $"{failures.Count} of {Parts.Length} checks failed:  " + string.Join("  |  ", failures);
+            }
+            else if (passed == 0 && skipped > 0)
+            {
+                result.Outcome = TestOutcome.Skip;
+                result.SkipReason = skipped == 1 ? firstSkipReason : $"All {skipped} checks skipped ({firstSkipReason})";
+            }
+            else
+            {
+                result.Data["Checks"] = skipped > 0 ? $"{passed} passed, {skipped} skipped" : $"{passed} passed";
+            }
+
+            return result;
+        }
+
+        public void Cleanup()
+        {
+        }
+    }
+
     public abstract class TestScenarioBase : ITestScenario
     {
         public abstract string Name { get; }

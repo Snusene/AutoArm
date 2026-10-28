@@ -85,23 +85,5 @@ namespace AutoArm.Patches
             }
             catch (Exception e) { AutoArmLogger.ErrorPatch(e, "BirthdayBiological_Postfix"); }
         }
-
-
-        [HarmonyPatch(typeof(Pawn), "Destroy")]
-        internal static class Pawn_Destroy_Cache_Patch
-        {
-            [HarmonyPrefix]
-            public static void Prefix(Pawn __instance)
-            {
-                try
-                {
-                    if (__instance == null) return;
-                    if (AutoArmMod.settings?.modEnabled != true) return;
-                    Helpers.Cleanup.OnPawnRemoved(__instance);
-                }
-                catch (Exception e) { AutoArmLogger.ErrorPatch(e, "Pawn_Destroy_Prefix"); }
-            }
-        }
-
     }
 }

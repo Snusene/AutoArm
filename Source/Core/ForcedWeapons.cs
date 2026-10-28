@@ -1,8 +1,11 @@
 
 using AutoArm.Helpers;
+using RimWorld;
 using RimWorld.Planet;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Verse;
 
 namespace AutoArm
@@ -190,15 +193,6 @@ namespace AutoArm
             }
         }
 
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-            int pawnId = pawn.thingIDNumber;
-            forcedWeaponIds.Remove(pawnId);
-            forcedWeaponDefs.Remove(pawnId);
-            forcedPrimaryWeapon.Remove(pawnId);
-        }
-
         public static bool IsForced(Pawn pawn, ThingWithComps weapon)
         {
             if (pawn == null || weapon == null)
@@ -343,7 +337,24 @@ namespace AutoArm
 
             int removed = 0;
 
-            var idToPawn = BuildPawnIdLookup();
+            var idToPawn = pawnIdLookupScratch;
+            idToPawn.Clear();
+            var neededIds = HashSetPool<int>.Get();
+            try
+            {
+                foreach (var pawnId in forcedWeaponIds.Keys)
+                    neededIds.Add(pawnId);
+                foreach (var pawnId in forcedWeaponDefs.Keys)
+                    neededIds.Add(pawnId);
+                foreach (var pawnId in forcedPrimaryWeapon.Keys)
+                    neededIds.Add(pawnId);
+
+                ResolvePawnsByIds(neededIds, idToPawn);
+            }
+            finally
+            {
+                HashSetPool<int>.Return(neededIds);
+            }
 
             var invalidIds = ListPool<int>.Get(forcedWeaponIds.Count);
             try
@@ -492,21 +503,6 @@ namespace AutoArm
             return removed;
         }
 
-        public static void TransferForcedStatus(Pawn pawn, ThingWithComps fromWeapon, ThingWithComps toWeapon)
-        {
-            if (pawn == null || fromWeapon == null || toWeapon == null)
-                return;
-
-            if (!IsForced(pawn, fromWeapon))
-                return;
-
-            RemoveForcedWeapon(pawn, fromWeapon);
-            SetForced(pawn, toWeapon);
-
-            AutoArmLogger.Debug(() => $"[{pawn.Name?.ToStringShort ?? "Unknown"}] Transferred forced status from {AutoArmLogger.GetWeaponLabelLower(fromWeapon)} to {AutoArmLogger.GetWeaponLabelLower(toWeapon)}");
-        }
-
-
         public static Dictionary<Pawn, List<int>> GetForcedWeaponIds()
         {
             PruneInvalidEntries();
@@ -561,11 +557,73 @@ namespace AutoArm
             return result;
         }
 
+        internal static ThingWithComps FindHeldWeaponById(Pawn pawn, int weaponId)
+        {
+            if (pawn == null || weaponId == 0)
+                return null;
+
+            var primary = pawn.equipment?.Primary;
+            if (primary != null && primary.thingIDNumber == weaponId)
+                return primary;
+
+            var inv = pawn.inventory?.innerContainer;
+            if (inv != null)
+            {
+                for (int i = 0; i < inv.Count; i++)
+                {
+                    if (inv[i] is ThingWithComps twc && twc.thingIDNumber == weaponId)
+                        return twc;
+                }
+            }
+
+            var carried = pawn.carryTracker?.CarriedThing as ThingWithComps;
+            if (carried != null && carried.thingIDNumber == weaponId)
+                return carried;
+
+            return null;
+        }
+
         public static void Reset()
         {
             forcedPrimaryWeapon.Clear();
             forcedWeaponDefs.Clear();
             forcedWeaponIds.Clear();
+        }
+
+        internal sealed class Snapshot
+        {
+            public readonly Dictionary<int, HashSet<int>> weaponIds = new Dictionary<int, HashSet<int>>();
+            public readonly Dictionary<int, HashSet<ThingDef>> weaponDefs = new Dictionary<int, HashSet<ThingDef>>();
+            public readonly Dictionary<int, int> primaries = new Dictionary<int, int>();
+        }
+
+        internal static Snapshot Capture()
+        {
+            var snap = new Snapshot();
+            foreach (var kvp in forcedWeaponIds)
+                snap.weaponIds[kvp.Key] = new HashSet<int>(kvp.Value);
+            foreach (var kvp in forcedWeaponDefs)
+                snap.weaponDefs[kvp.Key] = new HashSet<ThingDef>(kvp.Value);
+            foreach (var kvp in forcedPrimaryWeapon)
+                snap.primaries[kvp.Key] = kvp.Value;
+            return snap;
+        }
+
+        internal static void Restore(Snapshot snap)
+        {
+            if (snap == null)
+                return;
+
+            forcedWeaponIds.Clear();
+            forcedWeaponDefs.Clear();
+            forcedPrimaryWeapon.Clear();
+
+            foreach (var kvp in snap.weaponIds)
+                forcedWeaponIds[kvp.Key] = new HashSet<int>(kvp.Value);
+            foreach (var kvp in snap.weaponDefs)
+                forcedWeaponDefs[kvp.Key] = new HashSet<ThingDef>(kvp.Value);
+            foreach (var kvp in snap.primaries)
+                forcedPrimaryWeapon[kvp.Key] = kvp.Value;
         }
 
         public static void LoadForcedWeaponIds(Dictionary<Pawn, List<int>> data)
@@ -604,29 +662,6 @@ namespace AutoArm
             PruneInvalidEntries();
         }
 
-        public static void AddForcedWeaponDef(Pawn pawn, ThingDef weaponDef)
-        {
-            if (pawn == null || weaponDef == null)
-                return;
-            int pawnId = pawn.thingIDNumber;
-            if (!forcedWeaponDefs.ContainsKey(pawnId))
-                forcedWeaponDefs[pawnId] = new HashSet<ThingDef>();
-            forcedWeaponDefs[pawnId].Add(weaponDef);
-        }
-
-        public static void RemoveForcedWeaponDef(Pawn pawn, ThingDef weaponDef)
-        {
-            if (pawn == null || weaponDef == null)
-                return;
-            int pawnId = pawn.thingIDNumber;
-            if (forcedWeaponDefs.ContainsKey(pawnId))
-            {
-                forcedWeaponDefs[pawnId].Remove(weaponDef);
-                if (forcedWeaponDefs[pawnId].Count == 0)
-                    forcedWeaponDefs.Remove(pawnId);
-            }
-        }
-
         public static void LoadSidearmSaveData(Dictionary<Pawn, HashSet<ThingDef>> data)
         {
             if (data == null)
@@ -652,17 +687,6 @@ namespace AutoArm
             }
 
             PruneInvalidEntries();
-        }
-
-
-
-        internal static bool HasForcedWeaponDef(Pawn pawn, ThingDef weaponDef)
-        {
-            if (pawn == null || weaponDef == null)
-                return false;
-
-            int pawnId = pawn.thingIDNumber;
-            return forcedWeaponDefs.ContainsKey(pawnId) && forcedWeaponDefs[pawnId].Contains(weaponDef);
         }
 
         private static void PruneInvalidEntries()
@@ -761,48 +785,211 @@ namespace AutoArm
             return true;
         }
 
+        private static readonly Func<List<Pawn>> mapsCaravansTransitGetter = BindMapsCaravansTransitGetter();
+
+        private static Func<List<Pawn>> BindMapsCaravansTransitGetter()
+        {
+            try
+            {
+                var finder = typeof(PawnsFinder);
+                var prop = finder.GetProperty("AllMapsCaravansAndTravellingTransporters_Alive",
+                               BindingFlags.Public | BindingFlags.Static)
+                           ?? finder.GetProperty("AllMapsCaravansAndTravelingTransportPods_Alive",
+                               BindingFlags.Public | BindingFlags.Static);
+
+                var getter = prop?.GetGetMethod();
+                if (getter != null && typeof(List<Pawn>).IsAssignableFrom(getter.ReturnType))
+                {
+                    var bound = (Func<List<Pawn>>)Delegate.CreateDelegate(typeof(Func<List<Pawn>>), getter, throwOnBindFailure: false);
+                    if (bound != null)
+                    {
+                        AutoArmLogger.Debug(() => $"Pawn enumeration bound to PawnsFinder.{prop.Name}");
+                        return bound;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.Warn($"PawnsFinder bind failed, using manual pawn enumeration: {e.Message}");
+            }
+            return null;
+        }
+
+        private static void ResolvePawnsByIds(HashSet<int> ids, Dictionary<int, Pawn> outPawns)
+        {
+            if (ids.Count == 0)
+                return;
+
+            List<Pawn> combined = null;
+            if (mapsCaravansTransitGetter != null)
+            {
+                try { combined = mapsCaravansTransitGetter(); }
+                catch (Exception e) { AutoArmLogger.WarnFileOnly($"PawnsFinder enumeration failed: {e.Message}"); }
+            }
+
+            if (combined != null)
+            {
+                for (int i = 0; i < combined.Count; i++)
+                {
+                    var p = combined[i];
+                    if (p != null && ids.Contains(p.thingIDNumber))
+                    {
+                        outPawns[p.thingIDNumber] = p;
+                        if (outPawns.Count == ids.Count)
+                            return;
+                    }
+                }
+            }
+            else
+            {
+                if (Find.Maps != null)
+                {
+                    foreach (var gameMap in Find.Maps)
+                    {
+                        var all = gameMap?.mapPawns?.AllPawns;
+                        if (all == null) continue;
+                        for (int i = 0; i < all.Count; i++)
+                        {
+                            var p = all[i];
+                            if (p != null && ids.Contains(p.thingIDNumber))
+                            {
+                                outPawns[p.thingIDNumber] = p;
+                                if (outPawns.Count == ids.Count)
+                                    return;
+                            }
+                        }
+                    }
+                }
+
+                if (Find.World != null && Find.WorldObjects != null)
+                {
+                    var caravans = Find.WorldObjects.Caravans;
+                    for (int i = 0; i < caravans.Count; i++)
+                    {
+                        var pawns = caravans[i]?.PawnsListForReading;
+                        if (pawns == null) continue;
+                        for (int j = 0; j < pawns.Count; j++)
+                        {
+                            var p = pawns[j];
+                            if (p != null && ids.Contains(p.thingIDNumber))
+                            {
+                                outPawns[p.thingIDNumber] = p;
+                                if (outPawns.Count == ids.Count)
+                                    return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            var worldPawns = Find.World?.worldPawns;
+            if (worldPawns != null)
+            {
+                foreach (var p in worldPawns.AllPawnsAliveOrDead)
+                {
+                    if (p != null && ids.Contains(p.thingIDNumber))
+                    {
+                        outPawns[p.thingIDNumber] = p;
+                        if (outPawns.Count == ids.Count)
+                            return;
+                    }
+                }
+            }
+        }
+
+        internal static void CollectKnownPawns(List<Pawn> outPawns)
+        {
+            outPawns.Clear();
+            var seen = HashSetPool<int>.Get();
+            try
+            {
+                List<Pawn> combined = null;
+                if (mapsCaravansTransitGetter != null)
+                {
+                    try { combined = mapsCaravansTransitGetter(); }
+                    catch (Exception e) { AutoArmLogger.WarnFileOnly($"PawnsFinder enumeration failed: {e.Message}"); }
+                }
+
+                if (combined != null)
+                {
+                    for (int i = 0; i < combined.Count; i++)
+                    {
+                        var p = combined[i];
+                        if (p != null && seen.Add(p.thingIDNumber))
+                            outPawns.Add(p);
+                    }
+                }
+                else
+                {
+                    if (Find.Maps != null)
+                    {
+                        foreach (var gameMap in Find.Maps)
+                        {
+                            var all = gameMap?.mapPawns?.AllPawns;
+                            if (all == null) continue;
+                            for (int i = 0; i < all.Count; i++)
+                            {
+                                var p = all[i];
+                                if (p != null && seen.Add(p.thingIDNumber))
+                                    outPawns.Add(p);
+                            }
+                        }
+                    }
+
+                    if (Find.World != null && Find.WorldObjects != null)
+                    {
+                        var caravans = Find.WorldObjects.Caravans;
+                        for (int i = 0; i < caravans.Count; i++)
+                        {
+                            var pawns = caravans[i]?.PawnsListForReading;
+                            if (pawns == null) continue;
+                            for (int j = 0; j < pawns.Count; j++)
+                            {
+                                var p = pawns[j];
+                                if (p != null && seen.Add(p.thingIDNumber))
+                                    outPawns.Add(p);
+                            }
+                        }
+                    }
+                }
+
+                var worldPawns = Find.World?.worldPawns;
+                if (worldPawns != null)
+                {
+                    foreach (var p in worldPawns.AllPawnsAliveOrDead)
+                    {
+                        if (p != null && seen.Add(p.thingIDNumber))
+                            outPawns.Add(p);
+                    }
+                }
+            }
+            finally
+            {
+                HashSetPool<int>.Return(seen);
+            }
+        }
+
+        private static readonly Dictionary<int, Pawn> pawnIdLookupScratch = new Dictionary<int, Pawn>(64);
+
         private static Dictionary<int, Pawn> BuildPawnIdLookup()
         {
-            var map = new Dictionary<int, Pawn>(64);
+            pawnIdLookupScratch.Clear();
 
-            if (Find.Maps != null)
+            var pawns = ListPool<Pawn>.Get(256);
+            try
             {
-                foreach (var gameMap in Find.Maps)
+                CollectKnownPawns(pawns);
+                for (int i = 0; i < pawns.Count; i++)
                 {
-                    if (gameMap?.mapPawns?.AllPawns == null) continue;
-                    foreach (var p in gameMap.mapPawns.AllPawns)
-                    {
-                        if (p == null) continue;
-                        map[p.thingIDNumber] = p;
-                    }
+                    pawnIdLookupScratch[pawns[i].thingIDNumber] = pawns[i];
                 }
             }
-
-            if (Find.WorldPawns != null)
+            finally
             {
-                foreach (var p in Find.WorldPawns.AllPawnsAliveOrDead)
-                {
-                    if (p == null) continue;
-                    if (!map.ContainsKey(p.thingIDNumber))
-                        map[p.thingIDNumber] = p;
-                }
+                ListPool<Pawn>.Return(pawns);
             }
 
-            if (Find.WorldObjects != null)
-            {
-                foreach (var caravan in Find.WorldObjects.Caravans)
-                {
-                    if (caravan?.PawnsListForReading == null) continue;
-                    foreach (var p in caravan.PawnsListForReading)
-                    {
-                        if (p == null) continue;
-                        if (!map.ContainsKey(p.thingIDNumber))
-                            map[p.thingIDNumber] = p;
-                    }
-                }
-            }
-
-            return map;
+            return pawnIdLookupScratch;
         }
     }
 }

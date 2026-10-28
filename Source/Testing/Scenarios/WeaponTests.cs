@@ -220,9 +220,10 @@ namespace AutoArm.Testing.Scenarios
                 SpawnPosition = owner?.Position + new IntVec3(3, 0, 0)
             });
 
-            var personaDef = DefDatabase<ThingDef>.AllDefsListForReading.FirstOrDefault(d =>
-                d.IsWeapon && d.comps != null &&
-                d.comps.Any(c => c.compClass == typeof(CompBladelinkWeapon)));
+            var personaDef = DefDatabase<ThingDef>.GetNamedSilentFail("MeleeWeapon_PersonaMonosword")
+                ?? DefDatabase<ThingDef>.AllDefsListForReading.FirstOrDefault(d =>
+                    d.IsWeapon && d.comps != null &&
+                    d.comps.Any(c => c.compClass == typeof(CompBladelinkWeapon)));
             if (personaDef == null) return;
 
             personaWeapon = ThingMaker.MakeThing(personaDef) as ThingWithComps;
@@ -245,7 +246,19 @@ namespace AutoArm.Testing.Scenarios
             if (!Caching.Components.IsPersonaWeapon(personaWeapon))
                 return TestResult.Failure("Weapon not recognized as persona");
             if (!CompBiocodable.IsBiocodedFor(personaWeapon, owner))
+            {
+                var bladelink = personaWeapon.GetComp<CompBladelinkWeapon>();
+                var traits = bladelink?.TraitsListForReading;
+                if (traits != null)
+                {
+                    for (int i = 0; i < traits.Count; i++)
+                    {
+                        if (traits[i]?.neverBond == true)
+                            return TestResult.Skip("Weapon rolled a neverBond trait, cannot be biocoded");
+                    }
+                }
                 return TestResult.Failure("Biocode not applied to owner");
+            }
             if (CompBiocodable.IsBiocodedFor(personaWeapon, stranger))
                 return TestResult.Failure("Biocode leaked to stranger");
 

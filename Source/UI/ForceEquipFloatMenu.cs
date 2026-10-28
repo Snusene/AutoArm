@@ -13,29 +13,31 @@ namespace AutoArm.UI
         [HarmonyPostfix]
         public static void Postfix(Thing clickedThing, FloatMenuContext context, ref FloatMenuOption __result)
         {
-            if (__result == null || __result.action == null)
-                return;
-            if (AutoArmMod.settings?.modEnabled != true)
-                return;
-            if (clickedThing == null || !clickedThing.def.IsWeapon)
-                return;
-
-            var twc = clickedThing as ThingWithComps;
-            if (twc == null)
-                return;
-
-            var pawn = context?.FirstSelectedPawn;
-            if (pawn == null)
-                return;
-
-            __result.Label = "ForceEquipApparel".Translate(clickedThing.LabelShort, clickedThing);
-
-            var originalAction = __result.action;
-            __result.action = delegate
+            try
             {
-                AutoEquipState.SetWeaponToForce(pawn, twc);
-                originalAction();
-            };
+                if (__result == null || __result.action == null)
+                    return;
+                if (AutoArmMod.settings?.modEnabled != true)
+                    return;
+                if (AutoArmMod.settings?.showForcedLabels != true)
+                    return;
+                if (clickedThing == null || !clickedThing.def.IsWeapon || !(clickedThing is ThingWithComps))
+                    return;
+                if (context?.FirstSelectedPawn == null)
+                    return;
+
+                string oldPrefix = "Equip".Translate(clickedThing.LabelShort).ToString();
+                var label = __result.Label;
+                if (label == null || !label.StartsWith(oldPrefix, StringComparison.Ordinal))
+                    return;
+
+                string newPrefix = "ForceEquipApparel".Translate(clickedThing.LabelShort, clickedThing).ToString();
+                __result.Label = newPrefix + label.Substring(oldPrefix.Length);
+            }
+            catch (Exception e)
+            {
+                AutoArmLogger.ErrorPatch(e, "FloatMenuOptionProvider_Equip_Patch.Postfix");
+            }
         }
     }
 }

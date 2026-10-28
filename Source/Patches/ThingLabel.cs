@@ -17,9 +17,9 @@ namespace AutoArm
     [HarmonyAfter("PeteTimesSix.SimpleSidearms", "CETeam.CombatExtended")]
     internal static class Thing_LabelPatches
     {
-        private static Dictionary<int, (string label, int tick)> cache = new Dictionary<int, (string, int)>();
+        private static Dictionary<int, (string label, int frame)> cache = new Dictionary<int, (string, int)>();
 
-        private static int cachedTickForQuickCheck = -1;
+        private static int cachedFrameForQuickCheck = -1;
 
         private static bool quickCheckResult = false;
 
@@ -36,10 +36,10 @@ namespace AutoArm
                 if (!__instance.def.IsWeapon)
                     return true;
 
-                var tick = Find.TickManager?.TicksGame ?? -1;
-                if (cachedTickForQuickCheck != tick)
+                var frame = RealTime.frameCount;
+                if (cachedFrameForQuickCheck != frame)
                 {
-                    cachedTickForQuickCheck = tick;
+                    cachedFrameForQuickCheck = frame;
                     quickCheckResult = ForcedWeaponLabelHelper.ShouldProcessWeaponLabel();
                 }
 
@@ -49,7 +49,7 @@ namespace AutoArm
                 if (!ForcedWeaponLabelHelper.IsWeaponOwnedBySelectedPawn(__instance.thingIDNumber))
                     return true;
 
-                if (cache.TryGetValue(__instance.thingIDNumber, out var cached) && cached.tick == tick)
+                if (cache.TryGetValue(__instance.thingIDNumber, out var cached) && cached.frame == frame)
                 {
                     __result = cached.label;
                     return false;
@@ -79,8 +79,7 @@ namespace AutoArm
 
                 ForcedWeaponLabelHelper.AddForcedText(__instance, ref __result);
 
-                int currentTick = Find.TickManager?.TicksGame ?? 0;
-                cache[__instance.thingIDNumber] = (__result, currentTick);
+                cache[__instance.thingIDNumber] = (__result, RealTime.frameCount);
             }
             catch (Exception e)
             {
@@ -93,13 +92,13 @@ namespace AutoArm
             if (cache.Count == 0)
                 return 0;
 
-            int currentTick = Find.TickManager?.TicksGame ?? 0;
+            int currentFrame = RealTime.frameCount;
             int removedCount = 0;
 
             var toRemove = ListPool<int>.Get(cache.Count / 4);
             foreach (var kvp in cache)
             {
-                if (currentTick - kvp.Value.tick > 60)
+                if (currentFrame - kvp.Value.frame > 300)
                 {
                     toRemove.Add(kvp.Key);
                 }
@@ -113,56 +112,6 @@ namespace AutoArm
 
             ListPool<int>.Return(toRemove);
             return removedCount;
-        }
-    }
-
-    [HarmonyPatch(typeof(ThingCategoryDef), "DescendantThingDefs", MethodType.Getter)]
-    [HarmonyPatchCategory(Patches.PatchCategories.UI)]
-    internal static class ThingCategoryDef_DescendantThingDefs_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ThingCategoryDef __instance, ref IEnumerable<ThingDef> __result)
-        {
-            try
-            {
-                if (TestRunner.IsRunningTests)
-                    return;
-
-                if (AutoArmMod.settings?.modEnabled != true &&
-                    __instance?.defName == "Weapons" &&
-                    __instance?.parent?.defName == "Apparel")
-                {
-                    __result = Enumerable.Empty<ThingDef>();
-                }
-            }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "DescendantThingDefs_Postfix"); }
-        }
-    }
-
-    [HarmonyPatch(typeof(ThingCategoryDef), "ThisAndChildCategoryDefs", MethodType.Getter)]
-    [HarmonyPatchCategory(Patches.PatchCategories.UI)]
-    internal static class ThingCategoryDef_ThisAndChildCategoryDefs_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ThingCategoryDef __instance, ref IEnumerable<ThingCategoryDef> __result)
-        {
-            try
-            {
-                if (TestRunner.IsRunningTests)
-                    return;
-
-                if (AutoArmMod.settings?.modEnabled != true && __instance?.defName == "Apparel")
-                {
-                    var filtered = new List<ThingCategoryDef>();
-                    foreach (var cat in __result)
-                    {
-                        if (cat?.defName != "Weapons")
-                            filtered.Add(cat);
-                    }
-                    __result = filtered;
-                }
-            }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "ThisAndChildCategoryDefs_Postfix"); }
         }
     }
 }

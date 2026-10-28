@@ -329,7 +329,6 @@ namespace AutoArm.Testing.Helpers
                              ?? Enumerable.Empty<Pawn>();
                 foreach (var pawn in allPawns)
                 {
-                    AutoArm.ForcedWeapons.ClearForced(pawn);
                     AutoArm.Blacklist.ClearBlacklist(pawn);
                 }
                 AutoArm.ForcedWeapons.Cleanup();

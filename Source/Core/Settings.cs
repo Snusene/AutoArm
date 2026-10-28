@@ -12,6 +12,7 @@ namespace AutoArm
         private const bool DEFAULT_SHOW_FORCED_LABELS = true;
         private const bool DEFAULT_SHOW_NOTIFICATIONS = true;
         private const bool DEFAULT_ONLY_EQUIP_FROM_STORAGE = false;
+        private const bool DEFAULT_UPGRADE_EQUIPPED_WEAPONS = true;
         private const bool DEFAULT_AUTO_EQUIP_SIDEARMS = true;
         private const bool DEFAULT_ALLOW_SIDEARM_UPGRADES = true;
         private const bool DEFAULT_ALLOW_FORCED_WEAPON_UPGRADES = false;
@@ -30,6 +31,7 @@ namespace AutoArm
         public bool showForcedLabels;
         public bool showNotifications;
         public bool onlyAutoEquipFromStorage;
+        public bool upgradeEquippedWeapons;
         public bool autoEquipSidearms;
         public bool allowSidearmUpgrades;
         public bool allowForcedWeaponUpgrades;
@@ -56,6 +58,7 @@ namespace AutoArm
             showForcedLabels = other.showForcedLabels;
             showNotifications = other.showNotifications;
             onlyAutoEquipFromStorage = other.onlyAutoEquipFromStorage;
+            upgradeEquippedWeapons = other.upgradeEquippedWeapons;
             autoEquipSidearms = other.autoEquipSidearms;
             allowSidearmUpgrades = other.allowSidearmUpgrades;
             allowForcedWeaponUpgrades = other.allowForcedWeaponUpgrades;
@@ -84,6 +87,7 @@ namespace AutoArm
             showForcedLabels = DEFAULT_SHOW_FORCED_LABELS;
             showNotifications = DEFAULT_SHOW_NOTIFICATIONS;
             onlyAutoEquipFromStorage = DEFAULT_ONLY_EQUIP_FROM_STORAGE;
+            upgradeEquippedWeapons = DEFAULT_UPGRADE_EQUIPPED_WEAPONS;
             autoEquipSidearms = DEFAULT_AUTO_EQUIP_SIDEARMS;
             allowSidearmUpgrades = DEFAULT_ALLOW_SIDEARM_UPGRADES;
             allowForcedWeaponUpgrades = DEFAULT_ALLOW_FORCED_WEAPON_UPGRADES;
@@ -105,6 +109,7 @@ namespace AutoArm
             Scribe_Values.Look(ref showForcedLabels, "showForcedLabels", DEFAULT_SHOW_FORCED_LABELS);
             Scribe_Values.Look(ref showNotifications, "showNotifications", DEFAULT_SHOW_NOTIFICATIONS);
             Scribe_Values.Look(ref onlyAutoEquipFromStorage, "onlyAutoEquipFromStorage", DEFAULT_ONLY_EQUIP_FROM_STORAGE);
+            Scribe_Values.Look(ref upgradeEquippedWeapons, "upgradeEquippedWeapons", DEFAULT_UPGRADE_EQUIPPED_WEAPONS);
             Scribe_Values.Look(ref autoEquipSidearms, "autoEquipSidearms", DEFAULT_AUTO_EQUIP_SIDEARMS);
             Scribe_Values.Look(ref allowSidearmUpgrades, "allowSidearmUpgrades", DEFAULT_ALLOW_SIDEARM_UPGRADES);
             Scribe_Values.Look(ref allowForcedWeaponUpgrades, "allowForcedWeaponUpgrades", DEFAULT_ALLOW_FORCED_WEAPON_UPGRADES);

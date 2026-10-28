@@ -182,10 +182,12 @@ namespace AutoArm.Testing.Scenarios
             result.Data["JobDef"] = job?.def?.defName;
             result.Data["TargetA"] = (job?.targetA.Thing as ThingWithComps)?.def.defName;
 
-            if (job != null)
+            bool replacesPrimary = job != null &&
+                (job.def == AutoArmDefOf.AutoArmSwapPrimary || job.def == JobDefOf.Equip);
+            if (replacesPrimary)
             {
                 result.Success = false;
-                result.FailureReason = $"Expected no job (cross-def blocked), got {job.def?.defName} targeting {(job.targetA.Thing as ThingWithComps)?.def.defName}";
+                result.FailureReason = $"Expected forced primary kept (cross-def blocked), got {job.def?.defName} targeting {(job.targetA.Thing as ThingWithComps)?.def.defName}";
             }
 
             return result;

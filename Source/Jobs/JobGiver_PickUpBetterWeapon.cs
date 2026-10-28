@@ -29,6 +29,9 @@ namespace AutoArm.Jobs
 
         private static readonly StatDef CachedMass = StatDefOf.Mass;
 
+        private static readonly Caching.TickExpiringLruCache<int, float> meleeDpsCache =
+            new Caching.TickExpiringLruCache<int, float>(64, 2500, 512);
+
         private static float? _unarmedDpsThreshold;
         private static float UnarmedDpsThreshold
         {
@@ -318,6 +321,11 @@ namespace AutoArm.Jobs
             }
         }
 
+        public static void ClearMeleeDpsCache()
+        {
+            meleeDpsCache.Clear();
+        }
+
         protected override Job TryGiveJob(Pawn pawn)
         {
             return TestTryGiveJob(pawn);
@@ -459,19 +467,15 @@ namespace AutoArm.Jobs
                         if (ShouldLogDebugMessage(pawn, MSG_TYPE_SKIP, msg))
                             AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Skipped: {msg}");
                     }
+                    var enforcement = TryPolicyEnforcementJob(pawn);
                     if (timingStarted) PerfMetrics.EndTiming();
-                    return null;
+                    return enforcement;
                 }
 
                 var outfit = pawn.outfits?.CurrentApparelPolicy;
                 if (outfit?.filter != null)
                 {
-                    bool hasMatchingWeapon = false;
-                    foreach (var weapon in WeaponCache.GetWeaponsForOutfit(pawn.Map, outfit))
-                    {
-                        hasMatchingWeapon = true;
-                        break;
-                    }
+                    bool hasMatchingWeapon = WeaponCache.AnyWeaponForOutfit(pawn.Map, outfit);
 
                     if (!hasMatchingWeapon)
                     {
@@ -481,8 +485,9 @@ namespace AutoArm.Jobs
                             if (ShouldLogDebugMessage(pawn, MSG_TYPE_SKIP, msg))
                                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Skipped: {msg}");
                         }
+                        var enforcement = TryPolicyEnforcementJob(pawn);
                         if (timingStarted) PerfMetrics.EndTiming();
-                        return null;
+                        return enforcement;
                     }
                 }
             }
@@ -541,16 +546,28 @@ namespace AutoArm.Jobs
 
             float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : 0f;
 
-            string failureReason;
-            ThingWithComps bestWeapon;
-            bestWeapon = FindBestWeapon(pawn, currentScore, weaponRestriction.restrictToType,
-                weaponRestriction.wasForced && weaponRestriction.restrictToType != null, out failureReason);
-
-            if (bestWeapon == null && !string.IsNullOrEmpty(failureReason))
+            string failureReason = null;
+            ThingWithComps bestWeapon = null;
+            if (currentWeapon == null || AutoArmMod.settings?.upgradeEquippedWeapons != false)
             {
-                PerfMetrics.ReportFailureReason(failureReason);
+                bestWeapon = FindBestWeapon(pawn, currentScore, weaponRestriction.restrictToType,
+                    weaponRestriction.wasForced && weaponRestriction.restrictToType != null, out failureReason);
+
+                if (bestWeapon == null && !string.IsNullOrEmpty(failureReason))
+                {
+                    PerfMetrics.ReportFailureReason(failureReason);
+                }
             }
 
+            if (bestWeapon == null)
+            {
+                var enforcement = TryPolicyEnforcementJob(pawn);
+                if (enforcement != null)
+                {
+                    if (timingStarted) PerfMetrics.EndTiming();
+                    return enforcement;
+                }
+            }
 
             if (SimpleSidearmsCompat.IsLoaded && pawn.equipment?.Primary != null &&
                 bestWeapon == null && AutoArmMod.settings?.autoEquipSidearms == true)
@@ -578,7 +595,7 @@ namespace AutoArm.Jobs
                         }
                     }
                 }
-                else if (AutoArmMod.settings?.allowSidearmUpgrades == true &&
+                else if (SimpleSidearmsCompat.CanUpgradeSidearms() &&
                          pawn.inventory?.innerContainer != null)
                 {
                     // Pawn at SS limit
@@ -734,6 +751,46 @@ namespace AutoArm.Jobs
             CooldownMetrics.OnPawnEquippedWeapon(pawn);
         }
 
+        private static Job TryPolicyEnforcementJob(Pawn pawn)
+        {
+            var primary = pawn.equipment?.Primary;
+            if (primary != null &&
+                Scoring.OutfitDisallows(pawn, primary) &&
+                ForcedWeapons.AllowedToAutomaticallyDrop(pawn, primary))
+            {
+                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Dropping {AutoArmLogger.GetDefLabel(primary.def)} - disallowed by outfit policy");
+                var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, primary);
+                AutoEquipState.MarkAsAutoEquip(dropJob, pawn);
+                return dropJob;
+            }
+
+            var inv = pawn.inventory?.innerContainer;
+            if (inv != null)
+            {
+                var invList = inv.InnerListForReading;
+                for (int i = invList.Count - 1; i >= 0; i--)
+                {
+                    if (!(invList[i] is ThingWithComps sidearm) || !Validation.IsWeapon(sidearm.def))
+                        continue;
+                    if (!Scoring.OutfitDisallows(pawn, sidearm))
+                        continue;
+                    if (!ForcedWeapons.AllowedToAutomaticallyDrop(pawn, sidearm))
+                        continue;
+
+                    if (inv.TryDrop(sidearm, pawn.Position, pawn.Map, ThingPlaceMode.Near, out _))
+                    {
+                        DroppedItems.MarkAsDropped(sidearm, Constants.InventoryPurgeCooldownTicks);
+                        if (SimpleSidearmsCompat.IsLoaded)
+                            SimpleSidearmsCompat.InformOfDroppedWeapon(pawn, sidearm);
+                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Dropped sidearm {AutoArmLogger.GetDefLabel(sidearm.def)} - disallowed by outfit policy");
+                    }
+                    break;
+                }
+            }
+
+            return null;
+        }
+
         public static void ClearWeaponCooldown(Pawn pawn)
         {
             if (pawn == null) return;
@@ -744,26 +801,6 @@ namespace AutoArm.Jobs
                 state.LastEquipTick = -1;
             }
         }
-
-        public static int GetRemainingCooldown(Pawn pawn)
-        {
-            if (pawn == null) return 0;
-
-            var comp = JobGiverMapComponent.GetComponent(pawn.Map);
-            if (comp != null && comp.PawnStates.TryGetValue(pawn.thingIDNumber, out var state) && state.LastEquipTick >= 0)
-            {
-                int currentTick = Find.TickManager.TicksGame;
-                int ticksSinceEquip = currentTick - state.LastEquipTick;
-
-                if (ticksSinceEquip < Constants.WeaponEquipCooldownTicks)
-                {
-                    return Constants.WeaponEquipCooldownTicks - ticksSinceEquip;
-                }
-            }
-
-            return 0;
-        }
-
 
         private (ThingDef restrictToType, bool blockSearch, bool wasForced) GetWeaponRestriction(Pawn pawn, ThingWithComps currentWeapon)
         {
@@ -1028,7 +1065,11 @@ namespace AutoArm.Jobs
 
             if (weapon.def.IsMeleeWeapon)
             {
-                float meleeDps = weapon.GetStatValue(StatDefOf.MeleeWeapon_AverageDPS, applyPostProcess: true, cacheStaleAfterTicks: 2500);
+                if (!meleeDpsCache.TryGet(weapon.thingIDNumber, currentTick, out float meleeDps))
+                {
+                    meleeDps = weapon.GetStatValue(StatDefOf.MeleeWeapon_AverageDPS);
+                    meleeDpsCache.Set(weapon.thingIDNumber, meleeDps, currentTick);
+                }
                 if (meleeDps < UnarmedDpsThreshold)
                 {
                     if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
@@ -2121,12 +2162,17 @@ namespace AutoArm.Jobs
             return null;
         }
 
-        public static void CleanupCaches()
+        private static int cacheSweepCounter;
+
+        public static void CleanupCaches(bool force = false)
         {
             if (Find.Maps == null || Find.Maps.Count == 0)
                 return;
 
-            Blacklist.CleanupOldEntries();
+            cacheSweepCounter++;
+            if (!force && !Testing.TestRunner.IsRunningTests && cacheSweepCounter < 4)
+                return;
+            cacheSweepCounter = 0;
 
             int currentTick = Find.TickManager.TicksGame;
 

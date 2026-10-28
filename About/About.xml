@@ -4,10 +4,10 @@
 	<author>Snues</author>
 	<packageId>Snues.AutoArm</packageId>
 	<supportedVersions>
-		<li>1.5</li>
 		<li>1.6</li>
+		<li>1.7</li>
 	</supportedVersions>
-	<modVersion>0.5.2</modVersion>
+	<modVersion>0.6.0</modVersion>
 	<modDependencies>
 		<li>
 			<packageId>brrainz.harmony</packageId>
@@ -55,6 +55,6 @@
 	<incompatibleWith>
 	</incompatibleWith>
 	<description>
-		<![CDATA[Colonists <color=#FFD700>auto equip</color> the best weapon they can use. Respects skills, traits, royalty/ideology/xenotype restrictions, forced choices and upgrades sensibly. Allow or disallow weapons inside your Apparel Policy.]]>
+		<![CDATA[Automatic weapon equipping designed to feel like vanilla. Respects skills, traits, royalty/ideology/xenotype restrictions, forced choices and upgrades sensibly.]]>
 	</description>
 </ModMetaData>

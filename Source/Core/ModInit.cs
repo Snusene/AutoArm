@@ -30,121 +30,14 @@ namespace AutoArm
 
             Patches.ConditionalPatcher.Initialize(harmonyInstance);
 
-            try
+            if (AutoArmMod.settings?.debugLogging == true)
             {
-
-                if (Testing.TestRunner.IsRunningTests)
-                {
-                    harmonyInstance.PatchCategory(Patches.PatchCategories.Testing);
-                    AutoArmLogger.Debug(() => "Applied Testing patches (test mode active)");
-                }
-
-                var appliedPatches = harmonyInstance.GetPatchedMethods();
-                bool hasSpawnSetup = false;
-                bool hasGenSpawn = false;
-
-                foreach (var method in appliedPatches)
-                {
-                    if (method.Name == "SpawnSetup" && method.DeclaringType == typeof(Thing))
-                        hasSpawnSetup = true;
-                    if (method.Name == "Spawn" && method.DeclaringType == typeof(GenSpawn))
-                        hasGenSpawn = true;
-                }
-
-                if (!hasSpawnSetup)
-                {
-                    AutoArmLogger.Warn("[CRITICAL] Thing.SpawnSetup patch not applied - attempting manual patch!");
-                    try
-                    {
-                        var targetMethod = AccessTools.Method(typeof(Thing), "SpawnSetup", new[] { typeof(Map), typeof(bool) });
-                        var postfix = AccessTools.Method(typeof(AutoArm.Thing_SpawnSetup_Patch), "Postfix");
-                        if (targetMethod != null && postfix != null)
-                        {
-                            harmonyInstance.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                            AutoArmLogger.Debug(() => "Manually applied Thing.SpawnSetup patch");
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        AutoArmLogger.ErrorPatch(e, "Thing.SpawnSetup_ManualPatch");
-                    }
-                }
-
-                if (!hasGenSpawn)
-                {
-                    AutoArmLogger.Warn("[CRITICAL] GenSpawn.Spawn patch not applied - attempting manual patch!");
-                    try
-                    {
-                        var targetMethod = AccessTools.Method(typeof(GenSpawn), "Spawn",
-                            new[] { typeof(Thing), typeof(IntVec3), typeof(Map), typeof(Rot4), typeof(WipeMode), typeof(bool), typeof(bool) });
-                        var postfix = AccessTools.Method(typeof(AutoArm.GenSpawn_Spawn_Patch), "Postfix");
-                        if (targetMethod != null && postfix != null)
-                        {
-                            harmonyInstance.Patch(targetMethod, postfix: new HarmonyMethod(postfix));
-                            AutoArmLogger.Debug(() => "Manually applied GenSpawn.Spawn patch");
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        AutoArmLogger.ErrorPatch(e, "GenSpawn.Spawn_ManualPatch");
-                    }
-                }
-
-                if (AutoArmMod.settings?.debugLogging == true)
-                {
-                    int patchCount = appliedPatches.Count();
-                    AutoArmLogger.Debug(() => $"Patched {patchCount} methods");
-                }
-
-            }
-            catch (HarmonyException hex)
-            {
-                if (hex.Message.Contains("AllowedToAutomaticallyDrop"))
-                {
-                    AutoArmLogger.Debug(() => "OutfitForcedHandler patch skipped (expected in some RimWorld versions)");
-                }
-                else if (hex.Message.Contains("Patching exception in method null"))
-                {
-                    AutoArmLogger.Warn($"Patch target method not found, likely game version mismatch");
-                    AutoArmLogger.Warn($"Full error: {hex.Message}");
-                    if (hex.InnerException != null)
-                    {
-                        AutoArmLogger.Warn($"Inner exception: {hex.InnerException.Message}");
-                    }
-                    if (AutoArmMod.settings?.debugLogging == true && hex.StackTrace != null)
-                    {
-                        AutoArmLogger.Debug(() => $"Stack trace: {hex.StackTrace}");
-                    }
-                }
-                else
-                {
-                    AutoArmLogger.Warn($"Some patches may have failed: {hex.Message}");
-                }
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.Warn($"Some patches failed during initialization: {ex.Message}");
-                if (AutoArmMod.settings?.debugLogging == true && ex.StackTrace != null)
-                {
-                    AutoArmLogger.Debug(() => $"Stack trace: {ex.StackTrace}");
-                }
+                int patchCount = harmonyInstance.GetPatchedMethods().Count();
+                AutoArmLogger.Debug(() => $"Patched {patchCount} methods");
             }
 
 
             AutoArmLogger.Info("Initializing...");
-
-            if (Patches.ConditionalPatcher.IsCategoryEnabled(Patches.PatchCategories.AgeRestrictions))
-            {
-                try
-                {
-                    AutoArm.Patches.ChildWeapon.ApplyPatches(harmonyInstance);
-                }
-                catch (Exception ex)
-                {
-                    AutoArmLogger.Error("Failed to apply child weapon patches", ex);
-                }
-            }
-
         }
 
         private static void WireUpTickScheduler()
@@ -183,7 +76,7 @@ namespace AutoArm
                     if (AutoArmMod.settings != null && AutoArmMod.settings.autoEquipSidearms)
                     {
                         AutoArmMod.settings.autoEquipSidearms = false;
-                        AutoArmLogger.Warn("SimpleSidearms reflection failed, disabling sidearm auto-equip");
+                        AutoArmLogger.Warn("SimpleSidearms reflection failed, disabling sidearm auto equip");
                     }
                 }
                 else
@@ -242,6 +135,7 @@ namespace AutoArm
             try
             {
                 InjectIntoThinkTree();
+                InjectIntoExtraThinkTrees();
                 thinkTreeInjected = true;
 
                 LongEventHandler.ExecuteWhenFinished(() =>
@@ -382,14 +276,25 @@ namespace AutoArm
                 return;
             }
 
+            if (!InjectIntoTree(humanlikeThinkTree, attemptNumber))
+                AutoArmLogger.Error("Failed to find main priority sorter in think tree!");
+        }
+
+        private static bool InjectIntoTree(ThinkTreeDef tree, int attemptNumber = 1)
+        {
+            if (tree?.thinkRoot == null)
+                return false;
+
+            bool alreadyHasNode = false;
+            ValidateThinkNode(tree.thinkRoot, ref alreadyHasNode);
+            if (alreadyHasNode)
+                return true;
+
             ThinkNode_PrioritySorter mainSorter = null;
-            FindMainPrioritySorter(humanlikeThinkTree.thinkRoot, ref mainSorter);
+            FindMainPrioritySorter(tree.thinkRoot, ref mainSorter);
 
             if (mainSorter == null)
-            {
-                AutoArmLogger.Error("Failed to find main priority sorter in think tree!");
-                return;
-            }
+                return false;
 
             if (AutoArmMod.settings?.debugLogging == true && attemptNumber > 1)
             {
@@ -407,9 +312,45 @@ namespace AutoArm
             weaponManagementNode.subNodes = new List<ThinkNode> { jobGiver };
 
             mainSorter.subNodes.Insert(insertIndex, weaponManagementNode);
-            AutoArmLogger.Debug(() => $"Injected weapon management node at index {insertIndex}, priority 5.7 (attempt {attemptNumber})");
+            AutoArmLogger.Debug(() => $"Injected weapon management node into '{tree.defName}' at index {insertIndex}, priority 5.7 (attempt {attemptNumber})");
 
-            AutoArmLogger.Debug(() => $"Weapon picker active (priority 5.7)");
+            return true;
+        }
+
+        private static void InjectIntoExtraThinkTrees()
+        {
+            var trees = DefDatabase<ThinkTreeDef>.AllDefsListForReading;
+            int injected = 0;
+
+            for (int i = 0; i < trees.Count; i++)
+            {
+                var tree = trees[i];
+                if (tree == null || tree.defName == "Humanlike")
+                    continue;
+
+                try
+                {
+                    bool alreadyHasNode = false;
+                    ValidateThinkNode(tree.thinkRoot, ref alreadyHasNode);
+                    if (alreadyHasNode)
+                        continue;
+
+                    ThinkNode_PrioritySorter sorter = null;
+                    FindMainPrioritySorter(tree.thinkRoot, ref sorter);
+                    if (sorter == null)
+                        continue;
+
+                    if (InjectIntoTree(tree))
+                        injected++;
+                }
+                catch (Exception e)
+                {
+                    AutoArmLogger.Warn($"Think tree injection skipped for '{tree.defName}': {e.Message}");
+                }
+            }
+
+            if (injected > 0)
+                AutoArmLogger.Debug(() => $"Extended weapon injection into {injected} additional think tree(s)");
         }
 
         private static int DetermineInsertionIndex(ThinkNode_PrioritySorter mainSorter, int attemptNumber)
@@ -718,9 +659,10 @@ namespace AutoArm
 
                 DroppedItems.ClearAll();
                 ForcedWeaponState.Clear();
-                AutoEquipState.Cleanup();
+                AutoEquipState.Cleanup(force: true);
                 Blacklist.ClearAll();
                 JobGiver_PickUpBetterWeapon.CleanupMessageCache();
+                JobGiver_PickUpBetterWeapon.ClearMeleeDpsCache();
 
 
                 if (Find.Maps != null)
@@ -873,11 +815,6 @@ namespace AutoArm
         {
             return evaluator.EvaluatePriority(pawn);
         }
-
-        public static void CleanupDeadPawns()
-        {
-            PawnValidation.CleanupDeadPawns();
-        }
     }
 
 
@@ -931,7 +868,7 @@ namespace AutoArm
         private static void UpdateRaidStatus()
         {
             int currentTick = Find.TickManager?.TicksGame ?? 0;
-            if (currentTick - lastCheckTick > CheckInterval)
+            if (currentTick < lastCheckTick || currentTick - lastCheckTick > CheckInterval)
             {
                 lastCheckTick = currentTick;
                 isLargeRaidActive = CheckForHighDanger();

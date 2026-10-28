@@ -110,44 +110,6 @@ namespace AutoArm
             }
         }
 
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-
-            int pawnId = pawn.thingIDNumber;
-            var keysToRemove = ListPool<(int, ushort)>.Get();
-            try
-            {
-                foreach (var key in entries.Keys)
-                {
-                    if (key.pawnId == pawnId)
-                        keysToRemove.Add(key);
-                }
-                foreach (var key in keysToRemove)
-                    entries.Remove(key);
-            }
-            finally
-            {
-                ListPool<(int, ushort)>.Return(keysToRemove);
-            }
-
-            var logKeysToRemove = ListPool<(Pawn, string)>.Get();
-            try
-            {
-                foreach (var key in pendingBlacklistLogs.Keys)
-                {
-                    if (key.Item1 == pawn)
-                        logKeysToRemove.Add(key);
-                }
-                foreach (var key in logKeysToRemove)
-                    pendingBlacklistLogs.Remove(key);
-            }
-            finally
-            {
-                ListPool<(Pawn, string)>.Return(logKeysToRemove);
-            }
-        }
-
         public static void CleanupOldEntries()
         {
             if (entries.Count == 0)

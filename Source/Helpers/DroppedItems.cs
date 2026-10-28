@@ -211,17 +211,5 @@ namespace AutoArm.Helpers
             itemToPawnLookup.Remove(weapon);
             upgrades.Remove(weapon);
         }
-
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-
-            if (lastDropped.TryGetValue(pawn, out var weapon))
-            {
-                itemToPawnLookup.Remove(weapon);
-                lastDropped.Remove(pawn);
-                lastDroppedExpiry.Remove(pawn);
-            }
-        }
     }
 }

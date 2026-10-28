@@ -1,6 +1,5 @@
 ﻿
 using HarmonyLib;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Verse;
@@ -30,47 +29,11 @@ namespace AutoArm.Patches
             modPresenceCache["PickUpAndHaul"] = DefDatabase<JobDef>.GetNamedSilentFail("HaulToInventory") != null;
             modPresenceCache["Infusion2"] = AccessTools.TypeByName("Infused.InfusionDef") != null
                                          || AccessTools.TypeByName("Infusion.InfusionDef") != null;
-            modPresenceCache["ChildrenMods"] = HasChildrenMods();
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
                 AutoArmLogger.Debug(() => $"Detected mods: " +
                     string.Join(", ", modPresenceCache.Where(kvp => kvp.Value).Select(kvp => kvp.Key)));
-            }
-        }
-
-
-        private static bool HasChildrenMods()
-        {
-            try
-            {
-                foreach (var thingDef in DefDatabase<ThingDef>.AllDefs)
-                {
-                    var race = thingDef?.race;
-                    if (race?.Humanlike != true)
-                        continue;
-
-                    var stages = race.lifeStageAges;
-                    if (stages == null || stages.Count == 0)
-                        continue;
-
-                    foreach (var stage in stages)
-                    {
-                        if (stage?.def?.developmentalStage != null &&
-                            stage.def.developmentalStage != DevelopmentalStage.Adult)
-                        {
-                            AutoArmLogger.Debug(() => $"Detected child life stage on {thingDef.label ?? thingDef.defName}: {stage.def.developmentalStage}");
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.Warn($"Error checking for children mods: {ex.Message}");
-                return false;
             }
         }
 
@@ -88,11 +51,6 @@ namespace AutoArm.Patches
                 modPresenceCache["Infusion2"])
             {
                 EnableCategory(PatchCategories.Compatibility);
-            }
-
-            if (modPresenceCache["ChildrenMods"] || AutoArmMod.settings?.allowChildrenToEquipWeapons == true)
-            {
-                EnableCategory(PatchCategories.AgeRestrictions);
             }
 
             AutoArmLogger.Debug(() => $"Patched categories: {string.Join(", ", enabledCategories)}");
@@ -114,11 +72,6 @@ namespace AutoArm.Patches
 
                 AutoArmLogger.Debug(() => $"Disabled patch category: {category}");
             }
-        }
-
-        public static bool IsCategoryEnabled(string category)
-        {
-            return enabledCategories.Contains(category);
         }
 
         public static void RefreshPatches()
@@ -143,11 +96,6 @@ namespace AutoArm.Patches
                 newCategories.Add(PatchCategories.Compatibility);
             }
 
-            if (modPresenceCache["ChildrenMods"] || AutoArmMod.settings?.allowChildrenToEquipWeapons == true)
-            {
-                newCategories.Add(PatchCategories.AgeRestrictions);
-            }
-
             foreach (var category in previousCategories)
             {
                 if (!newCategories.Contains(category))
@@ -162,15 +110,6 @@ namespace AutoArm.Patches
                 {
                     EnableCategory(category);
                 }
-            }
-
-            if (newCategories.Contains(PatchCategories.AgeRestrictions))
-            {
-                ChildWeapon.ApplyPatches(harmony);
-            }
-            else if (previousCategories.Contains(PatchCategories.AgeRestrictions))
-            {
-                ChildWeapon.UnpatchPatches(harmony);
             }
         }
     }

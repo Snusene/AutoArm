@@ -9,6 +9,9 @@ namespace AutoArm.Caching
 {
     public sealed class MemoryCleanupGameComponent : GameComponent
     {
+        private static int cachedOffset;
+        private static RimWorld.Planet.World cachedOffsetWorld;
+
         private int cleanupInterval = Constants.MemoryCleanupInterval;
 
         private int lastCleanupDuration = 0;
@@ -28,7 +31,13 @@ namespace AutoArm.Caching
 
             int currentTick = Find.TickManager.TicksGame;
 
-            int offset = Gen.HashCombineInt(Current.Game?.World?.info?.seedString?.GetHashCode() ?? 0, 0xBEEF) & 0xFF;
+            var world = Current.Game?.World;
+            if (!ReferenceEquals(world, cachedOffsetWorld))
+            {
+                cachedOffsetWorld = world;
+                cachedOffset = Gen.HashCombineInt(world?.info?.seedString?.GetHashCode() ?? 0, 0xBEEF) & 0xFF;
+            }
+            int offset = cachedOffset;
 
             if (((currentTick + offset) % cleanupInterval) != 0)
                 return;

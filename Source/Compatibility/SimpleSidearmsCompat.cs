@@ -146,6 +146,8 @@ namespace AutoArm.Compatibility
         {
             if (AutoArmMod.settings?.allowSidearmUpgrades != true)
                 return false;
+            if (AutoArmMod.settings?.upgradeEquippedWeapons == false)
+                return false;
 
             return !IsLoaded || IsReady;
         }
@@ -611,7 +613,7 @@ namespace AutoArm.Compatibility
             {
                 AutoArmLogger.Debug(() => $"SimpleSidearmsCompat.CanPickupSidearm threw: {e.GetType().Name}: {e.Message}");
                 reason = $"SimpleSidearms check failed: {e.Message}";
-                canPickup = true;
+                canPickup = false;
             }
 
             int expireTick = currentTick + CACHE_LIFETIME;
@@ -728,34 +730,47 @@ namespace AutoArm.Compatibility
                 return null;
 
             var currentPrimary = pawn.equipment?.Primary;
-            if (currentPrimary != null)
+            if (currentPrimary != null && AutoArmMod.settings?.upgradeEquippedWeapons != false)
             {
-                if (ShouldUpgradePrimary(pawn, weapon, currentPrimary))
+                bool primaryForced = ForcedWeapons.IsForced(pawn, currentPrimary);
+                if (primaryForced &&
+                    (AutoArmMod.settings?.allowForcedWeaponUpgrades != true || weapon.def != currentPrimary.def))
                 {
-                    return CreatePrimaryUpgradeJob(pawn, weapon, currentPrimary);
+                    AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping primary upgrade to {weapon.def.defName} - primary is force-equipped");
                 }
-
-                if (ShouldTreatAsPrimaryReplacement(pawn, weapon, currentPrimary))
+                else if (weapon.def != currentPrimary.def && InventoryHasWeaponDef(pawn, weapon.def))
                 {
-                    bool isCrossType = weapon.def.IsRangedWeapon != currentPrimary.def.IsRangedWeapon;
-                    if (isCrossType)
+                    AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping primary upgrade to {weapon.def.defName} - already carried as sidearm");
+                }
+                else
+                {
+                    if (ShouldUpgradePrimary(pawn, weapon, currentPrimary))
                     {
-                        string ssReason;
-                        if (CanPickupSidearm(weapon, pawn, out ssReason))
+                        return CreatePrimaryUpgradeJob(pawn, weapon, currentPrimary);
+                    }
+
+                    if (ShouldTreatAsPrimaryReplacement(pawn, weapon, currentPrimary))
+                    {
+                        bool isCrossType = weapon.def.IsRangedWeapon != currentPrimary.def.IsRangedWeapon;
+                        if (isCrossType)
+                        {
+                            string ssReason;
+                            if (CanPickupSidearm(weapon, pawn, out ssReason))
+                            {
+                                AutoArmLogger.Debug(() => $"[SimpleSidearms] Cross-def primary replacement: from {currentPrimary.Label} to {weapon.Label}");
+                                return CreatePrimaryUpgradeJob(pawn, weapon, currentPrimary);
+                            }
+                        }
+                        else
                         {
                             AutoArmLogger.Debug(() => $"[SimpleSidearms] Cross-def primary replacement: from {currentPrimary.Label} to {weapon.Label}");
                             return CreatePrimaryUpgradeJob(pawn, weapon, currentPrimary);
                         }
                     }
-                    else
-                    {
-                        AutoArmLogger.Debug(() => $"[SimpleSidearms] Cross-def primary replacement: from {currentPrimary.Label} to {weapon.Label}");
-                        return CreatePrimaryUpgradeJob(pawn, weapon, currentPrimary);
-                    }
                 }
             }
 
-            if (AutoArmMod.settings?.allowSidearmUpgrades == true)
+            if (CanUpgradeSidearms())
             {
                 var sidearmToReplace = FindSidearmToReplace(pawn, weapon);
                 if (sidearmToReplace != null)
@@ -794,6 +809,9 @@ namespace AutoArm.Compatibility
 
                     if (worstSameDef != null)
                     {
+                        if (AutoArmMod.settings?.upgradeEquippedWeapons == false)
+                            return null;
+
                         float newScore = CalculateWeaponScore(pawn, weapon);
 
                         if (newScore > worstScore)
@@ -819,6 +837,12 @@ namespace AutoArm.Compatibility
                         AutoArmLogger.Debug(() => "[SimpleSidearms] Sidearm add blocked - SS reflection unavailable");
                         return null;
                     }
+                }
+
+                if (currentPrimary != null && currentPrimary.def == weapon.def)
+                {
+                    AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping sidearm pickup of {weapon.def.defName} - primary is same def");
+                    return null;
                 }
 
                 string reason;
@@ -868,6 +892,28 @@ namespace AutoArm.Compatibility
             }
 
             return false;
+        }
+
+        internal static int CountRemembered(Pawn pawn, ThingDef def)
+        {
+            if (!IsLoaded || pawn == null || def == null) return 0;
+            Initialize();
+            if (_reflectionFailed) return 0;
+
+            var memory = GetMemoryComp(pawn);
+            if (memory == null) return 0;
+
+            int count = 0;
+            var rememberedWeapons = _rememberedWeaponsProp?.GetValue(memory) as System.Collections.IEnumerable;
+            if (rememberedWeapons != null && _pairThingField != null)
+            {
+                foreach (var item in rememberedWeapons)
+                {
+                    if (item != null && _pairThingField.GetValue(item) as ThingDef == def)
+                        count++;
+                }
+            }
+            return count;
         }
 
         public static void InformOfDroppedWeapon(Pawn pawn, ThingWithComps weapon)
@@ -977,15 +1023,22 @@ namespace AutoArm.Compatibility
             AutoArmLogger.Debug(() => "[SimpleSidearms] Caches cleared");
         }
 
-        public static void CleanupCaches()
+        private static int cacheSweepCounter;
+
+        public static void CleanupCaches(bool force = false)
         {
             // Early exit if nothing to clean
             if (_pawnCaches.Count == 0 && _lastUpgradeCheckTick.Count == 0)
                 return;
 
+            cacheSweepCounter++;
+            if (!force && !Testing.TestRunner.IsRunningTests && cacheSweepCounter < 8)
+                return;
+            cacheSweepCounter = 0;
+
             int currentTick = Find.TickManager.TicksGame;
 
-            var validIds = new HashSet<int>();
+            var validIds = HashSetPool<int>.Get();
             if (Find.Maps != null)
             {
                 foreach (var map in Find.Maps)
@@ -1098,7 +1151,7 @@ namespace AutoArm.Compatibility
 
             if (hashToPairLookup.Count > 0)
             {
-                var liveHashes = new HashSet<int>();
+                var liveHashes = HashSetPool<int>.Get();
                 foreach (var cache in _pawnCaches.Values)
                 {
                     if (cache == null) continue;
@@ -1115,27 +1168,10 @@ namespace AutoArm.Compatibility
                 foreach (var hash in orphanHashes)
                     hashToPairLookup.Remove(hash);
                 ListPool<int>.Return(orphanHashes);
-            }
-        }
-
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-
-            int pawnId = pawn.thingIDNumber;
-            if (_pawnCaches.TryGetValue(pawnId, out var cache))
-            {
-                // Cancel validations
-                foreach (var key in cache.ValidationCache.Keys)
-                {
-                    int pairHash = key.ToEncodedInt();
-                    TickScheduler.Cancel(TickScheduler.EventType.SimpleSidearmsValidation, pawnId, pairHash);
-                }
+                HashSetPool<int>.Return(liveHashes);
             }
 
-            _pawnCaches.Remove(pawnId);
-            _lastUpgradeCheckTick.Remove(pawnId);
-            idToPawnLookup.Remove(pawnId);
+            HashSetPool<int>.Return(validIds);
         }
 
         private static void InvalidateCanPickupCache(Pawn pawn)
@@ -1275,19 +1311,35 @@ namespace AutoArm.Compatibility
             return ShouldTreatAsPrimaryReplacement(pawn, newWeapon, currentPrimary);
         }
 
+        private static bool InventoryHasWeaponDef(Pawn pawn, ThingDef def)
+        {
+            var inv = pawn.inventory?.innerContainer;
+            if (inv == null) return false;
+            var list = inv.InnerListForReading;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i] is ThingWithComps w && w.def == def && Validation.IsWeapon(w.def))
+                    return true;
+            }
+            return false;
+        }
+
         private static ThingWithComps FindSidearmToReplace(Pawn pawn, ThingWithComps newWeapon)
         {
             if (pawn.inventory?.innerContainer == null)
                 return null;
 
-            // Prevent duplicates
-            foreach (Thing thing in pawn.inventory.innerContainer)
+            if (InventoryHasWeaponDef(pawn, newWeapon.def))
             {
-                if (thing is ThingWithComps w && w.def == newWeapon.def && w.def.IsWeapon)
-                {
-                    AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping cross-def swap - pawn already has {newWeapon.def.defName}");
-                    return null;
-                }
+                AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping cross-def swap - pawn already has {newWeapon.def.defName}");
+                return null;
+            }
+
+            var primaryWeapon = pawn.equipment?.Primary;
+            if (primaryWeapon != null && primaryWeapon.def == newWeapon.def)
+            {
+                AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping sidearm swap - primary is already {newWeapon.def.defName}");
+                return null;
             }
 
             float newWeaponWeight = newWeapon.GetStatValue(StatDefOf.Mass, cacheStaleAfterTicks: 2500);
@@ -1607,7 +1659,8 @@ namespace AutoArm.Compatibility
         public static MethodBase TargetMethod()
         {
             if (_jobGiverType == null) return null;
-            return AccessTools.Method(_jobGiverType, "TryGiveJob", new Type[] { typeof(Pawn) });
+            return AccessTools.Method(_jobGiverType, "TryGiveJobStatic", new Type[] { typeof(Pawn), typeof(bool) })
+                ?? AccessTools.Method(_jobGiverType, "TryGiveJob", new Type[] { typeof(Pawn) });
         }
 
         [HarmonyPostfix]
@@ -1618,8 +1671,7 @@ namespace AutoArm.Compatibility
 
             try
             {
-                // Block duplicate re-equips
-                if (__result == null || pawn?.inventory?.innerContainer == null)
+                if (__result == null || pawn == null)
                     return;
 
                 var targetWeapon = __result.targetA.Thing as ThingWithComps;
@@ -1629,27 +1681,36 @@ namespace AutoArm.Compatibility
                 if (AutoArm.ForcedWeapons.IsForced(pawn, targetWeapon))
                     return;
 
-                foreach (var thing in pawn.inventory.innerContainer)
+                ThingWithComps carried = null;
+                var primary = pawn.equipment?.Primary;
+                if (primary != null && primary.def == targetWeapon.def)
                 {
-                    if (thing is ThingWithComps w && w.def == targetWeapon.def && w.def.IsWeapon)
+                    carried = primary;
+                }
+                else
+                {
+                    var inv = pawn.inventory?.innerContainer;
+                    if (inv != null)
                     {
-                        // Let AutoArm handle upgrades
-                        float existingScore = AutoArm.Caching.WeaponCache.GetCachedScore(pawn, w);
-                        float newScore = AutoArm.Caching.WeaponCache.GetCachedScore(pawn, targetWeapon);
-
-                        if (newScore <= existingScore)
+                        var list = inv.InnerListForReading;
+                        for (int i = 0; i < list.Count; i++)
                         {
-                            AutoArm.AutoArmLogger.Debug(() =>
-                                $"[{pawn.LabelShort}] Blocked SS re-equip: already has {w.Label} ({existingScore:F1}), target {targetWeapon.Label} ({newScore:F1}) not better");
-                            __result = null;
-                            return;
-                        }
-                        else
-                        {
-                            return;
+                            if (list[i] is ThingWithComps w && w.def == targetWeapon.def)
+                            {
+                                carried = w;
+                                break;
+                            }
                         }
                     }
                 }
+
+                if (carried == null)
+                    return;
+
+                __result = null;
+                SimpleSidearmsCompat.InformOfDroppedWeapon(pawn, targetWeapon);
+                AutoArm.AutoArmLogger.Debug(() =>
+                    $"[{pawn.LabelShort}] Blocked SS re-equip of {targetWeapon.def.defName} - already carrying {carried.Label}, forgot one remembered copy");
             }
             catch (System.Exception e)
             {

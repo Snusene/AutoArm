@@ -1,4 +1,4 @@
-﻿
+
 using AutoArm.Definitions;
 using AutoArm.Helpers;
 using RimWorld;
@@ -601,6 +601,33 @@ namespace AutoArm.Caching
             return result;
         }
 
+        public static bool AnyWeaponForOutfit(Map map, ApparelPolicy outfit)
+        {
+            var component = GetMapComponent(map);
+            if (component == null)
+                return false;
+
+            var playerFaction = Find.FactionManager?.OfPlayer;
+
+            foreach (var weapon in component.weapons)
+            {
+                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
+                    continue;
+                if (playerFaction != null && weapon.IsForbidden(playerFaction))
+                    continue;
+
+                var key = new OutfitDefKey(outfit.id, weapon.def);
+                if (!outfitFilterCache.TryGetValue(key, out bool allowed))
+                {
+                    allowed = outfit.filter.Allows(weapon.def);
+                    outfitFilterCache[key] = allowed;
+                }
+                if (allowed && CheckQualityRequirements(weapon, outfit))
+                    return true;
+            }
+            return false;
+        }
+
         public static List<ThingWithComps> GetWeaponsForOutfit(Map map, ApparelPolicy outfit)
         {
             var result = new List<ThingWithComps>();
@@ -932,7 +959,7 @@ namespace AutoArm.Caching
         }
 
 
-        public static void OnOutfitFilterChanged(ApparelPolicy outfit, ThingDef specificWeaponChanged = null)
+        public static void OnOutfitFilterChanged(ApparelPolicy outfit)
         {
             // Clear outfit cache
             if (outfit != null)
@@ -1115,54 +1142,6 @@ namespace AutoArm.Caching
         }
 
 
-        public static void LogCacheStatistics()
-        {
-            if (!Prefs.DevMode)
-                return;
-
-            AutoArmLogger.Debug(() => "[CACHE STATISTICS]");
-
-            foreach (var map in Find.Maps)
-            {
-                var component = GetMapComponent(map);
-                if (component != null)
-                {
-                    AutoArmLogger.Debug(() => $"  Map {map.uniqueID}: {component.weapons.Count} weapons (peak: {component.cacheHighWaterMark})");
-                }
-            }
-
-            AutoArmLogger.Debug(() => $"  Score cache: {scoreCache.Count} pawns");
-        }
-
-        public static void ClearCacheForMap(Map map)
-        {
-            if (map == null)
-                return;
-
-            try
-            {
-                var component = map.GetComponent<AutoArmWeaponMapComponent>();
-                component?.ResetCache();
-
-                if (map.mapPawns != null)
-                {
-                    foreach (var pawn in map.mapPawns.AllPawns)
-                    {
-                        if (pawn != null)
-                        {
-                            scoreCache.Remove(pawn.thingIDNumber);
-                        }
-                    }
-                }
-
-                trackedMapIds.Remove(map.uniqueID);
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.WarnCleanup(ex, "ClearMapCache");
-            }
-        }
-
         public static void CleanupDestroyedMaps()
         {
             try
@@ -1277,12 +1256,6 @@ namespace AutoArm.Caching
             }
         }
 
-        public static bool CheckWeaponPassesOutfitFilter(ThingWithComps weapon, ApparelPolicy outfit)
-        {
-            if (outfit?.filter == null) return true;
-            return outfit.filter.Allows(weapon.def) && CheckQualityRequirements(weapon, outfit);
-        }
-
         public static void ClearAllCaches()
         {
             scoreCache.Clear();
@@ -1290,9 +1263,14 @@ namespace AutoArm.Caching
             outfitFilterCache.Clear();
             lastScoreAddedTick = -1;
             deadPawnCleanupCounter = 0;
-            foreach (var map in Find.Maps)
+
+            var maps = Find.Maps;
+            if (maps == null)
+                return;
+
+            for (int i = 0; i < maps.Count; i++)
             {
-                GetMapComponent(map)?.Reset();
+                GetMapComponent(maps[i])?.Reset();
             }
         }
 

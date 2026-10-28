@@ -173,8 +173,8 @@ namespace AutoArm
 
                 s += "Type: Melee\n\n";
                 s += "Combat stats:\n";
-                s += $"  Avg DPS:            {dps:F2}\n";
-                s += $"  Avg armor pen:      {ap:P0}\n";
+                s += $"  Avg DPS: {dps:F2}\n";
+                s += $"  Avg armor pen: {ap:P0}\n";
                 s += $"  AP bonus (1+AP): ×{apBonus:F2}\n";
             }
             else if (isRanged)
@@ -210,17 +210,17 @@ namespace AutoArm
 
                 s += "Type: Ranged\n\n";
                 s += "Cycle:\n";
-                s += $"  Damage/shot:        {damage:F1}\n";
-                s += $"  Burst count:        {burstCount}\n";
-                s += $"  Warmup:             {warmup:F2}s\n";
-                s += $"  Burst gap:          {burstGap:F2}s\n";
-                s += $"  Cooldown:           {cooldown:F2}s\n";
-                s += $"  Total cycle:        {cycle:F2}s\n";
+                s += $"  Damage/shot: {damage:F1}\n";
+                s += $"  Burst count: {burstCount}\n";
+                s += $"  Warmup: {warmup:F2}s\n";
+                s += $"  Burst gap: {burstGap:F2}s\n";
+                s += $"  Cooldown: {cooldown:F2}s\n";
+                s += $"  Total cycle: {cycle:F2}s\n";
                 s += $"  DPS (dmg×burst÷cycle): {dps:F2}\n";
                 s += "\nHit & pen:\n";
                 s += $"  Acc short/med/long: {accShort:P0} / {accMed:P0} / {accLong:P0}\n";
-                s += $"  Blended accuracy:   {accuracy:P0}   (0.2·S + 0.3·M + 0.5·L)\n";
-                s += $"  Armor pen:          {ap:P0}\n";
+                s += $"  Blended accuracy: {accuracy:P0} (0.2·S + 0.3·M + 0.5·L)\n";
+                s += $"  Armor pen: {ap:P0}\n";
                 s += $"  AP bonus (1+AP): ×{apBonus:F2}\n";
             }
             else
@@ -234,21 +234,21 @@ namespace AutoArm
 
             s += "\nScore calculation:\n";
             float running = dps;
-            s += $"  {dps,8:F2}     DPS\n";
+            s += $"  {dps:F2}  DPS\n";
             if (hasAccuracy)
             {
                 running *= accuracy;
-                s += $"  × {accuracy,6:F2}    accuracy\n";
+                s += $"  × {accuracy:F2}  accuracy\n";
             }
             running *= apBonus;
-            s += $"  × {apBonus,6:F2}    AP bonus\n";
+            s += $"  × {apBonus:F2}  AP bonus\n";
             running *= Constants.CombatScoreMultiplier;
-            s += $"  × {Constants.CombatScoreMultiplier,6:F2}    combat scale\n";
+            s += $"  × {Constants.CombatScoreMultiplier:F2}  combat scale\n";
 
             if (isSituational)
             {
                 running *= Constants.SituationalWeaponModifier;
-                s += $"  × {Constants.SituationalWeaponModifier,6:F2}    situational\n";
+                s += $"  × {Constants.SituationalWeaponModifier:F2}  situational\n";
             }
 
             var abilityProps = ResolveAbilityProps(weapon);
@@ -260,14 +260,14 @@ namespace AutoArm
                 float bonus = Math.Min(0.20f, 0.07f + charges * 0.03f);
                 float abilityMult = 1f + bonus;
                 running *= abilityMult;
-                s += $"  × {abilityMult,6:F2}    ability ({charges} {(charges == 1 ? "charge" : "charges")})\n";
+                s += $"  × {abilityMult:F2}  ability ({charges} {(charges == 1 ? "charge" : "charges")})\n";
             }
 
             if (isRanged)
             {
                 float rm = AutoArmMod.GetRangedMultiplier();
                 running *= rm;
-                s += $"  × {rm,6:F2}    ranged type\n";
+                s += $"  × {rm:F2}  ranged type\n";
 
                 var rangeVerb = SelectPrimaryVerb(weapon.def, weapon);
                 if (rangeVerb != null && rangeVerb.range > 0f)
@@ -278,7 +278,7 @@ namespace AutoArm
                     if (rp != 1f)
                     {
                         running *= rp;
-                        s += $"  × {rp,6:F2}    range ({rangeVerb.range:F0} tiles)\n";
+                        s += $"  × {rp:F2}  range ({rangeVerb.range:F0} tiles)\n";
                     }
                 }
             }
@@ -286,17 +286,16 @@ namespace AutoArm
             {
                 float mm = AutoArmMod.GetMeleeMultiplier();
                 running *= mm;
-                s += $"  × {mm,6:F2}    melee type\n";
+                s += $"  × {mm:F2}  melee type\n";
             }
 
             if (isDamaged)
             {
                 running *= Constants.DamagedWeaponPenalty;
-                s += $"  × {Constants.DamagedWeaponPenalty,6:F2}    damaged (<50% HP)\n";
+                s += $"  × {Constants.DamagedWeaponPenalty:F2}  damaged (<50% HP)\n";
             }
 
-            s += $"  ─────\n";
-            s += $"  = {running,6:F0}    base score\n";
+            s += $"  = {running:F0}  base score\n";
             return s;
         }
 
@@ -607,24 +606,29 @@ namespace AutoArm
             AutoArmLogger.Log("Cleared weapon base score cache and rebuilt situational weapon cache");
         }
 
-        private static float GetOutfitPolicyScore(Pawn pawn, ThingWithComps weapon)
+        public static bool OutfitDisallows(Pawn pawn, ThingWithComps weapon)
         {
             var filter = pawn.outfits?.CurrentApparelPolicy?.filter;
             if (filter == null)
-                return 0f;
+                return false;
 
             if (!filter.Allows(weapon.def) && !filter.OnlySpecialFilters)
-                return Constants.OutfitFilterDisallowedPenalty;
+                return true;
 
             if (filter.AllowedQualityLevels != QualityRange.All &&
                 weapon.def.FollowQualityThingFilter() &&
                 weapon.TryGetQuality(out var quality) &&
                 !filter.AllowedQualityLevels.Includes(quality))
             {
-                return Constants.OutfitFilterDisallowedPenalty;
+                return true;
             }
 
-            return 0f;
+            return false;
+        }
+
+        private static float GetOutfitPolicyScore(Pawn pawn, ThingWithComps weapon)
+        {
+            return OutfitDisallows(pawn, weapon) ? Constants.OutfitFilterDisallowedPenalty : 0f;
         }
 
         private static float GetPersonaMultiplier(Pawn pawn, ThingWithComps weapon)

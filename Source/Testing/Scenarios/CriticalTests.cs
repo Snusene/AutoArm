@@ -2,6 +2,7 @@
 using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
+using AutoArm.Testing.Helpers;
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -30,15 +31,18 @@ namespace AutoArm.Testing.Scenarios
                 map.reservationManager.ReleaseAllClaimedBy(null);
             }
 
-            var center = map.Center;
             for (int i = 0; i < 3; i++)
             {
-                var pawn = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
+                var config = new TestHelpers.TestPawnConfig
                 {
                     Name = $"RacePawn{i}",
-                    SpawnPosition = center + new IntVec3(i * 2, 0, 0),
                     EnsureViolenceCapable = true
-                });
+                };
+
+                if (testPawns.Count > 0)
+                    config.SpawnPosition = TestPositions.GetNearbyPosition(testPawns[0].Position, 1f, 3f, map);
+
+                var pawn = TestHelpers.CreateTestPawn(map, config);
 
                 if (pawn != null)
                 {
@@ -50,7 +54,9 @@ namespace AutoArm.Testing.Scenarios
                 }
             }
 
-            var weaponPos = center + new IntVec3(3, 0, 3);
+            if (testPawns.Count == 0) return;
+
+            var weaponPos = TestPositions.GetNearbyPosition(testPawns[0].Position, 2f, 4f, map);
             targetWeapon = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_AssaultRifle,
                 weaponPos, QualityCategory.Legendary);
 
@@ -157,6 +163,11 @@ namespace AutoArm.Testing.Scenarios
 
             if (jobs.Count < 1)
             {
+                if (targetWeapon.Destroyed || !targetWeapon.Spawned)
+                    return TestResult.Skip("Target weapon was taken by a live colonist during the test");
+                if (targetWeapon.Map?.reservationManager?.IsReservedByAnyoneOf(targetWeapon, Faction.OfPlayer) == true)
+                    return TestResult.Skip("Target weapon is reserved by a live colonist");
+
                 result.Success = false;
                 result.FailureReason = $"Race not exercised - expected at least 1 job but got {jobs.Count}";
                 result.Data["Error"] = result.FailureReason;

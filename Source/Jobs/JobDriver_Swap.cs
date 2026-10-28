@@ -22,9 +22,7 @@ namespace AutoArm
 
         public override string GetReport()
         {
-            var newW = job.targetA.Thing?.Label ?? "weapon";
-            var oldW = job.targetB.Thing?.Label ?? "sidearm";
-            return $"AutoArm: swapping sidearm {oldW} for {newW}";
+            return ReportStringProcessed(JobDefOf.Equip.reportString);
         }
 
         protected override IEnumerable<Toil> MakeNewToils()
@@ -59,7 +57,7 @@ namespace AutoArm
             if (oldWeaponIndex < 0)
             {
                 AutoArmLogger.WarnFileOnly($"[{pawn.LabelShort}] Swap aborted - {oldWeapon.Label} not in inventory");
-                AutoArm.Jobs.JobGiver_PickUpBetterWeapon.RecordFailedJob(pawn, newWeapon);
+                EndJobWith(JobCondition.Incompletable);
                 return;
             }
 
@@ -70,6 +68,7 @@ namespace AutoArm
                 if (!SimpleSidearmsCompat.CanUseSidearmForSwap(newWeapon, oldWeapon, pawn, out validationReason))
                 {
                     AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Swap aborted - SS rejected {newWeapon.Label}: {validationReason}");
+                    EndJobWith(JobCondition.Incompletable);
                     return;
                 }
             }
@@ -119,6 +118,7 @@ namespace AutoArm
                 {
                     GenPlace.TryPlaceThing(pickedUp, dropPosition, pawn.MapHeld, ThingPlaceMode.Near);
                 }
+                EndJobWith(JobCondition.Incompletable);
                 return;
             }
 
@@ -127,20 +127,28 @@ namespace AutoArm
                 pickedUp.def.soundInteract.PlayOneShot(new TargetInfo(pawn.Position, pawn.MapHeld, false));
             }
 
-            GenPlace.TryPlaceThing(oldWeaponToPlace, dropPosition, pawn.MapHeld, ThingPlaceMode.Near);
+            bool placed = GenPlace.TryPlaceThing(oldWeaponToPlace, dropPosition, pawn.MapHeld, ThingPlaceMode.Near);
+            if (!placed)
+            {
+                AutoArmLogger.WarnFileOnly($"[{pawn.LabelShort}] No spot to place {oldWeaponToPlace.Label}, returning it to inventory");
+                if (!pawn.inventory.innerContainer.TryAdd(oldWeaponToPlace))
+                    AutoArmLogger.WarnFileOnly($"[{pawn.LabelShort}] Could not return {oldWeaponToPlace.Label} to inventory either");
+            }
 
-            if (oldWeaponToPlace != null && oldWeaponToPlace.Spawned)
+            if (placed && oldWeaponToPlace.Spawned)
             {
                 oldWeaponToPlace.SetForbidden(false, false);
             }
 
             if (SimpleSidearmsCompat.IsLoaded && !SimpleSidearmsCompat.ReflectionFailed)
             {
-                SimpleSidearmsCompat.InformOfDroppedWeapon(pawn, oldWeaponToPlace);
+                if (placed)
+                    SimpleSidearmsCompat.InformOfDroppedWeapon(pawn, oldWeaponToPlace);
                 SimpleSidearmsCompat.InformOfAddedSidearm(pawn, pickedUp);
             }
 
-            DroppedItems.MarkAsDropped(oldWeaponToPlace, Constants.LongDropCooldownTicks, pawn);
+            if (placed)
+                DroppedItems.MarkAsDropped(oldWeaponToPlace, Constants.LongDropCooldownTicks, pawn);
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
@@ -174,9 +182,7 @@ namespace AutoArm
 
         public override string GetReport()
         {
-            var newW = job.targetA.Thing?.Label ?? "weapon";
-            var oldW = job.targetB.Thing?.Label ?? "weapon";
-            return $"AutoArm: swapping primary {oldW} for {newW}";
+            return ReportStringProcessed(JobDefOf.Equip.reportString);
         }
 
         protected override IEnumerable<Toil> MakeNewToils()
@@ -210,6 +216,7 @@ namespace AutoArm
             if (pawn.equipment?.Primary != oldWeapon)
             {
                 AutoArmLogger.WarnFileOnly($"[{pawn.LabelShort}] Primary swap aborted - {oldWeapon.Label} is no longer primary");
+                EndJobWith(JobCondition.Incompletable);
                 return;
             }
 
@@ -222,6 +229,7 @@ namespace AutoArm
             if (!pawn.equipment.TryDropEquipment(oldWeapon, out droppedWeapon, dropPosition))
             {
                 AutoArmLogger.WarnFileOnly($"[{pawn.LabelShort}] Failed to drop primary weapon {oldWeapon.Label}");
+                EndJobWith(JobCondition.Incompletable);
                 return;
             }
 
@@ -250,6 +258,7 @@ namespace AutoArm
                 AutoArmLogger.WarnFileOnly($"[{pawn.LabelShort}] Primary swap AddEquipment failed: {e.Message}");
                 if (pickedUp != null && !pickedUp.Spawned)
                     GenPlace.TryPlaceThing(pickedUp, dropPosition, pawn.MapHeld, ThingPlaceMode.Near);
+                EndJobWith(JobCondition.Incompletable);
                 return;
             }
 

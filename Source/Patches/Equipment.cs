@@ -202,6 +202,12 @@ namespace AutoArm.Patches
 
             try
             {
+                if (___pawn.CurJob?.def == JobDefOf.DropEquipment && AutoEquipState.IsAutoEquip(___pawn.CurJob) &&
+                    resultingEq.Spawned)
+                {
+                    resultingEq.SetForbidden(false, false);
+                }
+
                 bool isSameTypeUpgrade = DroppedItems.IsPendingSameTypeUpgrade(resultingEq);
 
                 if (ForcedWeapons.IsForced(___pawn, resultingEq))
@@ -256,7 +262,7 @@ namespace AutoArm.Patches
     internal static class Pawn_EquipmentTracker_DestroyEquipment_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(Pawn ___pawn)
+        public static void Postfix(Pawn ___pawn, ThingWithComps eq)
         {
             try
             {
@@ -266,7 +272,10 @@ namespace AutoArm.Patches
                 if (AutoArmMod.settings?.modEnabled != true)
                     return;
 
-                ForcedWeapons.ClearForcedPrimary(___pawn);
+                if (eq == null || !eq.Destroyed)
+                    return;
+
+                ForcedWeapons.RemoveForcedWeapon(___pawn, eq);
             }
             catch (Exception e)
             {

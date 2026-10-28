@@ -254,12 +254,6 @@ namespace AutoArm
 
         #region Contextual Exception Handling
 
-        public static void ErrorWeaponOperation(Exception ex, Pawn pawn, ThingWithComps weapon, string operation)
-        {
-            string context = BuildWeaponOperationContext(pawn, weapon);
-            Error($"[{operation}] Error in weapon operation: {context}", ex);
-        }
-
         public static void ErrorPatch(Exception ex, string patchName, object instance = null)
         {
             string context = instance != null ? $"Instance: {instance.GetType().Name}" : "Static";
@@ -282,18 +276,6 @@ namespace AutoArm
         }
 
 
-        private static string BuildWeaponOperationContext(Pawn pawn, ThingWithComps weapon)
-        {
-            string pawnInfo = pawn != null
-                ? $"Pawn={GetPawnName(pawn)}(ID:{pawn.thingIDNumber})"
-                : "Pawn=null";
-
-            string weaponInfo = weapon != null
-                ? $"Weapon={weapon.Label}(Def:{weapon.def.defName})"
-                : "Weapon=null";
-
-            return $"{pawnInfo}, {weaponInfo}";
-        }
 
         #endregion Contextual Exception Handling
 
@@ -311,12 +293,6 @@ namespace AutoArm
         {
             if (pawn == null) return "null";
             return pawn.Name?.ToStringShort ?? pawn.LabelShort;
-        }
-
-        public static string GetWeaponLabel(Thing weapon)
-        {
-            if (weapon == null) return "null";
-            try { return weapon.LabelCap; } catch { return weapon.Label; }
         }
 
         #region Humanized Logging Helpers
@@ -355,73 +331,7 @@ namespace AutoArm
             return value ? "true" : "false";
         }
 
-        public static string GetPawnPossessive(Pawn pawn)
-        {
-            if (pawn == null) return "null's";
-
-            string name = GetPawnName(pawn);
-
-            return name.EndsWith("s") ? $"{name}'" : $"{name}'s";
-        }
-
         #endregion Humanized Logging Helpers
-
-        public static void LogPawn(Pawn pawn, string message)
-        {
-            Debug($"[{GetPawnName(pawn)}] {message}");
-        }
-
-        public static void LogPawn(string message, Pawn pawn)
-        {
-            Debug($"[{GetPawnName(pawn)}] {message}");
-        }
-
-        public static void LogWeapon(Thing weapon, string message)
-        {
-            Debug($"[Weapon:{Label(weapon)}] {message}");
-        }
-
-        public static void LogWeapon(string message, Thing weapon)
-        {
-            Debug($"[Weapon:{Label(weapon)}] {message}");
-        }
-
-        public static void LogWeapon(Thing weapon, string format, params object[] args)
-        {
-            LogWeapon(weapon, string.Format(format, args));
-        }
-
-        public static void LogWeapon(string format, params object[] args)
-        {
-            Thing weapon = null;
-            for (int i = 0; i < args.Length; i++)
-            {
-                weapon = args[i] as Thing;
-                if (weapon != null) break;
-            }
-            LogWeapon(weapon, string.Format(format, args));
-        }
-
-        public static void LogWeapon(Thing weapon1, Thing weapon2, string message)
-        {
-            Debug($"[Weapon:{Label(weapon1)} | {Label(weapon2)}] {message}");
-        }
-
-        public static void LogWeapon(Thing weapon1, Thing weapon2, string format, params object[] args)
-        {
-            LogWeapon(weapon1, weapon2, string.Format(format, args));
-        }
-
-        public static void LogError(string message, Exception ex = null)
-        { Error(message, ex); }
-
-        public static void DebugLog(string message)
-        { Debug(message); }
-
-        public static void LogPawnWeapon(Pawn pawn, Thing weapon, string message)
-        {
-            Debug($"[{GetPawnName(pawn)}] [Weapon:{Label(weapon)}] {message}");
-        }
 
         #endregion Legacy shims
 
@@ -592,9 +502,6 @@ namespace AutoArm
 
         private static string Prefix(string msg)
         { return "[AutoArm] " + msg; }
-
-        private static string Label(Thing t)
-        { return t?.Label ?? "null"; }
 
         private static string SanitizeMessage(string message)
         {

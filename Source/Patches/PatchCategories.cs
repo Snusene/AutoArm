@@ -10,9 +10,5 @@ namespace AutoArm.Patches
         public const string Performance = "AutoArm.Performance";
 
         public const string Compatibility = "AutoArm.Compatibility";
-
-        public const string AgeRestrictions = "AutoArm.AgeRestrictions";
-
-        public const string Testing = "AutoArm.Testing";
     }
 }

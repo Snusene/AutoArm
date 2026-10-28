@@ -58,6 +58,8 @@ namespace AutoArm.Testing.Scenarios
             string tempPath = Path.Combine(GenFilePaths.TempFolderPath, "autoarm_forced_roundtrip.xml");
             try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
+            var snapshot = ForcedWeapons.Capture();
+
             try
             {
                 Scribe.saver.InitSaving(tempPath, "AutoArmTest");
@@ -115,6 +117,7 @@ namespace AutoArm.Testing.Scenarios
             }
             finally
             {
+                ForcedWeapons.Restore(snapshot);
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             }
         }

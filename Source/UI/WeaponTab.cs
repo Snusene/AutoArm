@@ -1,4 +1,4 @@
-﻿using AutoArm.Compatibility;
+using AutoArm.Compatibility;
 using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
@@ -9,6 +9,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEngine;
 using Verse;
 
 namespace AutoArm.UI
@@ -54,67 +55,13 @@ namespace AutoArm.UI
     [StaticConstructorOnStartup]
     internal static class ApparelWeaponsIntegration
     {
-        public static void MoveWeaponsForUI()
-        {
-            if (_depth == 0) Push();
-        }
+        private static bool _drawingPolicyDialog;
 
-        public static void RestoreWeaponsPosition()
-        {
-            Pop();
-        }
-
-        public static void Push()
-        {
-            _depth++;
-            if (_depth == 1)
-            {
-                AutoArmLogger.Debug(() => "Push() -moving Weapons under Apparel");
-                TryRebuild(true);
-            }
-        }
-
-        public static void Pop()
-        {
-            if (_depth <= 0)
-            {
-                AutoArmLogger.Debug(() => $"Pop() called but depth={_depth}, ignoring");
-                _depth = 0;
-                return;
-            }
-            _depth--;
-            if (_depth == 0)
-            {
-                AutoArmLogger.Debug(() => "Pop() -restoring Weapons to original parent");
-                TryRebuild(false);
-            }
-        }
-
-        public static void OnApparelDialogClosed()
-        {
-            Pop();
-            if (_depth > 0)
-            {
-                AutoArmLogger.Warn($"Depth still {_depth} after close -forcing restore");
-                _depth = 1;
-                Pop();
-            }
-        }
-
-        public static int GetDepth() => _depth;
-
-        private static int _depth;
         private static ThingCategoryDef _weapons;
         private static ThingCategoryDef _apparel;
-        private static ThingCategoryDef _apparelMisc;
-        private static ThingCategoryDef _origParent;
-        private static int _origIndex = -1;
 
-        private static MethodInfo _doSpec16;
-
-        private static MethodInfo _doChildren16;
-        private static MethodInfo _doChildren15;
-        private static FieldInfo _parentFilterField;
+        private static AccessTools.FieldRef<Listing_TreeThingFilter, ThingFilter> _parentFilterRef;
+        private static Action<Listing_TreeThingFilter, TreeNode_ThingCategory, int, int, Map, bool> _doCategory;
 
         static ApparelWeaponsIntegration()
         {
@@ -125,8 +72,6 @@ namespace AutoArm.UI
                 _weapons = AutoArmDefOf.Weapons ?? ThingCategoryDefOf.Weapons;
                 _apparel = AutoArmDefOf.Apparel ?? ThingCategoryDefOf.Apparel;
 
-                _apparelMisc = DefDatabase<ThingCategoryDef>.GetNamedSilentFail("ApparelMisc");
-
                 AutoArmLogger.Debug(() => $"Categories: Weapons={_weapons?.defName}, Apparel={_apparel?.defName}");
             }
             catch (Exception ex)
@@ -134,296 +79,89 @@ namespace AutoArm.UI
                 AutoArmLogger.ErrorUI(ex, "WeaponTab", "DefInitialization");
             }
 
-            int patchedUI = 0;
-
             try
             {
-                var doCat16 = AccessTools.Method(typeof(Listing_TreeThingFilter), "DoCategory",
+                var doCategory = AccessTools.Method(typeof(Listing_TreeThingFilter), "DoCategory",
                     new Type[] { typeof(TreeNode_ThingCategory), typeof(int), typeof(int), typeof(Map), typeof(bool) });
-                if (doCat16 != null)
+                if (doCategory != null)
                 {
-                    h.Patch(doCat16, prefix: new HarmonyMethod(typeof(ApparelWeaponsIntegration), nameof(Prefix16)));
-                    patchedUI++;
-                    AutoArmLogger.Debug(() => "Patched Listing_TreeThingFilter.DoCategory (1.6)");
-                }
-                else
-                {
-                    var doCat15 = AccessTools.Method(typeof(Listing_TreeThingFilter), "DoCategory",
-                        new Type[] { typeof(TreeNode_ThingCategory), typeof(int), typeof(int), typeof(Map) });
-                    if (doCat15 != null)
-                    {
-                        h.Patch(doCat15, prefix: new HarmonyMethod(typeof(ApparelWeaponsIntegration), nameof(Prefix15)));
-                        patchedUI++;
-                        AutoArmLogger.Debug(() => "Patched Listing_TreeThingFilter.DoCategory (1.5)");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.ErrorPatch(ex, "Listing_TreeThingFilter_DoCategory");
-            }
-
-            if (patchedUI == 0)
-            {
-                AutoArmLogger.Warn("WeaponTab: Listing_TreeThingFilter.DoCategory not resolved (neither 1.5 nor 1.6 signature matched). Weapons category will not appear under Apparel.");
-            }
-
-            AutoArmLogger.Debug(() => $"Patch summary: UI={patchedUI}");
-        }
-
-        private static void TryRebuild(bool moveUnderApparel)
-        {
-            try
-            {
-                if (_weapons == null || _apparel == null) return;
-
-                if (moveUnderApparel)
-                {
-                    if (_apparel.childCategories == null)
-                        _apparel.childCategories = new List<ThingCategoryDef>();
-
-                    if (_origParent == null)
-                    {
-                        _origParent = _weapons.parent;
-                        _origIndex = (_origParent?.childCategories != null)
-                                   ? _origParent.childCategories.IndexOf(_weapons) : -1;
-                        AutoArmLogger.Debug(() => "captured original parent=" +
-                                        (_origParent != null ? _origParent.defName : "null") + " index=" + _origIndex);
-                    }
-
-                    if (_weapons.parent?.childCategories != null)
-                        _weapons.parent.childCategories.Remove(_weapons);
-
-                    int insertAt = _apparel.childCategories.Count;
-                    if (_apparelMisc != null)
-                    {
-                        int idx = _apparel.childCategories.IndexOf(_apparelMisc);
-                        if (idx >= 0) insertAt = idx + 1;
-                    }
-                    if (insertAt > _apparel.childCategories.Count) insertAt = _apparel.childCategories.Count;
-
-                    int current = _apparel.childCategories.IndexOf(_weapons);
-                    if (current >= 0)
-                    {
-                        if (current != insertAt)
-                        {
-                            _apparel.childCategories.RemoveAt(current);
-                            if (insertAt > _apparel.childCategories.Count) insertAt = _apparel.childCategories.Count;
-                            _apparel.childCategories.Insert(insertAt, _weapons);
-                        }
-                    }
-                    else
-                    {
-                        _apparel.childCategories.Insert(insertAt, _weapons);
-                    }
-                    _weapons.parent = _apparel;
-
-                    AutoArmLogger.Debug(() => $"moved Weapons under Apparel at index {insertAt}");
-                }
-                else
-                {
-                    if (_apparel?.childCategories != null)
-                        _apparel.childCategories.Remove(_weapons);
-
-                    if (_origParent != null)
-                    {
-                        if (_origParent.childCategories == null)
-                            _origParent.childCategories = new List<ThingCategoryDef>();
-
-                        if (_origIndex >= 0 && _origIndex < _origParent.childCategories.Count)
-                            _origParent.childCategories.Insert(_origIndex, _weapons);
-                        else if (!_origParent.childCategories.Contains(_weapons))
-                            _origParent.childCategories.Add(_weapons);
-
-                        _weapons.parent = _origParent;
-                        AutoArmLogger.Debug(() => "restored Weapons to " + _origParent.defName +
-                                        " at index " + _origIndex);
-                    }
-
-                    _origParent = null;
-                    _origIndex = -1;
+                    _doCategory = (Action<Listing_TreeThingFilter, TreeNode_ThingCategory, int, int, Map, bool>)
+                        Delegate.CreateDelegate(
+                            typeof(Action<Listing_TreeThingFilter, TreeNode_ThingCategory, int, int, Map, bool>),
+                            doCategory, throwOnBindFailure: false);
                 }
 
-                ForceRebuildCategoryNodes();
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.ErrorUI(ex, "WeaponTab", "CategoryReparenting");
-            }
-        }
-
-        private static void ForceRebuildCategoryNodes()
-        {
-            try
-            {
-                foreach (var def in DefDatabase<ThingCategoryDef>.AllDefsListForReading)
-                {
-                    def.childCategories?.Clear();
-                    def.childThingDefs?.Clear();
-                    def.childSpecialFilters?.Clear();
-                }
-                ThingCategoryNodeDatabase.Clear();
-                ThingCategoryNodeDatabase.FinalizeInit();
-                AutoArmLogger.Debug(() => "ThingCategoryNodeDatabase rebuilt");
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.ErrorUI(ex, "WeaponTab", "NodeDBRebuild");
-            }
-        }
-
-        public static bool Prefix16(Listing_TreeThingFilter __instance, TreeNode_ThingCategory node, int indentLevel, int openMask, Map map, bool subtreeMatchedSearch)
-        {
-            try
-            {
-                var cat = node?.catDef;
-
-                if (!IsApparel(cat) || _depth <= 0) return true;
-
-                Cache16();
-
-                try { _doSpec16?.Invoke(__instance, new object[] { node, indentLevel, map }); }
-                catch (Exception ex)
-                {
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        AutoArmLogger.Debug(() => $"_doSpec16 invocation failed: {ex.Message}");
-                    }
-                }
-
-                object savedParentFilter = null;
-                bool mustRestore = false;
-
-                if (_parentFilterField != null)
-                {
-                    try
-                    {
-                        savedParentFilter = _parentFilterField.GetValue(__instance);
-                        _parentFilterField.SetValue(__instance, null);
-                        mustRestore = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        AutoArmLogger.Debug(() => $"Failed to modify parent filter: {ex.Message}");
-                    }
-                }
-
-                try
-                {
-                    _doChildren16?.Invoke(__instance, new object[] { node, indentLevel, openMask, map, subtreeMatchedSearch });
-                }
-                catch (Exception ex)
-                {
-                    AutoArmLogger.Debug(() => $"[WeaponTab] Error in DoCategoryChildren: {ex.Message}");
-                }
-                finally
-                {
-                    if (mustRestore && _parentFilterField != null)
-                    {
-                        try
-                        {
-                            _parentFilterField.SetValue(__instance, savedParentFilter);
-                        }
-                        catch (Exception ex)
-                        {
-                            AutoArmLogger.ErrorUI(ex, "WeaponTab", "RestoreParentFilter");
-                        }
-                    }
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                AutoArmLogger.ErrorPatch(ex, "Prefix16");
-                return true;
-            }
-        }
-
-        private static void Cache16()
-        {
-            if (_doSpec16 == null)
-                _doSpec16 = AccessTools.Method(typeof(Listing_TreeThingFilter), "DoSpecialFilters",
-                    new Type[] { typeof(TreeNode_ThingCategory), typeof(int), typeof(Map) });
-            if (_doChildren16 == null)
-                _doChildren16 = AccessTools.Method(typeof(Listing_TreeThingFilter), "DoCategoryChildren",
-                    new Type[] { typeof(TreeNode_ThingCategory), typeof(int), typeof(int), typeof(Map), typeof(bool) });
-            if (_doChildren15 == null)
-                _doChildren15 = AccessTools.Method(typeof(Listing_TreeThingFilter), "DoCategoryChildren",
-                    new Type[] { typeof(TreeNode_ThingCategory), typeof(int), typeof(int), typeof(Map) });
-            if (_parentFilterField == null)
-            {
-                _parentFilterField = AccessTools.Field(typeof(Listing_TreeThingFilter), "parentFilter")
+                var parentFilterField = AccessTools.Field(typeof(Listing_TreeThingFilter), "parentFilter")
                     ?? typeof(Listing_TreeThingFilter).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                                                      .FirstOrDefault(f => f.FieldType == typeof(ThingFilter));
-            }
-        }
-
-        public static bool Prefix15(Listing_TreeThingFilter __instance, TreeNode_ThingCategory node, int indentLevel, int openMask, Map map)
-        {
-            try
-            {
-                var cat = node?.catDef;
-
-                if (!IsApparel(cat) || _depth <= 0) return true;
-
-                Cache16();
-
-                try { _doSpec16?.Invoke(__instance, new object[] { node, indentLevel, map }); }
-                catch (Exception ex)
+                if (parentFilterField != null)
                 {
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        AutoArmLogger.Debug(() => $"_doSpec16 invocation failed: {ex.Message}");
-                    }
+                    _parentFilterRef = AccessTools.FieldRefAccess<Listing_TreeThingFilter, ThingFilter>(parentFilterField);
                 }
 
-                object savedParentFilter = null;
-                bool mustRestore = false;
+                var listChildren = AccessTools.Method(typeof(Listing_TreeThingFilter), "ListCategoryChildren",
+                    new Type[] { typeof(TreeNode_ThingCategory), typeof(int), typeof(Map), typeof(Rect) });
+                var doContents = AccessTools.Method(typeof(Dialog_ManageApparelPolicies), "DoContentsRect",
+                    new Type[] { typeof(Rect) });
 
-                if (_parentFilterField != null)
+                if (_doCategory == null || _parentFilterRef == null || listChildren == null || doContents == null)
                 {
-                    try
-                    {
-                        savedParentFilter = _parentFilterField.GetValue(__instance);
-                        _parentFilterField.SetValue(__instance, null);
-                        mustRestore = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        AutoArmLogger.Debug(() => $"Failed to modify parent filter: {ex.Message}");
-                    }
+                    AutoArmLogger.Warn("WeaponTab: Listing_TreeThingFilter internals not resolved. Weapons category will not appear in apparel policies.");
+                    return;
                 }
 
-                try
-                {
-                    _doChildren15?.Invoke(__instance, new object[] { node, indentLevel, openMask, map });
-                }
-                catch (Exception ex)
-                {
-                    AutoArmLogger.Debug(() => $"[WeaponTab] Error in DoCategoryChildren (1.5): {ex.Message}");
-                }
-                finally
-                {
-                    if (mustRestore && _parentFilterField != null)
-                    {
-                        try
-                        {
-                            _parentFilterField.SetValue(__instance, savedParentFilter);
-                        }
-                        catch (Exception ex)
-                        {
-                            AutoArmLogger.ErrorUI(ex, "WeaponTab", "RestoreParentFilter");
-                        }
-                    }
-                }
+                h.Patch(doContents,
+                    prefix: new HarmonyMethod(typeof(ApparelWeaponsIntegration), nameof(DoContentsRect_Prefix)),
+                    finalizer: new HarmonyMethod(typeof(ApparelWeaponsIntegration), nameof(DoContentsRect_Finalizer)));
+                h.Patch(listChildren,
+                    postfix: new HarmonyMethod(typeof(ApparelWeaponsIntegration), nameof(ListCategoryChildren_Postfix)));
 
-                return false;
+                AutoArmLogger.Debug(() => "WeaponTab: draw-time weapons injection patched");
             }
             catch (Exception ex)
             {
-                AutoArmLogger.ErrorPatch(ex, "Prefix15");
-                return true;
+                AutoArmLogger.ErrorPatch(ex, "ApparelWeaponsIntegration");
+            }
+        }
+
+        public static void DoContentsRect_Prefix()
+        {
+            _drawingPolicyDialog = true;
+        }
+
+        public static void DoContentsRect_Finalizer()
+        {
+            _drawingPolicyDialog = false;
+        }
+
+        public static void ListCategoryChildren_Postfix(Listing_TreeThingFilter __instance, TreeNode_ThingCategory node, int openMask, Map map)
+        {
+            if (!_drawingPolicyDialog)
+                return;
+
+            try
+            {
+                if (AutoArmMod.settings?.modEnabled != true)
+                    return;
+
+                if (_weapons?.treeNode == null || node?.catDef == null || !IsApparel(node.catDef))
+                    return;
+
+                ref ThingFilter parentFilter = ref _parentFilterRef(__instance);
+                var saved = parentFilter;
+                parentFilter = null;
+                try
+                {
+                    _doCategory(__instance, _weapons.treeNode, 0, openMask, map, false);
+                }
+                finally
+                {
+                    parentFilter = saved;
+                }
+            }
+            catch (Exception ex)
+            {
+                AutoArmLogger.ErrorPatch(ex, "ListCategoryChildren_Postfix");
             }
         }
 
@@ -488,24 +226,6 @@ namespace AutoArm.UI
 
                 try
                 {
-                    var baseType = typeof(Dialog_ManageApparelPolicies).BaseType;
-                    if (baseType != null)
-                    {
-                        var doWindowMethod = AccessTools.Method(baseType, "DoWindowContents");
-                        if (doWindowMethod != null)
-                        {
-                            harmony.Patch(doWindowMethod, postfix: new HarmonyMethod(typeof(Dialog_ManageApparelPolicies_Lifecycle), nameof(Dialog_ManageApparelPolicies_Lifecycle.DoWindowContents_Postfix)));
-                            AutoArmLogger.Debug(() => $"WeaponTab: Patched {baseType.Name}.DoWindowContents");
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    AutoArmLogger.Debug(() => $"WeaponTab: DoWindowContents patch skipped: {e.Message}");
-                }
-
-                try
-                {
                     int rangedCount = Validation.RangedWeapons.Count;
                     int meleeCount = Validation.MeleeWeapons.Count;
                     AutoArmLogger.Debug(() => $"WeaponTab: ranged={rangedCount}, melee={meleeCount}");
@@ -527,246 +247,13 @@ namespace AutoArm.UI
     {
         public static void ApparelDialog_Ctor_Postfix()
         {
-            try { ApparelWeaponsIntegration.Push(); } catch (Exception e) { AutoArmLogger.ErrorUI(e, "WeaponTab", "LifecyclePush"); }
             try { WeaponPolicyBatcher.Begin(); } catch (Exception e) { AutoArmLogger.ErrorUI(e, "WeaponTab", "LifecycleBeginBatch"); }
-            try { ThingFilter_Allows_Thing_Patch.EnableForDialog(); } catch (Exception e) { AutoArmLogger.ErrorPatch(e, "ThingFilter_Allows_Enable"); }
         }
 
         public static void Window_PostClose_Postfix(Window __instance)
         {
             if (!(__instance is Dialog_ManageApparelPolicies)) return;
-            try { ThingFilter_Allows_Thing_Patch.DisableForDialog(); } catch (Exception e) { AutoArmLogger.ErrorPatch(e, "ThingFilter_Allows_Disable"); }
             try { WeaponPolicyBatcher.Apply(); } catch (Exception e) { AutoArmLogger.ErrorUI(e, "WeaponTab", "LifecycleApplyBatch"); }
-            try { ApparelWeaponsIntegration.OnApparelDialogClosed(); } catch (Exception e) { AutoArmLogger.ErrorUI(e, "WeaponTab", "LifecyclePop"); }
-        }
-
-        public static void DoWindowContents_Postfix(Window __instance)
-        {
-            if (!(__instance is Dialog_ManageApparelPolicies)) return;
-            if (!ThingFilter_Allows_Thing_Patch.IsPatchEnabled())
-                ThingFilter_Allows_Thing_Patch.EnableForDialog();
-        }
-    }
-
-    internal static class ThingFilter_Allows_Thing_Patch
-    {
-        private static bool _patchEnabled = false;
-        private static readonly HashSet<ThingFilter> _outfitFilters = new HashSet<ThingFilter>();
-        private static readonly Dictionary<ThingFilter, HashSet<ThingDef>> _allowedDefsCache = new Dictionary<ThingFilter, HashSet<ThingDef>>();
-        private static Harmony _harmonyInstance;
-        private static System.Reflection.MethodInfo _targetMethod;
-        private static System.Reflection.MethodInfo _patchMethod;
-
-        static ThingFilter_Allows_Thing_Patch()
-        {
-            _targetMethod = AccessTools.Method(typeof(ThingFilter), "Allows", new Type[] { typeof(Thing) });
-            _patchMethod = AccessTools.Method(typeof(ThingFilter_Allows_Thing_Patch), nameof(Postfix));
-        }
-
-        public static void EnableForDialog()
-        {
-            if (_patchEnabled) return;
-
-            _patchEnabled = true;
-
-            try
-            {
-                if (_harmonyInstance == null)
-                    _harmonyInstance = new Harmony("Snues.AutoArm.DynamicPatch");
-
-                _harmonyInstance.Patch(_targetMethod, postfix: new HarmonyMethod(_patchMethod, Priority.Last));
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.ErrorPatch(e, "ThingFilter_Allows_Apply");
-            }
-
-            RebuildOutfitFilterCache();
-            _allowedDefsCache.Clear();
-
-            _logCounter = 0;
-        }
-
-        public static bool IsPatchEnabled() => _patchEnabled;
-
-        public static void DisableForDialog()
-        {
-            if (!_patchEnabled) return;
-
-            _patchEnabled = false;
-
-            try
-            {
-                if (_harmonyInstance != null)
-                {
-                    _harmonyInstance.Unpatch(_targetMethod, _patchMethod);
-                }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.ErrorPatch(e, "ThingFilter_Allows_Remove");
-            }
-
-            _allowedDefsCache.Clear();
-            _outfitFilters.Clear();
-            _loggedExceptions.Clear();
-            _hasLoggedPatchActive = false;
-            _logCounter = 0;
-        }
-
-        private static int _logCounter = 0;
-        private static bool _hasLoggedPatchActive = false;
-        private static readonly HashSet<string> _loggedExceptions = new HashSet<string>();
-
-        public static void Postfix(ThingFilter __instance, Thing t, ref bool __result)
-        {
-            if (!IsOutfitFilter(__instance))
-            {
-                return;
-            }
-
-            if (!_hasLoggedPatchActive)
-            {
-                _hasLoggedPatchActive = true;
-                AutoArmLogger.Debug(() => "[ThingFilter.Allows] Patch is active and being called!");
-            }
-
-            if (__result) return;
-
-            if (t?.def?.IsWeapon == true)
-            {
-                bool shouldLog = _logCounter++ < 20;
-
-                if (shouldLog)
-                    AutoArmLogger.Debug(() => $"[ThingFilter.Allows] Checking weapon {t.LabelCap}");
-
-                bool filterAllowsDef = false;
-                try
-                {
-                    filterAllowsDef = __instance.Allows(t.def);
-                }
-                catch (Exception ex)
-                {
-                    string exceptionKey = $"{__instance.GetType().Name}|{t.def.defName}|{ex.GetType().Name}";
-                    if (_loggedExceptions.Add(exceptionKey))
-                    {
-                        AutoArmLogger.Debug(() => $"[ThingFilter.Allows] Exception checking filter for weapon {t.def.defName}: {ex.GetType().Name} - {ex.Message}");
-                    }
-                }
-
-                if (filterAllowsDef)
-                {
-                    if (t is ThingWithComps twc)
-                    {
-                        if (!CheckQualityFilter(__instance, twc))
-                        {
-                            if (shouldLog) AutoArmLogger.Debug(() => "  - Failed quality filter");
-                            return;
-                        }
-                        if (!CheckHitPointsFilter(__instance, twc))
-                        {
-                            if (shouldLog) AutoArmLogger.Debug(() => "  - Failed HP filter");
-                            return;
-                        }
-                    }
-                    __result = true;
-                    if (shouldLog) AutoArmLogger.Debug(() => "  - ALLOWED via filter.Allows(def)");
-                    return;
-                }
-
-                var allowedDefs = GetAllowedDefs(__instance);
-                if (allowedDefs != null && allowedDefs.Contains(t.def))
-                {
-                    if (t is ThingWithComps twc2)
-                    {
-                        if (!CheckQualityFilter(__instance, twc2))
-                        {
-                            if (shouldLog) AutoArmLogger.Debug(() => "  - Failed quality filter (specific def)");
-                            return;
-                        }
-                        if (!CheckHitPointsFilter(__instance, twc2))
-                        {
-                            if (shouldLog) AutoArmLogger.Debug(() => "  - Failed HP filter (specific def)");
-                            return;
-                        }
-                    }
-                    __result = true;
-                    if (shouldLog) AutoArmLogger.Debug(() => "  - ALLOWED via specific def (fallback)");
-                }
-                else if (shouldLog)
-                {
-                    AutoArmLogger.Debug(() => "  - Not allowed by filter");
-                }
-            }
-        }
-
-        private static HashSet<ThingDef> GetAllowedDefs(ThingFilter filter)
-        {
-            if (_allowedDefsCache.TryGetValue(filter, out var cached)) return cached;
-
-            var source = filter?.AllowedThingDefs;
-            if (source == null) return null;
-
-            var allowedDefs = source as HashSet<ThingDef>;
-            if (allowedDefs == null)
-            {
-                allowedDefs = new HashSet<ThingDef>();
-                foreach (var d in source)
-                    if (d != null) allowedDefs.Add(d);
-            }
-
-            _allowedDefsCache[filter] = allowedDefs;
-            return allowedDefs;
-        }
-
-        private static bool IsOutfitFilter(ThingFilter filter)
-        {
-            return filter != null && _outfitFilters.Contains(filter);
-        }
-
-        private static void RebuildOutfitFilterCache()
-        {
-            _outfitFilters.Clear();
-            int policyCount = 0;
-            foreach (var policy in PolicyDBHelper.GetAllPolicies())
-            {
-                if (policy?.filter != null)
-                {
-                    _outfitFilters.Add(policy.filter);
-                    policyCount++;
-                }
-            }
-
-            AutoArmLogger.Debug(() => $"[ThingFilter.Allows] Rebuilt outfit filter cache: found {policyCount} policies with filters");
-        }
-
-        public static void InvalidateCache()
-        {
-            _outfitFilters.Clear();
-            _allowedDefsCache.Clear();
-        }
-
-        private static bool CheckQualityFilter(ThingFilter filter, ThingWithComps weapon)
-        {
-            var allowedQualities = filter.AllowedQualityLevels;
-            if (allowedQualities != QualityRange.All)
-                if (weapon.TryGetQuality(out var quality))
-                    return allowedQualities.Includes(quality);
-            return true;
-        }
-
-        private static bool CheckHitPointsFilter(ThingFilter filter, ThingWithComps weapon)
-        {
-            var allowedHitPointsPercents = filter.AllowedHitPointsPercents;
-            if (allowedHitPointsPercents != FloatRange.ZeroToOne)
-            {
-                int maxHp = weapon.MaxHitPoints;
-                if (maxHp <= 0) return true;
-                float hitPointsPercent = (float)weapon.HitPoints / maxHp;
-                if (allowedHitPointsPercents.max < 1.0f)
-                    return hitPointsPercent <= allowedHitPointsPercents.max;
-            }
-            return true;
         }
     }
 
@@ -790,238 +277,31 @@ namespace AutoArm.UI
         }
     }
 
-    [StaticConstructorOnStartup]
     internal static class WeaponPolicyBatcher
     {
-        private static readonly Harmony H = AutoArmInit.harmonyInstance ?? new Harmony("Snues.AutoArm");
-
         private static bool _batching;
-        public static bool IsBatching => _batching;
-
-        private static readonly Dictionary<ThingFilter, ApparelPolicy> _filterToPolicy = new Dictionary<ThingFilter, ApparelPolicy>(ReferenceEqualityComparer<ThingFilter>.Instance);
-        private static readonly Dictionary<ThingFilter, HashSet<ThingDef>> _pendingDisallow = new Dictionary<ThingFilter, HashSet<ThingDef>>(ReferenceEqualityComparer<ThingFilter>.Instance);
-
-
-        static WeaponPolicyBatcher()
-        {
-            try
-            {
-                var setAllowDef = AccessTools.Method(typeof(ThingFilter), "SetAllow", new[] { typeof(ThingDef), typeof(bool) });
-                if (setAllowDef != null)
-                {
-                    H.Patch(setAllowDef, prefix: new HarmonyMethod(typeof(WeaponPolicyBatcher), nameof(SetAllowDef_Prefix)));
-                    H.Patch(setAllowDef, postfix: new HarmonyMethod(typeof(WeaponPolicyBatcher), nameof(SetAllowDef_Postfix)));
-                }
-                AutoArmLogger.Debug(() => "WeaponPolicyBatcher: patches installed");
-            }
-            catch (Exception ex) { AutoArmLogger.ErrorUI(ex, "WeaponPolicyBatcher", "Initialization"); }
-        }
 
         public static void Begin()
         {
             if (_batching) return;
             _batching = true;
-            _pendingDisallow.Clear();
-            _filterToPolicy.Clear();
-
-            foreach (var ap in PolicyDBHelper.GetAllPolicies())
-                if (ap?.filter != null && !_filterToPolicy.ContainsKey(ap.filter))
-                    _filterToPolicy.Add(ap.filter, ap);
-
-            AutoArmLogger.Debug(() => "WeaponPolicyBatcher: BEGIN (mapped " + _filterToPolicy.Count + " filters)");
+            AutoArmLogger.Debug(() => "WeaponPolicyBatcher: BEGIN");
         }
 
         public static void Apply()
         {
             if (!_batching) return;
+            _batching = false;
+
             try
             {
-                var modifiedOutfits = new HashSet<ApparelPolicy>();
-                foreach (var kvp in _pendingDisallow)
-                {
-                    if (_filterToPolicy.TryGetValue(kvp.Key, out var policy))
-                        modifiedOutfits.Add(policy);
-                }
-
-                ApplyPending();
-
-                foreach (var outfit in modifiedOutfits)
-                {
-                    bool handledIncremental = false;
-
-                    if (_policyToDisallowedDefs.TryGetValue(outfit, out var disallowedDefs))
-                    {
-                        foreach (var weaponDef in disallowedDefs)
-                        {
-                            Caching.WeaponCache.OnOutfitFilterChanged(outfit, weaponDef);
-                            handledIncremental = true;
-                        }
-                    }
-
-                    ThingFilter filterForOutfit = null;
-                    foreach (var kvp in _filterToPolicy)
-                    {
-                        if (kvp.Value == outfit)
-                        {
-                            filterForOutfit = kvp.Key;
-                            break;
-                        }
-                    }
-
-                    if (filterForOutfit != null && _pendingAllow.TryGetValue(filterForOutfit, out var allowedDefs))
-                    {
-                        foreach (var weaponDef in allowedDefs)
-                        {
-                            Caching.WeaponCache.OnOutfitFilterChanged(outfit, weaponDef);
-                            handledIncremental = true;
-                        }
-                    }
-
-                    if (!handledIncremental)
-                    {
-                        Caching.WeaponCache.OnOutfitFilterChanged(outfit);
-                    }
-                }
-
-                foreach (var outfit in PolicyDBHelper.GetAllPolicies())
-                {
-                    if (!modifiedOutfits.Contains(outfit))
-                    {
-                        Caching.WeaponCache.OnOutfitFilterChanged(outfit);
-                    }
-                }
+                foreach (var policy in PolicyDBHelper.GetAllPolicies())
+                    if (policy != null)
+                        Caching.WeaponCache.OnOutfitFilterChanged(policy);
             }
             catch (Exception ex) { AutoArmLogger.ErrorUI(ex, "WeaponPolicyBatcher", "Apply"); }
-            finally
-            {
-                _pendingDisallow.Clear();
-                _pendingAllow.Clear();
-                _policyToDisallowedDefs.Clear();
-                _filterToPolicy.Clear();
-                _batching = false;
-                AutoArmLogger.Debug(() => "WeaponPolicyBatcher: END");
-            }
-        }
 
-        private static Dictionary<ThingFilter, HashSet<ThingDef>> _pendingAllow = new Dictionary<ThingFilter, HashSet<ThingDef>>();
-
-        private static Dictionary<ApparelPolicy, HashSet<ThingDef>> _policyToDisallowedDefs = new Dictionary<ApparelPolicy, HashSet<ThingDef>>();
-
-        public static void SetAllowDef_Prefix(ThingFilter __instance, ThingDef thingDef, out bool __state)
-            => __state = __instance.Allows(thingDef);
-
-        public static void SetAllowDef_Postfix(ThingFilter __instance, ThingDef thingDef, bool __state)
-        {
-            if (!_batching || !IsWeaponDef(thingDef)) return;
-
-            bool isNowAllowed = __instance.Allows(thingDef);
-
-            if (__state && !isNowAllowed)
-            {
-                if (!_pendingDisallow.TryGetValue(__instance, out var set))
-                    _pendingDisallow[__instance] = set = new HashSet<ThingDef>();
-                set.Add(thingDef);
-            }
-            else if (!__state && isNowAllowed)
-            {
-                if (!_pendingAllow.TryGetValue(__instance, out var set))
-                    _pendingAllow[__instance] = set = new HashSet<ThingDef>();
-                set.Add(thingDef);
-            }
-        }
-
-        private static void ApplyPending()
-        {
-            if (_pendingDisallow.Count == 0) return;
-            int touchedPawns = 0, droppedEq = 0, droppedInv = 0;
-
-            _policyToDisallowedDefs.Clear();
-            foreach (var kv in _pendingDisallow)
-                if (_filterToPolicy.TryGetValue(kv.Key, out var policy))
-                    if (!_policyToDisallowedDefs.TryGetValue(policy, out var set)) _policyToDisallowedDefs[policy] = new HashSet<ThingDef>(kv.Value); else set.UnionWith(kv.Value);
-            if (_policyToDisallowedDefs.Count == 0) return;
-
-            var pawnsByPolicy = Find.Maps.SelectMany(m => m.mapPawns.FreeColonistsAndPrisonersSpawned)
-                .Where(p => p.outfits?.CurrentApparelPolicy != null)
-                .GroupBy(p => p.outfits.CurrentApparelPolicy)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            foreach (var policyDefsPair in _policyToDisallowedDefs)
-            {
-                var policy = policyDefsPair.Key;
-                var disallowed = policyDefsPair.Value;
-
-                if (!pawnsByPolicy.TryGetValue(policy, out var pawns)) continue;
-
-                foreach (var p in pawns)
-                {
-                    if (p.Drafted || p.InMentalState || p.Downed || ValidationHelper.IsInRitual(p) || ValidationHelper.IsHaulingOrInventoryJob(p.CurJob?.def) || AutoArm.Jobs.JobHelper.IsTemporary(p)) continue;
-
-                    bool anyChange = false;
-                    var eq = p.equipment?.Primary;
-                    if (eq != null && disallowed.Contains(eq.def) && ForcedWeapons.AllowedToAutomaticallyDrop(p, eq))
-                    {
-                        DroppedItems.MarkAsDropped(eq, Constants.ExtendedDropCooldownTicks);
-                        if (SimpleSidearmsCompat.IsLoaded) SimpleSidearmsCompat.InformOfDroppedWeapon(p, eq);
-                        if (p.equipment.TryDropEquipment(eq, out var droppedWeapon, p.Position, false))
-                        {
-                            droppedEq++;
-                            anyChange = true;
-                            if (droppedWeapon != null)
-                            {
-                                var haulJob = Verse.AI.HaulAIUtility.HaulToStorageJob(p, droppedWeapon, false);
-                                if (haulJob != null) p.jobs.TryTakeOrderedJob(haulJob, Verse.AI.JobTag.Misc, true);
-                            }
-                        }
-                    }
-
-                    var inv = p.inventory?.innerContainer;
-                    if (inv != null && inv.Any)
-                    {
-                        List<Thing> itemsToDrop = null;
-                        foreach (var t in inv.InnerListForReading)
-                            if (t is ThingWithComps twc && IsWeaponDef(twc.def) && disallowed.Contains(twc.def) && ForcedWeapons.AllowedToAutomaticallyDrop(p, twc))
-                                (itemsToDrop ?? (itemsToDrop = new List<Thing>())).Add(t);
-
-                        if (itemsToDrop != null)
-                        {
-                            foreach (var t in itemsToDrop)
-                            {
-                                DroppedItems.MarkAsDropped(t, Constants.InventoryPurgeCooldownTicks);
-                                if (SimpleSidearmsCompat.IsLoaded) SimpleSidearmsCompat.InformOfDroppedWeapon(p, t as ThingWithComps);
-                                if (inv.TryDrop(t, p.Position, p.Map, ThingPlaceMode.Near, out _))
-                                {
-                                    droppedInv++;
-                                    anyChange = true;
-                                }
-                            }
-                        }
-                    }
-                    if (anyChange) touchedPawns++;
-                }
-            }
-            AutoArmLogger.Debug(() => $"WeaponPolicyBatcher: applied -pawns={touchedPawns}, droppedEq={droppedEq}, droppedInv={droppedInv}");
-        }
-
-        private static bool IsWeaponDef(ThingDef def)
-        {
-            if (def == null) return false;
-            try { return Validation.AllWeapons.Contains(def); } catch { return def.IsWeapon; }
-        }
-
-        public static void RegisterFilterPolicy(ThingFilter filter, ApparelPolicy policy)
-        {
-            if (!_batching || filter == null || policy == null) return;
-            if (!_filterToPolicy.ContainsKey(filter)) _filterToPolicy.Add(filter, policy);
-        }
-
-        private sealed class ReferenceEqualityComparer<T> : IEqualityComparer<T> where T : class
-        {
-            public static readonly ReferenceEqualityComparer<T> Instance = new ReferenceEqualityComparer<T>();
-
-            public bool Equals(T x, T y) => ReferenceEquals(x, y);
-
-            public int GetHashCode(T obj) => obj == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+            AutoArmLogger.Debug(() => "WeaponPolicyBatcher: END");
         }
     }
 }

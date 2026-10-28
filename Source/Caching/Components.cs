@@ -6,16 +6,6 @@ namespace AutoArm.Caching
 {
     internal static class Components
     {
-        public static CompBladelinkWeapon GetBladelink(ThingWithComps weapon)
-        {
-            return weapon?.TryGetComp<CompBladelinkWeapon>();
-        }
-
-        public static bool IsBiocodedTo(ThingWithComps weapon, Pawn pawn)
-        {
-            return CompBiocodable.IsBiocodedFor(weapon, pawn);
-        }
-
         public static bool IsBiocodedToOther(ThingWithComps weapon, Pawn pawn)
         {
             if (!CompBiocodable.IsBiocoded(weapon))

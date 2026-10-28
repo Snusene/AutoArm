@@ -10,6 +10,20 @@ using Verse;
 
 namespace AutoArm
 {
+    internal sealed class ForcedRecord : IExposable
+    {
+        public Pawn pawn;
+        public List<ThingWithComps> instanceWeapons;
+        public List<ThingDef> sidearmDefs;
+
+        public void ExposeData()
+        {
+            Scribe_References.Look(ref pawn, "pawn");
+            Scribe_Collections.Look(ref instanceWeapons, "weapons", LookMode.Reference);
+            Scribe_Collections.Look(ref sidearmDefs, "sidearmDefs", LookMode.Def);
+        }
+    }
+
     public sealed class AutoArmGameComponent : GameComponent
     {
         private const string SIDEARM_PAWN_IDS_KEY = "forcedSidearmPawnIds";
@@ -22,6 +36,10 @@ namespace AutoArm
 
         private Dictionary<Pawn, List<string>> forcedSidearmDefs = new Dictionary<Pawn, List<string>>();
         private Dictionary<Pawn, List<int>> forcedWeaponIds = new Dictionary<Pawn, List<int>>();
+
+        private List<ForcedRecord> forcedRecords;
+
+        internal static bool suppressRecordWriteForTest;
 
         [Unsaved(false)] private List<string> sidearmPawnIdsBuffer;
         [Unsaved(false)] private List<List<string>> sidearmDefBuffer;
@@ -45,10 +63,15 @@ namespace AutoArm
             {
                 PrepareDataForSaving();
                 BuildSerializationBuffers();
+                forcedSidearmDefs.Clear();
+                forcedWeaponIds.Clear();
+                forcedRecords = suppressRecordWriteForTest ? null : BuildForcedRecords();
             }
 
             try
             {
+                Scribe_Collections.Look(ref forcedRecords, "forcedRecords", LookMode.Deep);
+
                 Scribe_Collections.Look(ref sidearmPawnIdsBuffer, SIDEARM_PAWN_IDS_KEY, LookMode.Value);
                 Scribe_Collections.Look(ref weaponIdPawnIdsBuffer, WEAPON_ID_PAWN_IDS_KEY, LookMode.Value);
 
@@ -112,12 +135,16 @@ namespace AutoArm
                 sidearmDefBuffer = null;
                 weaponIdPawnIdsBuffer = null;
                 weaponIdBuffer = null;
+                forcedRecords = null;
+            }
+
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                forcedRecords = null;
             }
 
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
-                ReconstructDictionariesFromBuffers();
-                CleanupLegacyData();
                 pendingRestoreAfterLoad = true;
             }
         }
@@ -238,6 +265,100 @@ namespace AutoArm
             }
         }
 
+        private List<ForcedRecord> BuildForcedRecords()
+        {
+            var byPawn = new Dictionary<Pawn, ForcedRecord>();
+
+            var weaponIdData = ForcedWeapons.GetForcedWeaponIds();
+            foreach (var kvp in weaponIdData)
+            {
+                var pawn = kvp.Key;
+                if (!IsPawnValidForPersistence(pawn) || kvp.Value == null)
+                    continue;
+
+                List<ThingWithComps> weapons = null;
+                for (int i = 0; i < kvp.Value.Count; i++)
+                {
+                    var weapon = ForcedWeapons.FindHeldWeaponById(pawn, kvp.Value[i]);
+                    if (weapon == null || weapon.Destroyed)
+                        continue;
+                    if (weapons == null)
+                        weapons = new List<ThingWithComps>();
+                    weapons.Add(weapon);
+                }
+
+                if (weapons != null)
+                {
+                    byPawn[pawn] = new ForcedRecord { pawn = pawn, instanceWeapons = weapons };
+                }
+            }
+
+            var sidearmData = ForcedWeapons.GetSidearmSaveData();
+            foreach (var kvp in sidearmData)
+            {
+                var pawn = kvp.Key;
+                if (!IsPawnValidForPersistence(pawn) || kvp.Value == null || kvp.Value.Count == 0)
+                    continue;
+
+                if (!byPawn.TryGetValue(pawn, out var record))
+                {
+                    record = new ForcedRecord { pawn = pawn };
+                    byPawn[pawn] = record;
+                }
+                record.sidearmDefs = new List<ThingDef>(kvp.Value);
+            }
+
+            if (byPawn.Count == 0)
+                return null;
+
+            var records = new List<ForcedRecord>(byPawn.Count);
+            foreach (var kvp in byPawn)
+                records.Add(kvp.Value);
+            return records;
+        }
+
+        private void BuildStagingFromRecords()
+        {
+            forcedSidearmDefs.Clear();
+            forcedWeaponIds.Clear();
+
+            for (int i = 0; i < forcedRecords.Count; i++)
+            {
+                var record = forcedRecords[i];
+                if (record == null || !IsPawnValidForPersistence(record.pawn))
+                    continue;
+
+                if (record.instanceWeapons != null)
+                {
+                    List<int> ids = null;
+                    for (int j = 0; j < record.instanceWeapons.Count; j++)
+                    {
+                        var weapon = record.instanceWeapons[j];
+                        if (weapon == null || weapon.Destroyed)
+                            continue;
+                        if (ids == null)
+                            ids = new List<int>();
+                        ids.Add(weapon.thingIDNumber);
+                    }
+                    if (ids != null)
+                        forcedWeaponIds[record.pawn] = ids;
+                }
+
+                if (record.sidearmDefs != null && record.sidearmDefs.Count > 0)
+                {
+                    var names = new List<string>();
+                    for (int j = 0; j < record.sidearmDefs.Count; j++)
+                    {
+                        var def = record.sidearmDefs[j];
+                        if (def != null && !string.IsNullOrEmpty(def.defName))
+                            names.Add(def.defName);
+                    }
+                    if (names.Count > 0)
+                        forcedSidearmDefs[record.pawn] = names;
+                }
+            }
+        }
+
         private void ReconstructDictionariesFromBuffers()
         {
             forcedSidearmDefs.Clear();
@@ -330,43 +451,18 @@ namespace AutoArm
         {
             var map = new Dictionary<string, Pawn>(256);
 
-            if (Current.Game?.Maps != null)
+            var pawns = Helpers.ListPool<Pawn>.Get(256);
+            try
             {
-                foreach (var gameMap in Current.Game.Maps)
+                ForcedWeapons.CollectKnownPawns(pawns);
+                for (int i = 0; i < pawns.Count; i++)
                 {
-                    if (gameMap?.mapPawns == null) continue;
-                    foreach (var pawn in gameMap.mapPawns.AllPawns)
-                    {
-                        if (pawn == null) continue;
-                        map[pawn.GetUniqueLoadID()] = pawn;
-                    }
+                    map[pawns[i].GetUniqueLoadID()] = pawns[i];
                 }
             }
-
-            if (Find.WorldPawns != null)
+            finally
             {
-                foreach (var pawn in Find.WorldPawns.AllPawnsAliveOrDead)
-                {
-                    if (pawn == null) continue;
-                    var id = pawn.GetUniqueLoadID();
-                    if (!map.ContainsKey(id))
-                        map[id] = pawn;
-                }
-            }
-
-            if (Find.WorldObjects != null)
-            {
-                foreach (var caravan in Find.WorldObjects.Caravans)
-                {
-                    if (caravan?.PawnsListForReading == null) continue;
-                    foreach (var pawn in caravan.PawnsListForReading)
-                    {
-                        if (pawn == null) continue;
-                        var id = pawn.GetUniqueLoadID();
-                        if (!map.ContainsKey(id))
-                            map[id] = pawn;
-                    }
-                }
+                Helpers.ListPool<Pawn>.Return(pawns);
             }
 
             return map;
@@ -411,31 +507,19 @@ namespace AutoArm
             ForcedWeapons.Reset();
 
             var validPawns = new HashSet<Pawn>();
-            if (Current.Game?.Maps != null)
+            var knownPawns = Helpers.ListPool<Pawn>.Get(256);
+            try
             {
-                foreach (var map in Current.Game.Maps)
+                ForcedWeapons.CollectKnownPawns(knownPawns);
+                for (int i = 0; i < knownPawns.Count; i++)
                 {
-                    if (map?.mapPawns != null)
-                    {
-                        validPawns.UnionWith(map.mapPawns.AllPawns.Where(p => p != null && !p.Destroyed));
-                    }
+                    if (!knownPawns[i].Destroyed)
+                        validPawns.Add(knownPawns[i]);
                 }
             }
-
-            if (Find.WorldObjects != null)
+            finally
             {
-                foreach (var caravan in Find.WorldObjects.Caravans)
-                {
-                    if (caravan?.PawnsListForReading != null)
-                    {
-                        validPawns.UnionWith(caravan.PawnsListForReading.Where(p => p != null && !p.Destroyed));
-                    }
-                }
-            }
-
-            if (Find.WorldPawns != null)
-            {
-                validPawns.UnionWith(Find.WorldPawns.AllPawnsAliveOrDead.Where(p => p != null && !p.Destroyed));
+                Helpers.ListPool<Pawn>.Return(knownPawns);
             }
 
             var sidearmDataToRestore = new Dictionary<Pawn, HashSet<ThingDef>>();
@@ -600,8 +684,6 @@ namespace AutoArm
 
             try
             {
-                ThingFilter_Allows_Thing_Patch.DisableForDialog();
-                ThingFilter_Allows_Thing_Patch.InvalidateCache();
                 OutfitFilterCache.RebuildCache();
                 EquipEligibility.Clear();
             }
@@ -626,7 +708,31 @@ namespace AutoArm
             if (pendingRestoreAfterLoad)
             {
                 pendingRestoreAfterLoad = false;
-                try { RestoreDataAfterLoading(); }
+                try
+                {
+                    bool restoredFromRecords = false;
+                    if (forcedRecords != null)
+                    {
+                        BuildStagingFromRecords();
+                        forcedRecords = null;
+                        restoredFromRecords = forcedSidearmDefs.Count > 0 || forcedWeaponIds.Count > 0;
+                    }
+
+                    if (restoredFromRecords)
+                    {
+                        sidearmPawnIdsBuffer = null;
+                        sidearmDefBuffer = null;
+                        weaponIdPawnIdsBuffer = null;
+                        weaponIdBuffer = null;
+                        AutoArmLogger.Debug(() => $"Restoring forced weapons from reference records: {forcedSidearmDefs.Count + forcedWeaponIds.Count} entries");
+                    }
+                    else
+                    {
+                        ReconstructDictionariesFromBuffers();
+                    }
+                    CleanupLegacyData();
+                    RestoreDataAfterLoading();
+                }
                 catch (Exception e) { AutoArmLogger.Error("RestoreDataAfterLoading failed", e); }
             }
 
@@ -648,8 +754,6 @@ namespace AutoArm
             try
             {
                 Game_LoadGame_InjectThinkTree_Patch.Postfix();
-                ThingFilter_Allows_Thing_Patch.DisableForDialog();
-                ThingFilter_Allows_Thing_Patch.InvalidateCache();
                 PawnValidation.ClearCache();
                 EquipEligibility.Clear();
                 OutfitFilterCache.RebuildCache();

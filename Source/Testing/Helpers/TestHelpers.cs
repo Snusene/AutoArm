@@ -107,7 +107,7 @@ namespace AutoArm.Testing
                     ApplyNobility(pawn, config.Conceited);
                 }
 
-                IntVec3 spawnPos = config.SpawnPosition ?? FindSafeSpawnPosition(map, map.Center);
+                IntVec3 spawnPos = FindSafeSpawnPosition(map, config.SpawnPosition ?? map.Center);
 
                 GenSpawn.Spawn(pawn, spawnPos, map);
 

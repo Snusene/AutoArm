@@ -56,8 +56,6 @@ namespace AutoArm
 
         public override Vector2 InitialSize => new Vector2(WINDOW_WIDTH, _dynamicHeight);
 
-        public static bool IsWindowOpen() => PerfMetrics.WindowOpen;
-
         public static void OpenOrBringToFront()
         {
             if (Find.WindowStack == null) return;

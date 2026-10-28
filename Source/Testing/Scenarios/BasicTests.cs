@@ -347,6 +347,11 @@ namespace AutoArm.Testing.Scenarios
 
             if (job == null)
             {
+                if (betterWeapon.Destroyed || !betterWeapon.Spawned)
+                    return TestResult.Skip("Better weapon was taken by a live colonist during the test");
+                if (betterWeapon.Map?.reservationManager?.IsReservedByAnyoneOf(betterWeapon, Faction.OfPlayer) == true)
+                    return TestResult.Skip("Better weapon is reserved by a live colonist");
+
                 string pawnReason;
                 bool isValidPawn = IsValidPawn(testPawn, out pawnReason);
 
@@ -406,8 +411,7 @@ namespace AutoArm.Testing.Scenarios
         private Pawn testPawn;
         private List<ThingWithComps> weapons = new List<ThingWithComps>();
         private ThingWithComps expectedWeapon;
-        private QualityRange originalQualityRange;
-        private FloatRange originalHPRange;
+        private ThingFilter filterSnapshot;
         private ApparelPolicy originalPolicy;
 
         public void Setup(Map map)
@@ -438,8 +442,8 @@ namespace AutoArm.Testing.Scenarios
                 var filter = testPawn.outfits.CurrentApparelPolicy.filter;
 
                 originalPolicy = testPawn.outfits.CurrentApparelPolicy;
-                originalQualityRange = filter.AllowedQualityLevels;
-                originalHPRange = filter.AllowedHitPointsPercents;
+                filterSnapshot = new ThingFilter();
+                filterSnapshot.CopyAllowancesFrom(filter);
 
                 filter.AllowedQualityLevels = new QualityRange(QualityCategory.Good, QualityCategory.Legendary);
 
@@ -461,19 +465,19 @@ namespace AutoArm.Testing.Scenarios
 
             if (rifleDef != null)
             {
-                var excellentRifle = CreateTestWeapon(map, rifleDef, pos + new IntVec3(2, 0, 0), QualityCategory.Excellent, 1.0f);
+                var excellentRifle = CreateTestWeapon(map, rifleDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Excellent, 1.0f);
                 if (excellentRifle != null)
                 {
                     weapons.Add(excellentRifle);
                 }
 
-                var poorRifle = CreateTestWeapon(map, rifleDef, pos + new IntVec3(3, 0, 0), QualityCategory.Poor, 1.0f);
+                var poorRifle = CreateTestWeapon(map, rifleDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Poor, 1.0f);
                 if (poorRifle != null)
                 {
                     weapons.Add(poorRifle);
                 }
 
-                var masterworkRifle = CreateTestWeapon(map, rifleDef, pos + new IntVec3(4, 0, 0), QualityCategory.Masterwork, 0.3f);
+                var masterworkRifle = CreateTestWeapon(map, rifleDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Masterwork, 0.3f);
                 if (masterworkRifle != null)
                 {
                     expectedWeapon = masterworkRifle;
@@ -483,13 +487,13 @@ namespace AutoArm.Testing.Scenarios
 
             if (pistolDef != null)
             {
-                var damagedPistol = CreateTestWeapon(map, pistolDef, pos + new IntVec3(-2, 0, 0), QualityCategory.Normal, 0.45f);
+                var damagedPistol = CreateTestWeapon(map, pistolDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Normal, 0.45f);
                 if (damagedPistol != null)
                 {
                     weapons.Add(damagedPistol);
                 }
 
-                var goodPistol = CreateTestWeapon(map, pistolDef, pos + new IntVec3(-3, 0, 0), QualityCategory.Good, 0.6f);
+                var goodPistol = CreateTestWeapon(map, pistolDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Good, 0.6f);
                 if (goodPistol != null)
                 {
                     weapons.Add(goodPistol);
@@ -498,13 +502,13 @@ namespace AutoArm.Testing.Scenarios
 
             if (swordDef != null)
             {
-                var awfulSword = CreateTestWeapon(map, swordDef, pos + new IntVec3(0, 0, 2), QualityCategory.Awful, 1.0f);
+                var awfulSword = CreateTestWeapon(map, swordDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Awful, 1.0f);
                 if (awfulSword != null)
                 {
                     weapons.Add(awfulSword);
                 }
 
-                var goodSword = CreateTestWeapon(map, swordDef, pos + new IntVec3(0, 0, 3), QualityCategory.Good, 0.51f);
+                var goodSword = CreateTestWeapon(map, swordDef, TestPositions.GetNearbyPosition(pos, 2f, 5f, map), QualityCategory.Good, 0.51f);
                 if (goodSword != null)
                 {
                     weapons.Add(goodSword);
@@ -515,12 +519,6 @@ namespace AutoArm.Testing.Scenarios
             {
                 WeaponCache.AddWeaponToCache(weapon);
             }
-
-            UI.ThingFilter_Allows_Thing_Patch.EnableForDialog();
-
-            UI.ThingFilter_Allows_Thing_Patch.InvalidateCache();
-
-
         }
 
         private ThingWithComps CreateTestWeapon(Map map, ThingDef weaponDef, IntVec3 position, QualityCategory quality, float hpPercent)
@@ -547,7 +545,8 @@ namespace AutoArm.Testing.Scenarios
 
                 weapon.HitPoints = UnityEngine.Mathf.RoundToInt(weapon.MaxHitPoints * hpPercent);
 
-                GenSpawn.Spawn(weapon, position, map);
+                if (!GenPlace.TryPlaceThing(weapon, position, map, ThingPlaceMode.Near))
+                    GenSpawn.Spawn(weapon, position, map);
                 weapon.SetForbidden(false, false);
 
             }
@@ -628,17 +627,12 @@ namespace AutoArm.Testing.Scenarios
 
         public void Cleanup()
         {
-            UI.ThingFilter_Allows_Thing_Patch.DisableForDialog();
-
-            if (originalPolicy != null && testPawn?.outfits != null && !testPawn.Destroyed)
+            if (originalPolicy?.filter != null && filterSnapshot != null)
             {
-                var filter = originalPolicy.filter;
-                if (filter != null)
-                {
-                    filter.AllowedQualityLevels = originalQualityRange;
-                    filter.AllowedHitPointsPercents = originalHPRange;
-                }
+                originalPolicy.filter.CopyAllowancesFrom(filterSnapshot);
+                WeaponCache.OnOutfitFilterChanged(originalPolicy);
             }
+            filterSnapshot = null;
 
             CleanupHelper.DestroyWeapons(weapons);
             weapons.Clear();

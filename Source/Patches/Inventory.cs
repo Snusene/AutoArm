@@ -1,4 +1,5 @@
 ﻿using AutoArm.Compatibility;
+using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
 using HarmonyLib;
@@ -7,11 +8,6 @@ using Verse;
 
 namespace AutoArm
 {
-    internal static class SimpleSidearmsJobDefs
-    {
-        public static readonly JobDef EquipSecondary = DefDatabase<JobDef>.GetNamedSilentFail("EquipSecondary");
-    }
-
     [HarmonyPatch(typeof(Pawn_InventoryTracker), "Notify_ItemRemoved")]
     [HarmonyPatchCategory(Patches.PatchCategories.Compatibility)]
     internal static class Pawn_InventoryTracker_Notify_ItemRemoved_Patch
@@ -87,15 +83,13 @@ namespace AutoArm
                     ForcedWeapons.AddSidearm(___pawn, weapon);
                     AutoArmLogger.Debug(() => $"{___pawn.LabelShort}: Maintaining forced status for {weapon.Label} (ID: {weapon.thingIDNumber}) moved to inventory");
                 }
-                else if (AutoArmMod.settings?.modEnabled == true &&
-                    AutoEquipState.ShouldForceWeapon(___pawn, weapon))
+                else if (AutoEquipState.ShouldForceWeapon(___pawn, weapon))
                 {
                     ForcedWeapons.AddSidearm(___pawn, weapon);
                     AutoEquipState.ClearWeaponToForce(___pawn);
                     AutoArmLogger.Debug(() => $"{___pawn.LabelShort}: Transferred forced status to upgraded sidearm {weapon.Label}");
                 }
-                else if (AutoArmMod.settings?.modEnabled == true &&
-                    AutoArmMod.settings?.respectWeaponBonds == true &&
+                else if (AutoArmMod.settings?.respectWeaponBonds == true &&
                     ModsConfig.RoyaltyActive &&
                     ValidationHelper.IsWeaponBondedToPawn(weapon, ___pawn))
                 {
@@ -103,9 +97,8 @@ namespace AutoArm
                     AutoArmLogger.Debug(() => $"{___pawn.LabelShort}: Bonded weapon {weapon.Label} in inventory - auto-forced");
                 }
                 else if (___pawn.jobs?.curDriver?.job?.playerForced == true &&
-                    ___pawn.jobs.curDriver.job.def != null &&
-                    SimpleSidearmsJobDefs.EquipSecondary != null &&
-                    ___pawn.jobs.curDriver.job.def == SimpleSidearmsJobDefs.EquipSecondary)
+                    AutoArmDefOf.EquipSecondary != null &&
+                    ___pawn.jobs.curDriver.job.def == AutoArmDefOf.EquipSecondary)
                 {
                     ForcedWeapons.AddSidearm(___pawn, weapon);
                     AutoArmLogger.Debug(() => $"{___pawn.LabelShort}: Forced sidearm pickup - {weapon.Label}");

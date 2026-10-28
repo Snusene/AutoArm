@@ -38,7 +38,7 @@ namespace AutoArm.Jobs
                 }
                 else if (now - lastSummaryTick >= SummaryWindowTicks)
                 {
-                    AutoArmLogger.Debug(() => $"Auto-equip jobs created: {markedCount} in last 5s");
+                    AutoArmLogger.Debug(() => $"Auto equip jobs created: {markedCount} in last 5s");
                     markedCount = 0;
                     lastSummaryTick = now;
                 }
@@ -129,7 +129,9 @@ namespace AutoArm.Jobs
             lastSummaryTick = -1;
         }
 
-        public static void Cleanup()
+        private static int liveSweepCounter;
+
+        public static void Cleanup(bool force = false)
         {
             if (autoEquipJobIds.Count > 0)
             {
@@ -145,7 +147,7 @@ namespace AutoArm.Jobs
                     foreach (var id in expired)
                         autoEquipJobIds.Remove(id);
                     if (expired.Count > 0)
-                        AutoArmLogger.Debug(() => $"Expired {expired.Count} stale auto-equip job tags");
+                        AutoArmLogger.Debug(() => $"Expired {expired.Count} stale auto equip job tags");
                 }
                 finally
                 {
@@ -156,56 +158,60 @@ namespace AutoArm.Jobs
             if (previousWeaponLabels.Count == 0 && weaponsToForce.Count == 0)
                 return;
 
-            var liveIds = new HashSet<int>();
-            if (Find.Maps != null)
-            {
-                foreach (var map in Find.Maps)
-                {
-                    if (map?.mapPawns?.AllPawns == null) continue;
-                    foreach (var p in map.mapPawns.AllPawns)
-                    {
-                        if (p == null || p.Dead || p.Destroyed) continue;
-                        liveIds.Add(p.thingIDNumber);
-                    }
-                }
-            }
-            var worldPawns = Find.World?.worldPawns;
-            if (worldPawns != null)
-            {
-                foreach (var p in worldPawns.AllPawnsAlive)
-                {
-                    if (p != null) liveIds.Add(p.thingIDNumber);
-                }
-            }
+            liveSweepCounter++;
+            if (!force && !Testing.TestRunner.IsRunningTests && liveSweepCounter < 8)
+                return;
+            liveSweepCounter = 0;
 
-            var toRemove = ListPool<int>.Get();
+            var liveIds = HashSetPool<int>.Get();
             try
             {
-                foreach (var id in previousWeaponLabels.Keys)
+                if (Find.Maps != null)
                 {
-                    if (!liveIds.Contains(id)) toRemove.Add(id);
+                    foreach (var map in Find.Maps)
+                    {
+                        if (map?.mapPawns?.AllPawns == null) continue;
+                        foreach (var p in map.mapPawns.AllPawns)
+                        {
+                            if (p == null || p.Dead || p.Destroyed) continue;
+                            liveIds.Add(p.thingIDNumber);
+                        }
+                    }
                 }
-                foreach (var id in toRemove) previousWeaponLabels.Remove(id);
+                var worldPawns = Find.World?.worldPawns;
+                if (worldPawns != null)
+                {
+                    foreach (var p in worldPawns.AllPawnsAlive)
+                    {
+                        if (p != null) liveIds.Add(p.thingIDNumber);
+                    }
+                }
 
-                toRemove.Clear();
-                foreach (var id in weaponsToForce.Keys)
+                var toRemove = ListPool<int>.Get();
+                try
                 {
-                    if (!liveIds.Contains(id)) toRemove.Add(id);
+                    foreach (var id in previousWeaponLabels.Keys)
+                    {
+                        if (!liveIds.Contains(id)) toRemove.Add(id);
+                    }
+                    foreach (var id in toRemove) previousWeaponLabels.Remove(id);
+
+                    toRemove.Clear();
+                    foreach (var id in weaponsToForce.Keys)
+                    {
+                        if (!liveIds.Contains(id)) toRemove.Add(id);
+                    }
+                    foreach (var id in toRemove) weaponsToForce.Remove(id);
                 }
-                foreach (var id in toRemove) weaponsToForce.Remove(id);
+                finally
+                {
+                    ListPool<int>.Return(toRemove);
+                }
             }
             finally
             {
-                ListPool<int>.Return(toRemove);
+                HashSetPool<int>.Return(liveIds);
             }
-        }
-
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-
-            previousWeaponLabels.Remove(pawn.thingIDNumber);
-            weaponsToForce.Remove(pawn.thingIDNumber);
         }
     }
 }

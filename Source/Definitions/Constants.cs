@@ -103,11 +103,11 @@ namespace AutoArm.Definitions
 
         public const float UI_LINE_HEIGHT = 30f;
 
-        public const float UI_CHECKBOX_SIZE = 20f;
+        public const float UI_CHECKBOX_SIZE = 24f;
         public const float UI_TAB_BUTTON_HEIGHT = 30f;
         public const float UI_CONTENT_PADDING = 10f;
-        public const float UI_SECTION_GAP = 20f;
-        public const float UI_SMALL_GAP = 12f;
+        public const float UI_SECTION_GAP = 10f;
+        public const float UI_SMALL_GAP = 6f;
         public const float UI_TINY_GAP = 6f;
         public const float UI_RESET_BUTTON_WIDTH = 150f;
         public const float UI_RESET_BUTTON_HEIGHT = 30f;

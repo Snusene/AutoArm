@@ -57,16 +57,6 @@ namespace AutoArm.Caching
             if (pawn == null || weapon == null)
                 return false;
 
-            if (!ModsConfig.RoyaltyActive && !ModsConfig.IdeologyActive)
-            {
-                if (CompBiocodable.IsBiocoded(weapon) && !CompBiocodable.IsBiocodedFor(weapon, pawn))
-                {
-                    cantReason = "biocoded to another pawn";
-                    return false;
-                }
-                return true;
-            }
-
             var key = new Key(pawn.thingIDNumber, weapon.thingIDNumber, checkBonded);
             int now = Find.TickManager.TicksGame;
 

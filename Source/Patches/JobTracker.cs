@@ -12,14 +12,12 @@ using Verse.AI;
 
 namespace AutoArm.Patches
 {
-    [HarmonyPatch(typeof(Pawn_JobTracker), "StartJob")]
-    [HarmonyAfter("PeteTimesSix.SimpleSidearms", "CETeam.CombatExtended")]
-    [HarmonyPriority(Priority.Low)]
+    [HarmonyPatch(typeof(Pawn_JobTracker), "TryTakeOrderedJob")]
     [HarmonyPatchCategory(PatchCategories.Core)]
-    internal static class Pawn_JobTracker_StartJob_Patch
+    internal static class Pawn_JobTracker_TryTakeOrderedJob_Patch
     {
-        [HarmonyPrefix]
-        public static void Prefix(Job newJob, Pawn ___pawn)
+        [HarmonyPostfix]
+        public static void Postfix(Job job, Pawn ___pawn, bool __result)
         {
             try
             {
@@ -28,53 +26,33 @@ namespace AutoArm.Patches
                 if (settings?.modEnabled != true)
                     return;
 
-                if (newJob == null || ___pawn == null)
+                if (!__result || job == null || ___pawn == null)
                     return;
 
                 if (!___pawn.IsColonist || ___pawn.Destroyed)
                     return;
 
-                if ((newJob.def == JobDefOf.Equip || newJob.def == AutoArmDefOf.EquipSecondary) &&
-                    newJob.targetA.Thing is ThingWithComps targetWeapon)
+                if (job.def != JobDefOf.Equip && job.def != AutoArmDefOf.EquipSecondary)
+                    return;
+
+                if (!(job.targetA.Thing is ThingWithComps targetWeapon))
+                    return;
+
+                if (!JobGiver_PickUpBetterWeapon.IsWeaponCached(targetWeapon, ___pawn.Map))
+                    return;
+
+                JobGiver_PickUpBetterWeapon.ClearWeaponCooldown(___pawn);
+
+                if (job.def == AutoArmDefOf.EquipSecondary)
                 {
-                    if (targetWeapon != null && JobGiver_PickUpBetterWeapon.IsWeaponCached(targetWeapon, ___pawn?.Map))
+                    ForcedWeapons.AddSidearm(___pawn, targetWeapon);
+                    if (settings.debugLogging)
                     {
-
-                        if (settings.debugLogging)
-                        {
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(___pawn)}] Starting {newJob.def.defName} job for {AutoArmLogger.GetWeaponLabelLower(targetWeapon)} [playerForced: {AutoArmLogger.FormatBool(newJob.playerForced)}]");
-                        }
-
-                        bool isPartOfSidearmUpgrade = false;
-                        if (SimpleSidearmsCompat.IsLoaded && newJob.def == JobDefOf.Equip)
-                        {
-                            if (SimpleSidearmsCompat.CanAutoEquipSidearms() && !newJob.playerForced && AutoEquipState.IsAutoEquip(newJob))
-                            {
-                                isPartOfSidearmUpgrade = true;
-                            }
-                        }
-
-                        if (newJob.playerForced && !isPartOfSidearmUpgrade)
-                        {
-                            JobGiver_PickUpBetterWeapon.ClearWeaponCooldown(___pawn);
-
-                            if (newJob.def == AutoArmDefOf.EquipSecondary)
-                            {
-                                ForcedWeapons.AddSidearm(___pawn, targetWeapon);
-                                if (settings.debugLogging)
-                                {
-                                    AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Player forced sidearm: {AutoArmLogger.GetWeaponLabelLower(targetWeapon)} (ID: {targetWeapon.thingIDNumber})");
-                                }
-                            }
-                            else
-                            {
-                                ForcedWeapons.SetForced(___pawn, targetWeapon, "player-forced");
-                            }
-                        }
+                        AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Player forced sidearm: {AutoArmLogger.GetWeaponLabelLower(targetWeapon)} (ID: {targetWeapon.thingIDNumber})");
                     }
                 }
             }
-            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "Pawn_JobTracker_StartJob_Prefix"); }
+            catch (Exception e) { AutoArmLogger.ErrorPatch(e, "Pawn_JobTracker_TryTakeOrderedJob_Postfix"); }
         }
     }
 

@@ -51,12 +51,12 @@ namespace AutoArm.UI
     {
         public Pawn pawn;
         public bool isValid;
+        public bool transientBlock;
         public string invalidReason;
         public int shootingSkill;
         public int meleeSkill;
         public ThingWithComps primaryWeapon;
         public float weaponScore;
-        public float weaponBaseScore;
         public bool weaponBonded;
         public int sidearmCount;
         public string outfitName;
@@ -77,6 +77,8 @@ namespace AutoArm.UI
         private const int CACHE_DURATION = 60;
 
         private static int lastColonistListCacheTick = -1;
+        private static int lastColonistListCacheFrame = -1;
+        private static int lastColonistListCacheMapId = -1;
         private static ColonistListsInfo cachedColonistLists = null;
 
         private static Dictionary<ApparelPolicy, int> outfitWeaponCountCache = new Dictionary<ApparelPolicy, int>();
@@ -219,7 +221,11 @@ namespace AutoArm.UI
         private static ColonistListsInfo GatherColonistLists(Map map)
         {
             int currentTick = Find.TickManager.TicksGame;
-            if (cachedColonistLists != null && currentTick - lastColonistListCacheTick < CACHE_DURATION)
+            int currentFrame = RealTime.frameCount;
+            if (cachedColonistLists != null &&
+                map.uniqueID == lastColonistListCacheMapId &&
+                currentTick - lastColonistListCacheTick < CACHE_DURATION &&
+                currentFrame - lastColonistListCacheFrame < CACHE_DURATION)
             {
                 return cachedColonistLists;
             }
@@ -245,10 +251,7 @@ namespace AutoArm.UI
                 {
                     validActive.Add(info);
                 }
-                else if (info.invalidReason != null &&
-                        (info.invalidReason.Contains("hauling") ||
-                         info.invalidReason.Contains("bed") ||
-                         info.invalidReason.Contains("In bed")))
+                else if (info.transientBlock)
                 {
                     validBusy.Add(info);
                 }
@@ -267,6 +270,8 @@ namespace AutoArm.UI
 
             cachedColonistLists = result;
             lastColonistListCacheTick = currentTick;
+            lastColonistListCacheFrame = currentFrame;
+            lastColonistListCacheMapId = map.uniqueID;
 
             return result;
         }
@@ -274,19 +279,14 @@ namespace AutoArm.UI
         private static ColonistInfo CreateColonistInfo(Pawn pawn)
         {
             string reason;
-            bool isValid = ValidationHelper.IsValidPawn(pawn, out reason);
-
-            bool raidActive = ModInit.IsLargeRaidActive && (AutoArmMod.settings?.disableDuringRaids ?? false);
-            if (raidActive)
-            {
-                isValid = false;
-                reason = "AutoArm_ReasonRaidActive".Translate();
-            }
+            bool transientBlock;
+            bool isValid = ValidationHelper.IsValidPawn(pawn, out reason, out transientBlock);
 
             var info = new ColonistInfo
             {
                 pawn = pawn,
                 isValid = isValid,
+                transientBlock = transientBlock,
                 invalidReason = reason,
                 shootingSkill = pawn.skills?.GetSkill(SkillDefOf.Shooting)?.Level ?? 0,
                 meleeSkill = pawn.skills?.GetSkill(SkillDefOf.Melee)?.Level ?? 0
@@ -295,7 +295,6 @@ namespace AutoArm.UI
             if (pawn.equipment?.Primary != null)
             {
                 info.primaryWeapon = pawn.equipment.Primary;
-                info.weaponBaseScore = Scoring.GetWeaponPropertyScore(null, info.primaryWeapon);
                 info.weaponScore = Scoring.GetTotalScore(pawn, info.primaryWeapon);
                 info.weaponBonded = ValidationHelper.IsWeaponBondedToPawn(info.primaryWeapon, pawn);
             }
@@ -441,18 +440,15 @@ namespace AutoArm.UI
         private const float LINE_HEIGHT = 24f;
         private static Pawn expandedPawn = null;
         private static Pawn cameraFollowTarget = null;
-        private static float expandedPawnTargetScreenY = -1f;
-        private static Rect lastScrollViewRect = Rect.zero;
-        private static bool userIsManuallyScrolling = false;
-        private static Vector2 lastAutoScrollPosition = Vector2.zero;
+        private static int lastUpdateFrame = -1;
+
+        private static System.Reflection.FieldInfo cachedRootPosField = null;
+        private static System.Reflection.FieldInfo cachedVelocityField = null;
         private enum ViewMode { StatusOverview, WeaponScores, TestResults }
         private static ViewMode currentView = ViewMode.StatusOverview;
         private static AutoArm.Testing.TestResults testResults;
         private static System.TimeSpan testsDuration;
         private static bool testsRunning;
-
-        private static System.Reflection.FieldInfo cachedRootPosField = null;
-        private static System.Reflection.FieldInfo cachedVelocityField = null;
 
         private struct ConsolidatedKey : IEquatable<ConsolidatedKey>
         {
@@ -487,16 +483,11 @@ namespace AutoArm.UI
         private static int cachedWeaponGroupHash = -1;
         private const int WEAPON_CACHE_DURATION = 60;
 
-        // Must call on close - stops background camera/cache
         public static void ResetState()
         {
             expandedPawn = null;
             cameraFollowTarget = null;
-            expandedPawnTargetScreenY = -1f;
             scrollPosition = Vector2.zero;
-            lastScrollViewRect = Rect.zero;
-            userIsManuallyScrolling = false;
-            lastAutoScrollPosition = Vector2.zero;
 
             cachedWeaponGroups = null;
             lastWeaponGroupCacheTick = -1;
@@ -504,6 +495,7 @@ namespace AutoArm.UI
 
             cachedData = null;
             lastUpdateTick = -1;
+            lastUpdateFrame = -1;
 
             StatusOverviewDataGatherer.ClearCaches();
 
@@ -538,7 +530,7 @@ namespace AutoArm.UI
                 currentView = ViewMode.StatusOverview;
             if (Widgets.ButtonTextSubtle(weaponsTab, "AutoArm_WeaponScoresTab".Translate(), currentView == ViewMode.WeaponScores ? 1f : 0f))
                 currentView = ViewMode.WeaponScores;
-            if (Widgets.ButtonTextSubtle(testsTab, "Run All Tests", currentView == ViewMode.TestResults ? 1f : 0f))
+            if (Widgets.ButtonTextSubtle(testsTab, "Run all tests", currentView == ViewMode.TestResults ? 1f : 0f))
                 StartTestRun(map);
 
             if (cameraFollowTarget != null)
@@ -590,10 +582,14 @@ namespace AutoArm.UI
             }
 
             int currentTick = Find.TickManager.TicksGame;
-            if (cachedData == null || currentTick - lastUpdateTick >= UPDATE_INTERVAL)
+            int currentFrame = RealTime.frameCount;
+            if (cachedData == null ||
+                currentTick - lastUpdateTick >= UPDATE_INTERVAL ||
+                currentFrame - lastUpdateFrame >= UPDATE_INTERVAL * 4)
             {
                 cachedData = StatusOverviewDataGatherer.GatherData(map);
                 lastUpdateTick = currentTick;
+                lastUpdateFrame = currentFrame;
             }
 
             var data = cachedData;
@@ -605,27 +601,8 @@ namespace AutoArm.UI
 
             float contentHeight = CalculateContentHeight(data);
 
-            if (expandedPawn != null && expandedPawnTargetScreenY >= 0f && !userIsManuallyScrolling)
-            {
-                float expandedPawnContentY = CalculateExpandedPawnContentY(data);
-                if (expandedPawnContentY >= 0f)
-                {
-                    float desiredScrollY = expandedPawnContentY - expandedPawnTargetScreenY;
-
-                    float maxScrollY = Mathf.Max(0f, contentHeight - rect.height);
-                    scrollPosition.y = Mathf.Clamp(desiredScrollY, 0f, maxScrollY);
-                    lastAutoScrollPosition = scrollPosition;
-                }
-            }
-
             Rect viewRect = new Rect(0, 0, rect.width - 20f, contentHeight);
-            lastScrollViewRect = rect;
             Widgets.BeginScrollView(rect, ref scrollPosition, viewRect);
-
-            if (expandedPawn != null && scrollPosition != lastAutoScrollPosition)
-            {
-                userIsManuallyScrolling = true;
-            }
 
             var listing = new Listing_Standard();
             listing.Begin(viewRect);
@@ -665,7 +642,7 @@ namespace AutoArm.UI
 
             float headerHeight = LINE_HEIGHT * 0.8f;
             float weaponLinesHeight = weaponCount * (LINE_HEIGHT * 0.8f);
-            float padding = LINE_HEIGHT * 0.7f;
+            float padding = LINE_HEIGHT * 0.25f;
             return headerHeight + weaponLinesHeight + padding;
         }
 
@@ -689,6 +666,9 @@ namespace AutoArm.UI
             {
                 return CalculateTestResultsHeight();
             }
+
+            if (RaidPauseActive())
+                height += LINE_HEIGHT + 6f;
 
             if (data.colonistLists.validActive.Any())
             {
@@ -731,63 +711,21 @@ namespace AutoArm.UI
         }
 
 
-        private static float CalculateExpandedPawnContentY(StatusOverviewData data)
+        private static bool RaidPauseActive()
         {
-            if (expandedPawn == null)
-                return -1f;
-
-            float currentY = 0f;
-
-            if (data.colonistLists.validActive.Any())
-            {
-                currentY += 40f;
-                foreach (var colonist in data.colonistLists.validActive)
-                {
-                    if (colonist.pawn == expandedPawn)
-                        return currentY;
-
-                    currentY += LINE_HEIGHT * 1.4f;
-                    if (expandedPawn == colonist.pawn)
-                        currentY += (LINE_HEIGHT * 3) + 30f;
-                }
-                currentY += SECTION_GAP;
-            }
-
-            if (data.colonistLists.validBusy.Any())
-            {
-                currentY += 40f;
-                foreach (var colonist in data.colonistLists.validBusy)
-                {
-                    if (colonist.pawn == expandedPawn)
-                        return currentY;
-
-                    currentY += LINE_HEIGHT * 1.4f;
-                    if (expandedPawn == colonist.pawn)
-                        currentY += (LINE_HEIGHT * 3) + 30f;
-                }
-                currentY += SECTION_GAP;
-            }
-
-            if (data.colonistLists.invalid.Any())
-            {
-                currentY += 40f;
-                foreach (var colonist in data.colonistLists.invalid)
-                {
-                    if (colonist.pawn == expandedPawn)
-                        return currentY;
-
-                    currentY += LINE_HEIGHT * 1.4f;
-                    if (expandedPawn == colonist.pawn)
-                        currentY += (LINE_HEIGHT * 3) + 30f;
-                }
-            }
-
-            return -1f;
+            return ModInit.IsLargeRaidActive && (AutoArmMod.settings?.disableDuringRaids ?? false);
         }
-
 
         private static void DrawColonistListsSection(Listing_Standard listing, ColonistListsInfo lists, Map map)
         {
+            if (RaidPauseActive())
+            {
+                var bannerRect = listing.GetRect(LINE_HEIGHT);
+                using (new TextBlock(UIColors.WarningSoft))
+                    Widgets.Label(bannerRect, "AutoArm_RaidPausedBanner".Translate());
+                listing.Gap(6f);
+            }
+
             if (lists.validActive.Any())
             {
                 DrawColonistList(listing, "AutoArm_ColonistsValidActive".Translate(), lists.validActive, UIColors.Active, map,
@@ -848,7 +786,7 @@ namespace AutoArm.UI
                 {
                     float headerHeight = LINE_HEIGHT * 0.8f;
                     float weaponLinesHeight = weaponCount * (LINE_HEIGHT * 0.8f);
-                    float padding = LINE_HEIGHT * 0.7f;
+                    float padding = LINE_HEIGHT * 0.25f;
                     expandedWeaponsHeight = headerHeight + weaponLinesHeight + padding;
                 }
             }
@@ -861,18 +799,7 @@ namespace AutoArm.UI
                 Find.Selector.ClearSelection();
                 Find.Selector.Select(colonist.pawn);
                 cameraFollowTarget = colonist.pawn;
-
-                if (expandedPawn == colonist.pawn)
-                {
-                    expandedPawn = null;
-                }
-                else
-                {
-                    expandedPawn = colonist.pawn;
-                    expandedPawnTargetScreenY = lineRect.y - scrollPosition.y;
-                    userIsManuallyScrolling = false;
-                    lastAutoScrollPosition = scrollPosition;
-                }
+                expandedPawn = expandedPawn == colonist.pawn ? null : colonist.pawn;
             }
 
             if (Mouse.IsOver(clickRect))
@@ -883,8 +810,8 @@ namespace AutoArm.UI
             float y = lineRect.y;
             var line1Rect = new Rect(lineRect.x, y, lineRect.width, LINE_HEIGHT);
 
-            string statusIcon = colonist.isValid ? "✓" : "✗";
-            Color statusColor = colonist.isValid ? UIColors.Active : UIColors.Invalid;
+            string statusIcon = colonist.isValid ? "✓" : (colonist.transientBlock ? "…" : "✗");
+            Color statusColor = colonist.isValid ? UIColors.Active : (colonist.transientBlock ? UIColors.Busy : UIColors.Invalid);
             using (new TextBlock(statusColor))
                 Widgets.Label(new Rect(line1Rect.x, line1Rect.y, 20f, line1Rect.height), statusIcon);
 
@@ -946,24 +873,23 @@ namespace AutoArm.UI
 
                 line2Parts.Add("AutoArm_StatusSkillsShort".Translate(colonist.shootingSkill, colonist.meleeSkill));
 
-                if (colonist.primaryWeapon != null)
-                    line2Parts.Add("AutoArm_StatusBaseScore".Translate(colonist.weaponBaseScore.ToString("F0")));
-
-                if (!string.IsNullOrEmpty(colonist.outfitName))
-                    line2Parts.Add("AutoArm_StatusOutfitWeapons".Translate(colonist.outfitName, colonist.outfitAllowedWeapons));
-
                 string line2Text = string.Join(", ", line2Parts);
                 ListPool<string>.Return(line2Parts);
                 using (new TextBlock(line2Color))
                     Widgets.Label(line2Rect, line2Text);
             }
 
-            TooltipHandler.TipRegion(new Rect(lineRect.x, lineRect.y, lineRect.width, baseHeight), BuildColonistTooltip(colonist));
+            Rect tooltipRect = new Rect(lineRect.x, lineRect.y, lineRect.width, baseHeight);
+            if (Mouse.IsOver(tooltipRect))
+            {
+                var c = colonist;
+                TooltipHandler.TipRegion(tooltipRect, new TipSignal(() => BuildColonistTooltip(c), c.pawn.thingIDNumber * 7901));
+            }
 
             if (isExpanded)
             {
                 y += LINE_HEIGHT * 0.7f;
-                DrawInlineTopWeapons(listing, colonist.pawn, map, y, lineRect.width);
+                DrawInlineTopWeapons(listing, colonist.pawn, map, y, lineRect.width, colonist.weaponScore);
             }
         }
 
@@ -1025,7 +951,7 @@ namespace AutoArm.UI
             return result;
         }
 
-        private static void DrawInlineTopWeapons(Listing_Standard listing, Pawn pawn, Map map, float startY, float width)
+        private static void DrawInlineTopWeapons(Listing_Standard listing, Pawn pawn, Map map, float startY, float width, float currentScore)
         {
             var consolidatedWeapons = GetOrBuildConsolidatedWeapons(map, pawn);
             if (consolidatedWeapons.Count == 0)
@@ -1042,31 +968,22 @@ namespace AutoArm.UI
             Text.Font = GameFont.Tiny;
             var headerRect = new Rect(25f, startY, width - 25f, LINE_HEIGHT * 0.7f);
 
-            Widgets.DrawBoxSolid(headerRect, new Color(0.2f, 0.25f, 0.3f, 0.3f));
-
-            GUI.color = UIColors.AccentHeader;
-            Widgets.Label(new Rect(headerRect.x + 4f, headerRect.y + 2f, headerRect.width - 4f, headerRect.height),
-                $"TOP 3 WEAPONS FOR {pawn.Name.ToStringShort.ToUpperInvariant()}");
+            string header = currentScore > 0f
+                ? $"Top picks for {pawn.Name.ToStringShort} (current: {currentScore:F0})"
+                : $"Top picks for {pawn.Name.ToStringShort}";
+            GUI.color = UIColors.Dim;
+            Widgets.Label(new Rect(headerRect.x + 4f, headerRect.y + 2f, headerRect.width - 4f, headerRect.height), header);
             GUI.color = Color.white;
 
             Text.Font = GameFont.Small;
 
             float y = startY + LINE_HEIGHT * 0.8f;
 
-            int rank = 1;
             foreach (var consolidated in consolidatedWeapons.Take(3))
             {
                 var weaponLineRect = new Rect(35f, y, width - 35f, LINE_HEIGHT * 0.8f);
 
-                string icon = consolidated.isRanged ? "⚡" : "⚔";
-                Color iconColor = consolidated.isRanged ? UIColors.Ranged : UIColors.Melee;
-
                 Text.Font = GameFont.Tiny;
-                Widgets.Label(new Rect(weaponLineRect.x, weaponLineRect.y, 15f, weaponLineRect.height), $"{rank}.");
-
-                GUI.color = iconColor;
-                Widgets.Label(new Rect(weaponLineRect.x + 18f, weaponLineRect.y, 20f, weaponLineRect.height), icon);
-                GUI.color = Color.white;
 
                 string weaponLabel = consolidated.weaponDef.label;
                 if (consolidated.quality != QualityCategory.Normal || consolidated.maxQualityPercent > 0)
@@ -1080,20 +997,16 @@ namespace AutoArm.UI
                 }
 
                 if (consolidated.count > 1)
-                    weaponLabel += $" [{consolidated.count}x]";
+                    weaponLabel += $" ×{consolidated.count}";
 
-                if (consolidated.isForbidden)
-                {
-                    GUI.color = UIColors.Dim;
-                    weaponLabel += " [FORBIDDEN]";
-                }
+                float maxLabelWidth = weaponLineRect.width - 70f;
+                string shownLabel = weaponLabel.Truncate(maxLabelWidth);
+                float labelWidth = Mathf.Min(Text.CalcSize(shownLabel).x, maxLabelWidth);
+                Widgets.Label(new Rect(weaponLineRect.x, weaponLineRect.y, labelWidth, weaponLineRect.height), shownLabel);
 
-                Widgets.Label(new Rect(weaponLineRect.x + 40f, weaponLineRect.y, 250f, weaponLineRect.height), weaponLabel);
-                GUI.color = Color.white;
-
-                Text.Anchor = TextAnchor.MiddleRight;
-                Widgets.Label(new Rect(weaponLineRect.x + 300f, weaponLineRect.y, 80f, weaponLineRect.height), $"{consolidated.averageScore:F0}");
-                Text.Anchor = TextAnchor.UpperLeft;
+                Color scoreColor = currentScore > 0f && consolidated.averageScore <= currentScore ? UIColors.Dim : UIColors.Active;
+                using (new TextBlock(scoreColor))
+                    Widgets.Label(new Rect(weaponLineRect.x + labelWidth + 6f, weaponLineRect.y, 64f, weaponLineRect.height), $"({consolidated.averageScore:F0})");
 
                 if (Widgets.ButtonInvisible(weaponLineRect))
                 {
@@ -1112,17 +1025,15 @@ namespace AutoArm.UI
                     if (pawn != null && !pawn.Destroyed && !pawn.Dead)
                     {
                         var breakdown = AutoArm.Scoring.GetScoreBreakdown(pawn, consolidated.representativeWeapon);
-                        tooltip += "\n" + BuildScoreBreakdownText(breakdown, consolidated.isRanged);
+                        tooltip += "\n" + BuildScoreBreakdownText(breakdown);
                     }
                 }
 
-                tooltip += "\nClick to jump to weapon";
+                tooltip += "\n" + "AutoArm_ClickToJump".Translate();
                 TooltipHandler.TipRegion(weaponLineRect, tooltip);
 
                 Text.Font = GameFont.Small;
                 y += LINE_HEIGHT * 0.8f;
-
-                rank++;
             }
         }
 
@@ -1272,8 +1183,7 @@ namespace AutoArm.UI
 
             if (testResults.FailedTests > 0)
             {
-                DrawSectionHeader(listing, "FAILED", testResults.FailedTests, UIColors.Fail,
-                    "Tests that ran and asserted a failure. Reason shown below each.");
+                DrawSectionHeader(listing, "Failed", testResults.FailedTests, UIColors.Fail);
                 foreach (var kvp in testResults.GetFailedTests())
                     DrawFailRow(listing, kvp.Key, kvp.Value);
                 listing.Gap(6f);
@@ -1281,8 +1191,7 @@ namespace AutoArm.UI
 
             if (testResults.PassedTests > 0)
             {
-                DrawSectionHeader(listing, "PASSED", testResults.PassedTests, UIColors.Pass,
-                    "Tests that ran and met their assertions.");
+                DrawSectionHeader(listing, "Passed", testResults.PassedTests, UIColors.Pass);
                 foreach (var kvp in testResults.GetPassedTests())
                     DrawPassRow(listing, kvp.Key);
                 listing.Gap(6f);
@@ -1290,8 +1199,8 @@ namespace AutoArm.UI
 
             if (testResults.SkippedTests > 0)
             {
-                DrawSectionHeader(listing, "SKIPPED", testResults.SkippedTests, UIColors.Skip,
-                    "Tests whose preconditions were not met (e.g. required DLC or mod missing).");
+                DrawSectionHeader(listing, "Skipped", testResults.SkippedTests, UIColors.Skip,
+                    "Couldn't run here, usually a missing DLC or mod.");
                 foreach (var kvp in testResults.GetSkippedTests())
                     DrawSkipRow(listing, kvp.Key, kvp.Value);
             }
@@ -1452,7 +1361,7 @@ namespace AutoArm.UI
             return h + 20f;
         }
 
-        private static string BuildScoreBreakdownText(AutoArm.Scoring.ScoreBreakdown breakdown, bool isRanged)
+        private static string BuildScoreBreakdownText(AutoArm.Scoring.ScoreBreakdown breakdown)
         {
             string totalLine = "AutoArm_ScoreTotalLine".Translate(breakdown.totalScore.ToString("F0"));
 
@@ -1461,22 +1370,18 @@ namespace AutoArm.UI
             if (breakdown.isForbidden)
                 return "AutoArm_ScoreBlocked".Translate() + "\n" + totalLine + "\n";
 
-            string fmtVal(float v) => v == 0f ? "—" : v.ToString("F0");
-            string fmtMult(float m) => m == 1.0f ? "×1.00" : $"×{m:F2}";
-
-            string typeLabel = isRanged ? "AutoArm_TypeRanged".Translate() : "AutoArm_TypeMelee".Translate();
-            string outfitVal = breakdown.outfitPolicyScore < 0 ? breakdown.outfitPolicyScore.ToString("F0") : "AutoArm_StatusOK".Translate().ToString();
-
-            string s = "AutoArm_ScoreType".Translate(typeLabel) + "\n";
-            s += "\n" + "AutoArm_ScoreComponents".Translate() + "\n";
-            s += "AutoArm_ScoreBase".Translate(fmtVal(breakdown.baseWeaponScore)) + "\n";
-            s += "AutoArm_ScoreSkillBonus".Translate(fmtVal(breakdown.skillScore)) + "\n";
-            s += "AutoArm_ScoreHunterBonus".Translate(fmtVal(breakdown.hunterScore)) + "\n";
-            s += "AutoArm_ScoreOutfitPolicy".Translate(outfitVal) + "\n";
-            s += "\n" + "AutoArm_ScoreMultipliers".Translate() + "\n";
-            s += "AutoArm_ScoreSkillMatch".Translate(fmtMult(breakdown.skillMismatchMultiplier)) + "\n";
-            s += "AutoArm_ScorePersona".Translate(fmtMult(breakdown.personaMultiplier)) + "\n";
-            s += "AutoArm_ScoreCEAmmo".Translate(fmtMult(breakdown.ceAmmoModifier)) + "\n";
+            string s = "AutoArm_ScoreBase".Translate(breakdown.baseWeaponScore.ToString("F0")) + "\n";
+            s += "AutoArm_ScoreSkillBonus".Translate(breakdown.skillScore.ToString("F0")) + "\n";
+            if (breakdown.hunterScore != 0f)
+                s += "AutoArm_ScoreHunterBonus".Translate(breakdown.hunterScore.ToString("F0")) + "\n";
+            if (breakdown.outfitPolicyScore < 0f)
+                s += "AutoArm_ScoreOutfitPolicy".Translate(breakdown.outfitPolicyScore.ToString("F0")) + "\n";
+            if (Math.Abs(breakdown.skillMismatchMultiplier - 1f) > 0.005f)
+                s += "AutoArm_ScoreSkillMatch".Translate($"×{breakdown.skillMismatchMultiplier:F2}") + "\n";
+            if (Math.Abs(breakdown.personaMultiplier - 1f) > 0.005f)
+                s += "AutoArm_ScorePersona".Translate($"×{breakdown.personaMultiplier:F2}") + "\n";
+            if (Math.Abs(breakdown.ceAmmoModifier - 1f) > 0.005f)
+                s += "AutoArm_ScoreCEAmmo".Translate($"×{breakdown.ceAmmoModifier:F2}") + "\n";
             s += "\n" + totalLine + "\n";
             return s;
         }
@@ -1491,33 +1396,37 @@ namespace AutoArm.UI
             if (colonist.primaryWeapon != null && !colonist.primaryWeapon.Destroyed
                 && colonist.pawn != null && !colonist.pawn.Destroyed && !colonist.pawn.Dead)
             {
-                tooltip += "\n" + "AutoArm_TooltipWeapon".Translate(colonist.primaryWeapon.Label) + "\n";
-
-                var breakdown = AutoArm.Scoring.GetScoreBreakdown(colonist.pawn, colonist.primaryWeapon);
-                tooltip += BuildScoreBreakdownText(breakdown, colonist.primaryWeapon.def.IsRangedWeapon);
+                tooltip += "AutoArm_TooltipWeapon".Translate(colonist.primaryWeapon.Label) + "\n";
 
                 if (colonist.weaponBonded)
                     tooltip += "AutoArm_TooltipBonded".Translate() + "\n";
+
+                if (colonist.sidearmCount > 0)
+                    tooltip += "AutoArm_TooltipSidearms".Translate(colonist.sidearmCount) + "\n";
+
+                var breakdown = AutoArm.Scoring.GetScoreBreakdown(colonist.pawn, colonist.primaryWeapon);
+                tooltip += "\n" + BuildScoreBreakdownText(breakdown);
             }
             else
             {
-                tooltip += "\n" + "AutoArm_TooltipWeaponNone".Translate() + "\n";
-            }
+                tooltip += "AutoArm_TooltipWeaponNone".Translate() + "\n";
 
-            if (colonist.sidearmCount > 0)
-            {
-                tooltip += "AutoArm_TooltipSidearms".Translate(colonist.sidearmCount) + "\n";
+                if (colonist.sidearmCount > 0)
+                    tooltip += "AutoArm_TooltipSidearms".Translate(colonist.sidearmCount) + "\n";
             }
 
             if (!string.IsNullOrEmpty(colonist.outfitName))
             {
-                tooltip += "\n" + "AutoArm_TooltipOutfit".Translate(colonist.outfitName) + "\n";
-                tooltip += "AutoArm_TooltipAllows".Translate(colonist.outfitAllowedWeapons) + "\n";
+                tooltip += "\n" + "AutoArm_TooltipOutfit".Translate(colonist.outfitName, colonist.outfitAllowedWeapons) + "\n";
             }
 
             if (!colonist.isValid && !string.IsNullOrEmpty(colonist.invalidReason))
             {
-                tooltip += "\n" + "AutoArm_TooltipInvalid".Translate(colonist.invalidReason) + "\n";
+                string reason = colonist.invalidReason;
+                if (char.IsUpper(reason[0]))
+                    reason = char.ToLowerInvariant(reason[0]) + reason.Substring(1);
+                string statusKey = colonist.transientBlock ? "AutoArm_TooltipBusy" : "AutoArm_TooltipInvalid";
+                tooltip += "\n" + statusKey.Translate(reason) + "\n";
             }
 
             return tooltip;

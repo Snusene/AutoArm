@@ -1,10 +1,7 @@
 
-using HarmonyLib;
 using RimWorld;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using Verse;
 using ForcedWeapons = AutoArm.ForcedWeapons;
 
@@ -12,24 +9,18 @@ namespace AutoArm.Helpers
 {
     internal static class ForcedWeaponLabelHelper
     {
-        private static int lastUICheckTick = -1;
+        private static int lastUICheckFrame = -1;
 
         private static bool cachedIsGearTabOpen = false;
         private static Pawn cachedSelectedPawn = null;
 
         private static HashSet<int> cachedPawnWeaponIds = new HashSet<int>();
 
-        private static FieldInfo inspectTabField = null;
-
-        private static FieldInfo openTabTypeField = null;
-        private static bool fieldSearchDone = false;
-
         public static void ResetFieldChecking()
         {
-            fieldSearchDone = false;
-            inspectTabField = null;
-            openTabTypeField = null;
             cachedPawnWeaponIds.Clear();
+            _cachedForcedSuffix = null;
+            _cachedSuffixLanguage = null;
         }
 
 
@@ -62,16 +53,15 @@ namespace AutoArm.Helpers
 
         internal static bool ShouldProcessWeaponLabel()
         {
-            var tickManager = Find.TickManager;
-            if (tickManager == null)
+            if (Find.TickManager == null)
                 return false;
 
-            int currentTick = tickManager.TicksGame;
+            int currentFrame = RealTime.frameCount;
 
-            if (lastUICheckTick == currentTick)
+            if (lastUICheckFrame == currentFrame)
                 return cachedIsGearTabOpen;
 
-            lastUICheckTick = currentTick;
+            lastUICheckFrame = currentFrame;
 
             cachedIsGearTabOpen = false;
             cachedSelectedPawn = null;
@@ -102,77 +92,29 @@ namespace AutoArm.Helpers
             cachedSelectedPawn = selectedPawn;
             BuildWeaponIds(selectedPawn);
 
-            var inspectPane = (MainTabWindow_Inspect)MainButtonDefOf.Inspect.TabWindow;
-            if (inspectPane == null)
-                return cachedIsGearTabOpen;
-
-            if (!fieldSearchDone)
-            {
-                inspectTabField = AccessTools.GetDeclaredFields(typeof(MainTabWindow_Inspect))
-                    .FirstOrDefault(f => typeof(ITab).IsAssignableFrom(f.FieldType));
-
-                if (inspectTabField == null)
-                {
-                    openTabTypeField = AccessTools.Field(typeof(MainTabWindow_Inspect), "openTabType");
-                    if (openTabTypeField != null && openTabTypeField.FieldType != typeof(Type))
-                    {
-                        openTabTypeField = null;
-                    }
-
-                    if (openTabTypeField == null)
-                    {
-                        AutoArmLogger.Warn("Auto-detection of inspect tab field failed! Could not find ITab field or openTabType field.");
-
-                        if (AutoArmMod.settings?.debugLogging == true)
-                        {
-                            var allFields = AccessTools.GetDeclaredFields(typeof(MainTabWindow_Inspect));
-                            AutoArmLogger.Debug(() => $"Available fields in MainTabWindow_Inspect: {string.Join(", ", allFields.Select(f => $"{f.FieldType.Name} {f.Name}"))}");
-                        }
-                    }
-                    else
-                    {
-                        AutoArmLogger.Debug(() => $"Cached openTabType field (newer RimWorld)");
-                    }
-                }
-                else
-                {
-                    AutoArmLogger.Debug(() => $"Cached inspect tab field '{inspectTabField.Name}' ({inspectTabField.FieldType.Name})");
-                }
-
-                fieldSearchDone = true;
-            }
-
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                if (inspectTabField != null)
-                {
-                    if (currentTick % 60 == 0)
-                    {
-                        var openTab = (ITab)inspectTabField.GetValue(inspectPane);
-                        AutoArmLogger.Debug(() => $"Using cached field '{inspectTabField.Name}'. Open tab type: {openTab?.GetType()?.Name ?? "null"}, UI active: {cachedIsGearTabOpen}");
-                    }
-                }
-                else if (openTabTypeField != null)
-                {
-                    if (currentTick % 6000 == 0)
-                    {
-                        var openTabType = (Type)openTabTypeField.GetValue(inspectPane);
-                        AutoArmLogger.Debug(() => $"Using openTabType field. Open tab type: {openTabType?.Name ?? "null"}, UI active: {cachedIsGearTabOpen}");
-                    }
-                }
-            }
-
             return cachedIsGearTabOpen;
         }
 
-        private static int lastForcedWeaponCheckTick = -1;
+        private static int lastForcedWeaponCheckFrame = -1;
 
         private static int lastForcedWeaponCheckPawnId = -1;
         private static HashSet<int> cachedForcedWeaponIds = new HashSet<int>();
 
         private static string _cachedForcedSuffix;
+        private static LoadedLanguage _cachedSuffixLanguage;
         private static string ForcedSuffix
-            => _cachedForcedSuffix ?? (_cachedForcedSuffix = ", " + "ApparelForcedLower".Translate());
+        {
+            get
+            {
+                var lang = LanguageDatabase.activeLanguage;
+                if (_cachedForcedSuffix == null || !ReferenceEquals(_cachedSuffixLanguage, lang))
+                {
+                    _cachedSuffixLanguage = lang;
+                    _cachedForcedSuffix = ", " + "ApparelForcedLower".Translate();
+                }
+                return _cachedForcedSuffix;
+            }
+        }
 
         public static string StripForcedSuffix(string label)
         {
@@ -192,19 +134,18 @@ namespace AutoArm.Helpers
             if (label.EndsWith(ForcedSuffix, StringComparison.Ordinal))
                 return;
 
-            int currentTick = Find.TickManager?.TicksGame ?? 0;
-
             if (cachedSelectedPawn == null)
                 return;
 
+            int currentFrame = RealTime.frameCount;
             int selectedId = cachedSelectedPawn.thingIDNumber;
             bool shouldRebuildCache = lastForcedWeaponCheckPawnId != selectedId ||
-                                      lastForcedWeaponCheckTick != currentTick;
+                                      lastForcedWeaponCheckFrame != currentFrame;
 
             if (shouldRebuildCache)
             {
                 lastForcedWeaponCheckPawnId = selectedId;
-                lastForcedWeaponCheckTick = currentTick;
+                lastForcedWeaponCheckFrame = currentFrame;
                 BuildCache(cachedSelectedPawn);
             }
 
@@ -273,18 +214,5 @@ namespace AutoArm.Helpers
                 ClearCaches();
             }
         }
-
-        public static void RemovePawn(Pawn pawn)
-        {
-            if (pawn == null) return;
-            if (lastForcedWeaponCheckPawnId == pawn.thingIDNumber)
-                ClearCaches();
-            if (cachedSelectedPawn == pawn)
-            {
-                cachedSelectedPawn = null;
-                cachedPawnWeaponIds.Clear();
-            }
-        }
-
     }
 }

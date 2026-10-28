@@ -17,6 +17,7 @@ namespace AutoArm.Testing.Scenarios
         public string Name => "Temporary colonists";
         private Pawn questLodger;
         private Pawn borrowedPawn;
+        private Quest lodgerQuest;
         private List<ThingWithComps> weapons = new List<ThingWithComps>();
 
         public void Setup(Map map)
@@ -32,9 +33,20 @@ namespace AutoArm.Testing.Scenarios
 
             if (questLodger != null)
             {
-                if (questLodger.questTags == null)
-                    questLodger.questTags = new List<string>();
-                questLodger.questTags.Add("Lodger");
+                var homeFaction = Find.FactionManager.AllFactions
+                    .FirstOrDefault(f => f != Faction.OfPlayer && !f.HostileTo(Faction.OfPlayer) && !f.Hidden);
+                if (homeFaction != null)
+                {
+                    lodgerQuest = Quest.MakeRaw();
+                    var part = new QuestPart_ExtraFaction
+                    {
+                        extraFaction = new ExtraFaction(homeFaction, ExtraFactionType.HomeFaction)
+                    };
+                    part.affectedPawns.Add(questLodger);
+                    lodgerQuest.AddPart(part);
+                    Find.QuestManager.Add(lodgerQuest);
+                    lodgerQuest.SetInitiallyAccepted();
+                }
 
                 questLodger.equipment?.DestroyAllEquipment();
             }
@@ -128,6 +140,12 @@ namespace AutoArm.Testing.Scenarios
         {
             var result = new TestResult { Success = true };
             var jobGiver = new JobGiver_PickUpBetterWeapon();
+
+            if (questLodger != null && !AutoArm.Jobs.JobHelper.IsTemporary(questLodger))
+            {
+                result.Success = false;
+                result.Data["Error"] = "Real quest lodger not detected as temporary";
+            }
 
             bool originalSetting = AutoArmMod.settings?.allowTemporaryColonists ?? false;
 
@@ -256,6 +274,12 @@ namespace AutoArm.Testing.Scenarios
 
         public void Cleanup()
         {
+            if (lodgerQuest != null)
+            {
+                Find.QuestManager.Remove(lodgerQuest);
+                lodgerQuest = null;
+            }
+
             foreach (var weapon in weapons)
             {
                 if (weapon != null && !weapon.Destroyed)
@@ -276,6 +300,172 @@ namespace AutoArm.Testing.Scenarios
                 TestHelpers.SafeDestroyPawn(borrowedPawn);
                 borrowedPawn = null;
             }
+        }
+    }
+
+    internal sealed class FormerLodgerIsPermanentTest : ITestScenario
+    {
+        public string Name => "Former lodger is permanent";
+        private Pawn pawn;
+
+        public void Setup(Map map)
+        {
+            if (map == null) return;
+
+            pawn = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "FormerLodger" });
+            if (pawn == null) return;
+
+            if (pawn.questTags == null)
+                pawn.questTags = new List<string>();
+            pawn.questTags.Add("Quest999.lodgers");
+            pawn.questTags.Add("Quest998.asker");
+            pawn.ownership?.UnclaimAll();
+        }
+
+        public TestResult Run()
+        {
+            if (pawn == null)
+                return TestResult.Failure("Setup incomplete");
+
+            if (AutoArm.Jobs.JobHelper.IsTemporary(pawn))
+                return TestResult.Failure("Colonist with leftover quest tags and no bed treated as temporary");
+
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            TestHelpers.SafeDestroyPawn(pawn);
+        }
+    }
+
+    internal sealed class BiocodedPrimaryStillManagedTest : ITestScenario
+    {
+        public string Name => "Biocoded primary still managed";
+        private Pawn pawn;
+        private ThingWithComps rifle;
+
+        public void Setup(Map map)
+        {
+            if (map == null) return;
+
+            pawn = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "BiocodedOwner" });
+            if (pawn == null) return;
+
+            pawn.equipment?.DestroyAllEquipment();
+
+            rifle = ThingMaker.MakeThing(AutoArmDefOf.Gun_AssaultRifle) as ThingWithComps;
+            var code = rifle?.TryGetComp<CompBiocodable>();
+            if (rifle == null || code == null) return;
+            code.CodeFor(pawn);
+            pawn.equipment.AddEquipment(rifle);
+        }
+
+        public TestResult Run()
+        {
+            if (pawn == null || rifle == null || !CompBiocodable.IsBiocodedFor(rifle, pawn))
+                return TestResult.Failure("Setup incomplete");
+
+            PawnValidation.ClearCache();
+            if (!PawnValidation.CanConsiderWeapons(pawn))
+                return TestResult.Failure("Colonist with an ordinary biocoded primary is skipped by AutoArm");
+
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            if (pawn != null)
+                pawn.equipment?.DestroyAllEquipment();
+            TestHelpers.SafeDestroyPawn(pawn);
+        }
+    }
+
+    internal sealed class BorrowedSoldierKeepsLockedWeaponTest : ITestScenario
+    {
+        public string Name => "Borrowed soldier keeps locked weapon";
+        private Pawn soldier;
+        private ThingWithComps locked;
+        private ThingWithComps better;
+        private Quest quest;
+
+        public void Setup(Map map)
+        {
+            if (map == null) return;
+
+            soldier = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "BorrowedSoldier" });
+            if (soldier == null) return;
+
+            soldier.equipment?.DestroyAllEquipment();
+
+            var homeFaction = Find.FactionManager.AllFactions
+                .FirstOrDefault(f => f != Faction.OfPlayer && !f.HostileTo(Faction.OfPlayer) && !f.Hidden);
+            if (homeFaction == null) return;
+
+            quest = Quest.MakeRaw();
+            var part = new QuestPart_ExtraFaction
+            {
+                extraFaction = new ExtraFaction(homeFaction, ExtraFactionType.HomeFaction)
+            };
+            part.affectedPawns.Add(soldier);
+            quest.AddPart(part);
+            Find.QuestManager.Add(quest);
+            quest.SetInitiallyAccepted();
+
+            locked = ThingMaker.MakeThing(AutoArmDefOf.Gun_AssaultRifle) as ThingWithComps;
+            var code = locked?.TryGetComp<CompBiocodable>();
+            if (locked == null || code == null) return;
+            locked.TryGetComp<CompQuality>()?.SetQuality(QualityCategory.Poor, ArtGenerationContext.Colony);
+            code.CodeFor(soldier);
+            soldier.equipment.AddEquipment(locked);
+
+            better = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_AssaultRifle,
+                soldier.Position + new IntVec3(2, 0, 0), QualityCategory.Legendary);
+            if (better != null)
+                WeaponCache.AddWeaponToCache(better);
+        }
+
+        public TestResult Run()
+        {
+            if (soldier == null || locked == null || better == null || quest == null)
+                return TestResult.Failure("Setup incomplete");
+
+            if (!AutoArm.Jobs.JobHelper.IsTemporary(soldier))
+                return TestResult.Failure("Borrowed soldier not detected as temporary");
+
+            bool original = AutoArmMod.settings.allowTemporaryColonists;
+            try
+            {
+                foreach (bool allow in new[] { false, true })
+                {
+                    AutoArmMod.settings.allowTemporaryColonists = allow;
+                    PawnValidation.ClearCache();
+                    CleanupHelper.ClearAllCooldownsForPawn(soldier);
+
+                    var job = new JobGiver_PickUpBetterWeapon().TestTryGiveJob(soldier);
+                    if (job != null)
+                        return TestResult.Failure($"Borrowed soldier got {job.def.defName} with allowTemporaryColonists={allow}");
+                }
+            }
+            finally
+            {
+                AutoArmMod.settings.allowTemporaryColonists = original;
+            }
+
+            if (soldier.equipment.Primary != locked)
+                return TestResult.Failure("Locked weapon was replaced");
+
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            if (quest != null)
+                Find.QuestManager.Remove(quest);
+            TestHelpers.SafeDestroyWeapon(better);
+            if (soldier != null)
+                soldier.equipment?.DestroyAllEquipment();
+            TestHelpers.SafeDestroyPawn(soldier);
         }
     }
 

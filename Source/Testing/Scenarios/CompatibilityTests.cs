@@ -257,10 +257,13 @@ namespace AutoArm.Testing.Scenarios
                 }
                 else
                 {
-                    if (job != null && job.targetA.Thing == betterWeapon)
+                    bool replacesForcedPrimary = job != null && job.targetA.Thing == betterWeapon &&
+                        (job.def == AutoArmDefOf.AutoArmSwapPrimary || job.def == RimWorld.JobDefOf.Equip);
+                    if (replacesForcedPrimary)
                     {
                         result.Success = false;
-                        result.Data["Error"] = "Created upgrade job for forced weapon when not allowed";
+                        result.FailureReason = $"Created primary-replacing job ({job.def?.defName}) for forced weapon when not allowed";
+                        result.Data["Error"] = result.FailureReason;
                     }
                     else
                     {
@@ -271,7 +274,8 @@ namespace AutoArm.Testing.Scenarios
             catch (Exception e)
             {
                 result.Success = false;
-                result.Data["Error"] = $"Forced weapon test failed: {e.Message}";
+                result.FailureReason = $"Forced weapon test threw: {e.Message}";
+                result.Data["Error"] = result.FailureReason;
                 AutoArmLogger.Warn("[TEST] SimpleSidearmsForcedWeaponTest failed", e);
             }
 
@@ -411,6 +415,9 @@ namespace AutoArm.Testing.Scenarios
 
             if (testPawn == null || primaryRanged == null || sidearmMelee == null || mapMelee == null)
                 return TestResult.Failure("Test setup failed");
+
+            if (!SimpleSidearmsCompat.IsManagingPawn(testPawn))
+                return TestResult.Skip("SimpleSidearms loaded but inactive, cross-type guard is off by design");
 
             var result = new TestResult { Success = true };
 

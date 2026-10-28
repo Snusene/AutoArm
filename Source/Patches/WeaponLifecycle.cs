@@ -58,49 +58,6 @@ namespace AutoArm
         }
     }
 
-    [HarmonyPatch(typeof(GenSpawn), nameof(GenSpawn.Spawn))]
-    [HarmonyPatch(new Type[] { typeof(Thing), typeof(IntVec3), typeof(Map), typeof(Rot4), typeof(WipeMode), typeof(bool), typeof(bool) })]
-    [HarmonyPatchCategory(Patches.PatchCategories.Performance)]
-    [HarmonyPriority(Priority.Last)]
-    internal static class GenSpawn_Spawn_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Thing __result)
-        {
-            try
-            {
-                if (!Prefs.DevMode)
-                    return;
-
-                if (__result == null || __result.def == null)
-                    return;
-
-                if (!__result.def.IsWeapon)
-                    return;
-
-                if (!Validation.IsWeapon(__result))
-                {
-                    if (AutoArmMod.settings?.debugLogging == true && __result.def.defName.Contains("Gun_"))
-                    {
-                        AutoArmLogger.Debug(() => $"[GenSpawn DEV MODE] Weapon {__result.Label} failed IsProperWeapon check");
-                    }
-                    return;
-                }
-
-                if (__result is ThingWithComps weapon
-                    && !WeaponCache.ShouldTrackWeapon(weapon)
-                    && AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() => $"[GenSpawn DEV MODE] Weapon spawned but not tracked: {weapon.Label} (spawned: {weapon.Spawned}, parent: {weapon.ParentHolder?.GetType().Name ?? "null"})");
-                }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.ErrorPatch(e, "GenSpawn_Spawn_Patch");
-            }
-        }
-    }
-
     [HarmonyPatch(typeof(Thing), nameof(Thing.Destroy))]
     [HarmonyPatchCategory(Patches.PatchCategories.Performance)]
     [HarmonyPriority(Priority.Last)]

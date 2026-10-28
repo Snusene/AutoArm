@@ -7,6 +7,7 @@ using RimWorld.Planet;
 using System;
 using Verse;
 using Verse.AI;
+using Verse.AI.Group;
 
 namespace AutoArm.Helpers
 {
@@ -17,14 +18,9 @@ namespace AutoArm.Helpers
         private static readonly System.Collections.Generic.Dictionary<JobDef, bool> ritualJobDefCache = new System.Collections.Generic.Dictionary<JobDef, bool>();
         private static readonly System.Collections.Generic.Dictionary<JobDef, bool> haulingJobDefCache = new System.Collections.Generic.Dictionary<JobDef, bool>();
 
-        // Per-def ideology cache
-        private static readonly System.Collections.Generic.Dictionary<(int ideoId, int defHash), IdeoWeaponDisposition> ideoDispositionCache =
-            new System.Collections.Generic.Dictionary<(int, int), IdeoWeaponDisposition>();
-
         private const int MaxRitualLordTypeCacheSize = 500;
 
         private const int MaxJobDefCacheSize = 1000;
-        private const int MaxIdeoDispositionCacheSize = 500;
 
         private static readonly string[] RitualLordJobKeywords =
         {
@@ -170,19 +166,7 @@ namespace AutoArm.Helpers
             var ideo = pawn.Ideo;
             if (ideo != null)
             {
-                var cacheKey = (ideo.id, weapon.def.shortHash);
-                IdeoWeaponDisposition weaponDisposition;
-
-                if (!ideoDispositionCache.TryGetValue(cacheKey, out weaponDisposition))
-                {
-                    weaponDisposition = ideo.GetDispositionForWeapon(weapon.def);
-
-                    if (ideoDispositionCache.Count >= MaxIdeoDispositionCacheSize)
-                        ideoDispositionCache.Clear();
-
-                    ideoDispositionCache[cacheKey] = weaponDisposition;
-                }
-
+                var weaponDisposition = ideo.GetDispositionForWeapon(weapon.def);
                 disposition = weaponDisposition;
 
                 if (weaponDisposition == IdeoWeaponDisposition.Despised)
@@ -198,7 +182,13 @@ namespace AutoArm.Helpers
 
         public static bool IsValidPawn(Pawn pawn, out string reason, bool checkForWeapons = true, bool fromJobGiver = false)
         {
+            return IsValidPawn(pawn, out reason, out _, checkForWeapons, fromJobGiver);
+        }
+
+        public static bool IsValidPawn(Pawn pawn, out string reason, out bool transientBlock, bool checkForWeapons = true, bool fromJobGiver = false)
+        {
             reason = "";
+            transientBlock = false;
 
             if (pawn == null)
             {
@@ -256,6 +246,12 @@ namespace AutoArm.Helpers
                     return false;
                 }
 
+                if (!pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation))
+                {
+                    reason = "Incapable of manipulation";
+                    return false;
+                }
+
                 if (!pawn.Spawned)
                 {
                     reason = "Not spawned";
@@ -271,24 +267,28 @@ namespace AutoArm.Helpers
                 if (pawn.Downed)
                 {
                     reason = "Downed";
+                    transientBlock = true;
                     return false;
                 }
 
                 if (pawn.Drafted)
                 {
                     reason = "Drafted";
+                    transientBlock = true;
                     return false;
                 }
 
                 if (pawn.InMentalState)
                 {
                     reason = "In mental state";
+                    transientBlock = true;
                     return false;
                 }
 
                 if (pawn.InBed())
                 {
                     reason = "In bed";
+                    transientBlock = true;
                     return false;
                 }
 
@@ -316,7 +316,7 @@ namespace AutoArm.Helpers
                     return false;
                 }
 
-                if (ModsConfig.RoyaltyActive && pawn.IsQuestLodger())
+                if (pawn.IsQuestLodger())
                 {
                     reason = "Quest lodger with locked equipment";
                     return false;
@@ -343,35 +343,39 @@ namespace AutoArm.Helpers
                     return false;
                 }
 
-                if (pawn.Map?.lordManager != null)
+                if (PawnValidation.IsInRestrictedLord(pawn))
                 {
-                    var lord = pawn.Map.lordManager.LordOf(pawn);
-                    if (lord != null)
-                    {
-                        if (!(lord.LordJob is LordJob_DefendBase ||
-                              lord.LordJob is LordJob_AssistColony))
-                        {
-                            reason = $"In lord job: {lord.LordJob.GetType().Name}";
-                            return false;
-                        }
-                    }
+                    var lordJob = pawn.Map?.lordManager?.LordOf(pawn)?.LordJob;
+                    reason = $"In lord job: {lordJob?.GetType().Name}";
+                    transientBlock = true;
+                    return false;
                 }
 
                 if (IsInRitual(pawn))
                 {
                     reason = "In ritual or ceremony";
+                    transientBlock = true;
                     return false;
                 }
 
                 if (pawn.CurJob != null && IsHaulingOrInventoryJob(pawn.CurJob.def))
                 {
                     reason = "Currently hauling";
+                    transientBlock = true;
                     return false;
                 }
 
                 if (pawn.IsCaravanMember())
                 {
                     reason = "In caravan";
+                    transientBlock = true;
+                    return false;
+                }
+
+                if (pawn.carryTracker?.CarriedThing != null)
+                {
+                    reason = "Carrying something";
+                    transientBlock = true;
                     return false;
                 }
 
@@ -410,7 +414,7 @@ namespace AutoArm.Helpers
             if (pawn?.Map?.lordManager == null)
                 return false;
 
-            var lord = pawn.Map.lordManager.LordOf(pawn);
+            var lord = pawn.GetLord();
             if (lord?.LordJob != null)
             {
                 var lordJobType = lord.LordJob.GetType();
