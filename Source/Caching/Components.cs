@@ -20,31 +20,9 @@ namespace AutoArm.Caching
             return weapon?.TryGetComp<CompBladelinkWeapon>() != null;
         }
 
-        public static bool IsPersonaBondedTo(ThingWithComps weapon, Pawn pawn)
+        public static bool IsUnique(ThingWithComps weapon)
         {
-            if (!ModsConfig.RoyaltyActive) return false;
-            if (weapon == null || pawn == null)
-                return false;
-
-            if (pawn.equipment?.bondedWeapon == weapon)
-                return true;
-
-            if (CompBiocodable.IsBiocodedFor(weapon, pawn))
-            {
-                var bladelink = weapon.TryGetComp<CompBladelinkWeapon>();
-                return bladelink != null;
-            }
-
-            return false;
-        }
-
-        public static bool TryGetWeaponQuality(ThingWithComps weapon, out QualityCategory quality)
-        {
-            quality = QualityCategory.Normal;
-            if (weapon == null)
-                return false;
-
-            return weapon.TryGetQuality(out quality);
+            return weapon.TryGetComp<CompUniqueWeapon>() != null;
         }
     }
 }

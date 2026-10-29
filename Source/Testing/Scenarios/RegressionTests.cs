@@ -102,7 +102,10 @@ namespace AutoArm.Testing.Scenarios
             {
                 sidearm = ThingMaker.MakeThing(sidearmDef) as ThingWithComps;
                 if (sidearm != null && testPawn.inventory?.innerContainer != null)
+                {
                     testPawn.inventory.innerContainer.TryAdd(sidearm);
+                    SimpleSidearmsCompat.InformOfAddedSidearm(testPawn, sidearm);
+                }
             }
 
             if (primary != null)
@@ -361,7 +364,10 @@ namespace AutoArm.Testing.Scenarios
 
             inventorySidearm = ThingMaker.MakeThing(pistolDef) as ThingWithComps;
             if (inventorySidearm != null && testPawn.inventory?.innerContainer != null)
+            {
                 testPawn.inventory.innerContainer.TryAdd(inventorySidearm);
+                SimpleSidearmsCompat.InformOfAddedSidearm(testPawn, inventorySidearm);
+            }
 
             groundSameDef = TestHelpers.CreateWeapon(map, pistolDef, testPawn.Position + new IntVec3(2, 0, 0));
             if (groundSameDef != null)
@@ -491,6 +497,7 @@ namespace AutoArm.Testing.Scenarios
             {
                 sidearm.TryGetComp<CompQuality>()?.SetQuality(QualityCategory.Normal, ArtGenerationContext.Colony);
                 testPawn.inventory.innerContainer.TryAdd(sidearm);
+                SimpleSidearmsCompat.InformOfAddedSidearm(testPawn, sidearm);
             }
 
             groundUpgrade = TestHelpers.CreateWeapon(map, rifleDef, testPawn.Position + new IntVec3(2, 0, 0));

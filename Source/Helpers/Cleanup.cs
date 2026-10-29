@@ -18,7 +18,7 @@ namespace AutoArm.Helpers
 
         private static int currentCleanupIndex = 0;
         private static CleanupStats accumulatedStats = new CleanupStats();
-        private const int TOTAL_CLEANUP_OPERATIONS = 16;
+        private const int TOTAL_CLEANUP_OPERATIONS = 13;
         private const int OPERATIONS_PER_BATCH = 1;
 
         // Warmup grace period
@@ -89,39 +89,30 @@ namespace AutoArm.Helpers
                     accumulatedStats.DroppedItems += DroppedItems.CleanupOldEntries();
                     break;
                 case 5:
-                    DroppedItems.ClearAllPendingUpgrades();
-                    break;
-                case 6:
                     if (!Testing.TestRunner.IsRunningTests)
                     {
                         WeaponCache.CleanupDestroyedMaps();
                     }
                     break;
-                case 7:
+                case 6:
                     PawnValidation.CleanupDeadPawns(force: Testing.TestRunner.IsRunningTests);
                     break;
-                case 8:
+                case 7:
                     accumulatedStats.WeaponScores = WeaponCache.CleanupScoreCache(forceDeadPawnCleanup: Testing.TestRunner.IsRunningTests);
                     break;
-                case 9:
-                    Scoring.CleanupSkillCache();
-                    break;
-                case 10:
-                    AutoArm.Thing_LabelPatches.CleanupLabelCache();
-                    break;
-                case 11:
+                case 8:
                     accumulatedStats.CacheEntries = AutoArm.UI.StatusOverviewDataGatherer.CleanupTopWeaponsCache();
                     break;
-                case 12:
+                case 9:
                     ForcedWeaponLabelHelper.CleanupDeadPawnCaches();
                     break;
-                case 13:
+                case 10:
                     Blacklist.CleanupOldEntries();
                     break;
-                case 14:
+                case 11:
                     JobGiver_PickUpBetterWeapon.CleanupMessageCache();
                     break;
-                case 15:
+                case 12:
                     JobGiver_PickUpBetterWeapon.CleanupCaches(force: Testing.TestRunner.IsRunningTests);
                     break;
             }

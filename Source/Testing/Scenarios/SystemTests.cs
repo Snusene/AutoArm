@@ -44,7 +44,7 @@ namespace AutoArm.Testing.Scenarios
                 if (!weapon.Destroyed)
                 {
                     result.Success = false;
-                    AutoArmLogger.Warn("[TEST] WeaponDestructionSafetyTest: Weapon not marked as destroyed after Destroy()");
+                    result.FailureReason = "Weapon not marked as destroyed after Destroy()";
                 }
 
                 try
@@ -54,7 +54,7 @@ namespace AutoArm.Testing.Scenarios
                 catch (Exception e)
                 {
                     result.Success = false;
-                    AutoArmLogger.Warn($"[TEST] WeaponDestructionSafetyTest: Exception on double destroy - {e.Message}");
+                    result.FailureReason = $"Exception on double destroy - {e.Message}";
                 }
             }
 
@@ -67,11 +67,11 @@ namespace AutoArm.Testing.Scenarios
 
                 TestHelpers.SafeDestroyWeapon(weapon);
 
-                var cachedWeapons = WeaponCache.GetAllWeapons(map);
+                var cachedWeapons = TestHelpers.CachedWeapons(map);
                 if (cachedWeapons.Contains(weapon))
                 {
                     result.Success = false;
-                    AutoArmLogger.Warn("[TEST] WeaponDestructionSafetyTest: Destroyed weapon still in cache");
+                    result.FailureReason = "Destroyed weapon still in cache";
                 }
             }
 
@@ -86,7 +86,7 @@ namespace AutoArm.Testing.Scenarios
                 if (!weapon.Destroyed)
                 {
                     result.Success = false;
-                    AutoArmLogger.Warn("[TEST] WeaponDestructionSafetyTest: Equipped weapon not destroyed with pawn");
+                    result.FailureReason = "Equipped weapon not destroyed with pawn";
                 }
             }
 

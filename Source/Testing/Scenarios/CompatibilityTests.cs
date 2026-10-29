@@ -129,6 +129,7 @@ namespace AutoArm.Testing.Scenarios
                             {
                                 if (weapon.Spawned) weapon.DeSpawn();
                                 testPawn.inventory?.innerContainer?.TryAdd(weapon);
+                                SimpleSidearmsCompat.InformOfAddedSidearm(testPawn, weapon);
                             }
                             ownedWeapons.Add(weapon);
                         }
@@ -153,23 +154,32 @@ namespace AutoArm.Testing.Scenarios
             if (testPawn == null || betterWeapon == null)
                 return TestResult.Failure("Test setup failed");
 
-            var job = SimpleSidearmsCompat.TryGetWeaponJob(testPawn, betterWeapon);
-
             string reason;
-            bool canAddMore = SimpleSidearmsCompat.CanPickupSidearm(betterWeapon, testPawn, out reason);
+            if (!SimpleSidearmsCompat.CanPickupSidearm(betterWeapon, testPawn, out reason))
+                return TestResult.Failure($"SS rejects pickup with limits lifted: {reason}");
+            var job = SimpleSidearmsCompat.TryGetWeaponJob(testPawn, betterWeapon);
+            if (job == null)
+                return TestResult.Failure("SS allows pickup but no job created");
+            if (job.targetA.Thing != betterWeapon)
+                return TestResult.Failure($"Job targets {job.targetA.Thing?.Label}, expected {betterWeapon.Label}");
+            WeaponCache.ClearTemporaryReservation(betterWeapon);
 
-            if (canAddMore)
+            var slots = SidearmLimits.Set(("LimitModeAmount", 3), ("LimitModeAmount_Slots", 2),
+                ("LimitModeAmountTotal", 3), ("LimitModeAmountTotal_Slots", 2));
+            try
             {
-                if (job == null)
-                    return TestResult.Failure("SS allows pickup but no job created");
-                if (job.targetA.Thing != betterWeapon)
-                    return TestResult.Failure($"Job targets {job.targetA.Thing?.Label}, expected {betterWeapon.Label}");
-                return TestResult.Pass();
+                if (SimpleSidearmsCompat.CanPickupSidearm(betterWeapon, testPawn, out reason))
+                    return TestResult.Failure("SS still allows a third sidearm with two slots");
+                job = SimpleSidearmsCompat.TryGetWeaponJob(testPawn, betterWeapon);
+                if (job != null && job.targetA.Thing == betterWeapon &&
+                    (job.def == JobDefOf.Equip || job.def == AutoArmDefOf.EquipSecondary))
+                    return TestResult.Failure($"Created {job.def.defName} for a new sidearm with all slots full ({reason})");
             }
-
-            if (job != null && job.targetA.Thing == betterWeapon && job.def == JobDefOf.Equip)
-                return TestResult.Failure($"Created plain Equip for new sidearm despite SS rejection: {reason}");
-
+            finally
+            {
+                SidearmLimits.Restore(slots);
+                WeaponCache.ClearTemporaryReservation(betterWeapon);
+            }
             return TestResult.Pass().WithData("SSRejection", reason ?? "(none)");
         }
 
@@ -236,50 +246,32 @@ namespace AutoArm.Testing.Scenarios
                 return TestResult.Failure("Test setup failed");
             }
 
-            var result = new TestResult { Success = true };
+            if (betterWeapon == null)
+                return TestResult.Failure("Test setup failed");
+            if (!ForcedWeapons.IsForced(testPawn, forcedWeapon))
+                return TestResult.Failure("Autopistol not marked as forced");
 
+            bool original = AutoArmMod.settings.allowForcedWeaponUpgrades;
             try
             {
-                result.Data["Forced Weapon Upgrades Allowed"] = AutoArmMod.settings.allowForcedWeaponUpgrades;
-                result.Data["Weapon Is Forced"] = ForcedWeapons.IsForced(testPawn, forcedWeapon);
-                result.Data["Current Weapon"] = forcedWeapon.Label;
-                result.Data["Better Weapon Available"] = betterWeapon?.Label ?? "None";
-
-                var job = betterWeapon != null ? SimpleSidearmsCompat.TryGetWeaponJob(testPawn, betterWeapon) : null;
-
-                if (AutoArmMod.settings.allowForcedWeaponUpgrades)
+                foreach (bool upgrades in new[] { false, true })
                 {
-                    result.Data["Upgrade Job Created"] = job != null;
-                    if (job != null)
-                    {
-                        result.Data["Upgrade Target"] = job.targetA.Thing?.Label ?? "Unknown";
-                    }
-                }
-                else
-                {
-                    bool replacesForcedPrimary = job != null && job.targetA.Thing == betterWeapon &&
-                        (job.def == AutoArmDefOf.AutoArmSwapPrimary || job.def == RimWorld.JobDefOf.Equip);
-                    if (replacesForcedPrimary)
-                    {
-                        result.Success = false;
-                        result.FailureReason = $"Created primary-replacing job ({job.def?.defName}) for forced weapon when not allowed";
-                        result.Data["Error"] = result.FailureReason;
-                    }
-                    else
-                    {
-                        result.Data["Correctly Blocked"] = true;
-                    }
+                    AutoArmMod.settings.allowForcedWeaponUpgrades = upgrades;
+                    SimpleSidearmsCompat.InvalidatePawnCache(testPawn);
+                    var job = SimpleSidearmsCompat.TryGetWeaponJob(testPawn, betterWeapon);
+                    WeaponCache.ClearTemporaryReservation(betterWeapon);
+                    if (job != null && job.targetA.Thing == betterWeapon &&
+                        (job.def == AutoArmDefOf.AutoArmSwapPrimary || job.def == RimWorld.JobDefOf.Equip))
+                        return TestResult.Failure($"Forced autopistol replaced by a rifle ({job.def.defName}) with forced upgrades {(upgrades ? "on" : "off")}");
+                    if (testPawn.equipment.Primary != forcedWeapon)
+                        return TestResult.Failure("Forced autopistol no longer the primary");
                 }
             }
-            catch (Exception e)
+            finally
             {
-                result.Success = false;
-                result.FailureReason = $"Forced weapon test threw: {e.Message}";
-                result.Data["Error"] = result.FailureReason;
-                AutoArmLogger.Warn("[TEST] SimpleSidearmsForcedWeaponTest failed", e);
+                AutoArmMod.settings.allowForcedWeaponUpgrades = original;
             }
-
-            return result;
+            return TestResult.Pass();
         }
 
         public void Cleanup()

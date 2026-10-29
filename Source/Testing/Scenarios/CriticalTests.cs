@@ -73,7 +73,7 @@ namespace AutoArm.Testing.Scenarios
 
                 WeaponCache.ClearScoreCache();
 
-                var weaponsInCache = WeaponCache.GetAllWeapons(map)?.ToList() ?? new List<ThingWithComps>();
+                var weaponsInCache = TestHelpers.CachedWeapons(map)?.ToList() ?? new List<ThingWithComps>();
                 var weaponsOnMap = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count();
 
                 AutoArmLogger.Debug(() => $"[TEST] RaceConditionTest: Setup complete - {weaponsOnMap} weapons on map, {weaponsInCache.Count} in cache");
@@ -83,7 +83,7 @@ namespace AutoArm.Testing.Scenarios
                     AutoArmLogger.Warn($"[TEST] RaceConditionTest: Target weapon not in cache! Retrying cache rebuild...");
                     WeaponCache.AddWeaponToCache(targetWeapon);
 
-                    weaponsInCache = WeaponCache.GetAllWeapons(map)?.ToList() ?? new List<ThingWithComps>();
+                    weaponsInCache = TestHelpers.CachedWeapons(map)?.ToList() ?? new List<ThingWithComps>();
                     AutoArmLogger.Debug(() => $"[TEST] RaceConditionTest: After retry - {weaponsInCache.Count} weapons in cache, contains target: {weaponsInCache.Contains(targetWeapon)}");
                 }
                 else
@@ -104,7 +104,7 @@ namespace AutoArm.Testing.Scenarios
 
             AutoArmLogger.Debug(() => $"[TEST] RaceCondition: Starting test with {testPawns.Count} pawns");
 
-            var weaponsInCache = WeaponCache.GetAllWeapons(targetWeapon.Map)?.Count() ?? 0;
+            var weaponsInCache = TestHelpers.CachedWeapons(targetWeapon.Map)?.Count() ?? 0;
             var weaponsOnMap = targetWeapon.Map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count();
             AutoArmLogger.Debug(() => $"[TEST] RaceCondition: Pre-test state - {weaponsOnMap} weapons on map, {weaponsInCache} in cache");
 
@@ -131,14 +131,6 @@ namespace AutoArm.Testing.Scenarios
                     AutoArmLogger.Debug(() => $"[TEST] RaceCondition: Testing pawn {pawn.Name}, unarmed={pawn.equipment?.Primary == null}, weapon spawned={targetWeapon.Spawned}, weapon pos={targetWeapon.Position}");
 
                     var job = jobGiver.TestTryGiveJob(pawn);
-                    if (job == null && pawn.jobs?.curJob != null)
-                    {
-                        var cur = pawn.jobs.curJob;
-                        if (cur.def == JobDefOf.Equip || (cur.def?.defName == "EquipSecondary"))
-                        {
-                            job = cur;
-                        }
-                    }
                     if (job != null)
                     {
                         jobs.Add(job);
@@ -164,9 +156,9 @@ namespace AutoArm.Testing.Scenarios
             if (jobs.Count < 1)
             {
                 if (targetWeapon.Destroyed || !targetWeapon.Spawned)
-                    return TestResult.Skip("Target weapon was taken by a live colonist during the test");
+                    return TestResult.Failure("Target weapon despawned before any job was given");
                 if (targetWeapon.Map?.reservationManager?.IsReservedByAnyoneOf(targetWeapon, Faction.OfPlayer) == true)
-                    return TestResult.Skip("Target weapon is reserved by a live colonist");
+                    return TestResult.Failure("Target weapon reserved although no tick ran");
 
                 result.Success = false;
                 result.FailureReason = $"Race not exercised - expected at least 1 job but got {jobs.Count}";
@@ -183,6 +175,15 @@ namespace AutoArm.Testing.Scenarios
                     result.Data[$"{pawn.Name}_IsDrafted"] = pawn.Drafted;
                 }
 
+                return result;
+            }
+
+            int claims = jobs.Count(j => j.targetA.Thing == targetWeapon);
+            result.Data["Claims"] = claims;
+            if (claims != 1)
+            {
+                result.Success = false;
+                result.FailureReason = $"{claims} pawns were given a job for the same legendary rifle, expected exactly 1";
                 return result;
             }
 
@@ -286,7 +287,7 @@ namespace AutoArm.Testing.Scenarios
             {
                 var secondWeapon = testWeapons[1];
 
-                var weapons = WeaponCache.GetAllWeapons(testPawn.Map).ToList();
+                var weapons = TestHelpers.CachedWeapons(testPawn.Map).ToList();
 
                 TestHelpers.SafeDestroyWeapon(secondWeapon);
 
@@ -403,7 +404,7 @@ namespace AutoArm.Testing.Scenarios
                     }
                     WeaponCache.AddWeaponToCache(weaponB);
 
-                    var weaponsInCache = WeaponCache.GetAllWeapons(testPawn.Map).ToList();
+                    var weaponsInCache = TestHelpers.CachedWeapons(testPawn.Map).ToList();
                     if (!weaponsInCache.Contains(weaponA) || !weaponsInCache.Contains(weaponB))
                     {
                         AutoArmLogger.Warn($"[TEST] InfiniteLoopTest: Weapons not in cache! Cache has {weaponsInCache.Count} weapons");
@@ -474,10 +475,18 @@ namespace AutoArm.Testing.Scenarios
             }
             result.Data["HasFlipFlop"] = hasFlipFlop;
 
+            if (hasFlipFlop)
+            {
+                result.Success = false;
+                result.FailureReason = $"Flip flop between weapons: {string.Join(" > ", jobHistory.Select(w => w.def.defName))}";
+                return result;
+            }
+
             if (jobHistory.Count >= maxIterations)
             {
                 result.Success = false;
-                result.Data["Error"] = "Potential infinite loop - max iterations reached";
+                result.FailureReason = "Potential infinite loop - max iterations reached";
+                return result;
             }
 
             if (testPawn.equipment?.Primary != null)

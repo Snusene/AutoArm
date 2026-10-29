@@ -1,6 +1,7 @@
 
 using AutoArm.Caching;
 using AutoArm.Compatibility;
+using AutoArm.Jobs;
 using AutoArm.UI;
 using HarmonyLib;
 using RimWorld;
@@ -9,37 +10,6 @@ using Verse;
 
 namespace AutoArm.Patches
 {
-    internal static class OutfitCacheInvalidator
-    {
-        internal static void Invalidate(string source)
-        {
-            try
-            {
-                OutfitFilterCache.RebuildCache();
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.ErrorPatch(e, source);
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(OutfitDatabase), "MakeNewOutfit")]
-    [HarmonyPatchCategory(PatchCategories.UI)]
-    internal static class OutfitDatabase_MakeNewOutfit_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix() => OutfitCacheInvalidator.Invalidate("OutfitDatabase_MakeNewOutfit");
-    }
-
-    [HarmonyPatch(typeof(OutfitDatabase), "TryDelete")]
-    [HarmonyPatchCategory(PatchCategories.UI)]
-    internal static class OutfitDatabase_TryDelete_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix() => OutfitCacheInvalidator.Invalidate("OutfitDatabase_TryDelete");
-    }
-
     [HarmonyPatch(typeof(Window), nameof(Window.PostOpen))]
     [HarmonyPatchCategory(PatchCategories.UI)]
     internal static class SettingsDialogResize_Patch
@@ -91,6 +61,7 @@ namespace AutoArm.Patches
                 SimpleSidearmsCompat.InvalidateAllCaches();
                 WeaponCache.ClearScoreCache();
                 PawnValidation.ClearCache();
+                JobGiverMapComponent.ClearAllState();
                 AutoArm.UI.StatusOverviewDataGatherer.ClearTopWeaponsCache();
 
                 AutoArmLogger.Debug(() => "[Settings] Invalidated all caches after AutoArm settings closed");

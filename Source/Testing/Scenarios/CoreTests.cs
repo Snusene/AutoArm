@@ -47,7 +47,7 @@ namespace AutoArm.Testing.Scenarios
             if (!foundWeaponStatusNode)
             {
                 result.Success = false;
-                AutoArmLogger.Warn("[TEST] ThinkTreeInjectionTest: WeaponStatus node not found in think tree");
+                result.FailureReason = "WeaponStatus node not found in think tree";
             }
 
 

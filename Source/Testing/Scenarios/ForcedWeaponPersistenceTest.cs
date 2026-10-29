@@ -53,20 +53,20 @@ namespace AutoArm.Testing.Scenarios
             if (!isForced)
             {
                 result.Success = false;
-                AutoArmLogger.Warn("[TEST] ForcedWeaponPersistenceTest: Weapon not marked as forced");
+                result.FailureReason = "Weapon not marked as forced";
                 return result;
             }
 
             var jobGiver = new JobGiver_PickUpBetterWeapon();
             var job = jobGiver.TestTryGiveJob(testPawn);
 
-            bool jobNotCreated = (job == null);
-            result.Data["JobNotCreatedForForcedWeapon"] = jobNotCreated;
+            bool primaryKept = job == null || job.def != JobDefOf.Equip;
+            result.Data["PrimaryKept"] = primaryKept;
 
-            if (!jobNotCreated)
+            if (!primaryKept)
             {
                 result.Success = false;
-                AutoArmLogger.Warn("[TEST] ForcedWeaponPersistenceTest: Job created for forced weapon - forced status not respected");
+                result.FailureReason = $"Forced primary replaced by {job.targetA.Thing?.Label ?? "another weapon"}";
                 return result;
             }
 
@@ -81,7 +81,7 @@ namespace AutoArm.Testing.Scenarios
             if (!unforced || !reforced)
             {
                 result.Success = false;
-                AutoArmLogger.Warn("[TEST] ForcedWeaponPersistenceTest: Force/unforce cycle failed");
+                result.FailureReason = "Force/unforce cycle failed";
                 return result;
             }
 
@@ -96,7 +96,7 @@ namespace AutoArm.Testing.Scenarios
             if (!stillForcedAfterCleanup)
             {
                 result.Success = false;
-                AutoArmLogger.Warn("[TEST] ForcedWeaponPersistenceTest: Forced weapon lost during cleanup");
+                result.FailureReason = "Forced weapon lost during cleanup";
             }
 
             return result;

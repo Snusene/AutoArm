@@ -15,12 +15,14 @@ namespace AutoArm
             public readonly int defHash;
             public readonly int quality;
             public readonly int stuffHash;
+            public readonly int itemId;
 
-            public WeaponCacheKey(int defHash, int quality, int stuffHash)
+            public WeaponCacheKey(int defHash, int quality, int stuffHash, int itemId = 0)
             {
                 this.defHash = defHash;
                 this.quality = quality;
                 this.stuffHash = stuffHash;
+                this.itemId = itemId;
             }
 
             public override int GetHashCode()
@@ -30,6 +32,7 @@ namespace AutoArm
                     int hash = defHash;
                     hash = (hash * 397) ^ quality;
                     hash = (hash * 397) ^ stuffHash;
+                    hash = (hash * 397) ^ itemId;
                     return hash;
                 }
             }
@@ -41,7 +44,7 @@ namespace AutoArm
 
             public bool Equals(WeaponCacheKey other)
             {
-                return defHash == other.defHash && quality == other.quality && stuffHash == other.stuffHash;
+                return defHash == other.defHash && quality == other.quality && stuffHash == other.stuffHash && itemId == other.itemId;
             }
         }
 
@@ -70,19 +73,14 @@ namespace AutoArm
             public float RangePreference;
             public float ComputedBaseScore;
             public float AbilityMultiplier;
+            public float[] RangeWeights;
         }
+
+        private static readonly float[] RangeSamples = { 3f, 8f, 12f, 18f, 25f, 32f, 40f };
 
         private static readonly Dictionary<ThingDef, bool> situationalWeapons = new Dictionary<ThingDef, bool>(512);
 
         private static bool situationalCacheInitialized = false;
-
-        private static readonly Dictionary<int, (float shooting, float melee, int lastUpdateTick)> skillCache =
-            new Dictionary<int, (float, float, int)>();
-
-        private static readonly Dictionary<int, (int shootingIndex, int meleeIndex, int lastUpdateTick)> skillIndexCache =
-            new Dictionary<int, (int, int, int)>();
-
-        private const int SkillCacheLifetimeTicks = Constants.StandardCacheDuration;
 
         public static float GetTotalScore(Pawn pawn, ThingWithComps weapon)
         {
@@ -95,10 +93,11 @@ namespace AutoArm
                 return 0f;
 
             QualityCategory quality = QualityCategory.Normal;
-            Caching.Components.TryGetWeaponQuality(weapon, out quality);
+            weapon.TryGetQuality(out quality);
 
             int stuffHash = weapon.Stuff != null ? weapon.Stuff.shortHash : -1;
-            var cacheKey = new WeaponCacheKey(weapon.def.shortHash, (int)quality, stuffHash);
+            int itemId = Caching.Components.IsUnique(weapon) ? weapon.thingIDNumber : 0;
+            var cacheKey = new WeaponCacheKey(weapon.def.shortHash, (int)quality, stuffHash, itemId);
 
             WeaponBaseProperties baseProps = null;
             CachedWeaponProperties cached;
@@ -136,6 +135,9 @@ namespace AutoArm
             if (baseProps.IsRanged && baseProps.RangePreference != 1f)
                 baseScore *= baseProps.RangePreference;
 
+            if (pawn != null && baseProps.RangeWeights != null && !CECompat.IsLoaded)
+                baseScore *= RangeFit(pawn, baseProps.RangeWeights);
+
             if (weapon.MaxHitPoints > 0 && weapon.HitPoints * 2 < weapon.MaxHitPoints)
                 baseScore *= Constants.DamagedWeaponPenalty;
 
@@ -147,8 +149,6 @@ namespace AutoArm
             if (weapon?.def == null)
                 return "";
 
-            QualityCategory quality = QualityCategory.Normal;
-            Caching.Components.TryGetWeaponQuality(weapon, out quality);
             var statReq = StatRequest.For(weapon);
 
             bool isMelee = weapon.def.IsMeleeWeapon;
@@ -186,42 +186,40 @@ namespace AutoArm
                     return s;
                 }
 
-                float damage = verb.defaultProjectile.projectile.GetDamageAmount(weapon);
-                int burstCount = Math.Max(1, verb.burstShotCount);
-                float warmupMult = StatDefOf.RangedWeapon_WarmupMultiplier.Worker.GetValue(statReq);
-                float warmup = verb.warmupTime * warmupMult;
-                float cooldown = StatDefOf.RangedWeapon_Cooldown.Worker.GetValue(statReq);
-                float burstGap = verb.ticksBetweenBurstShots / 60f;
-                float cycle = warmup + (burstCount - 1) * burstGap + cooldown;
-                if (cycle < 0.1f) cycle = 0.1f;
-                dps = damage * burstCount / cycle;
-
-                float accShort = StatDefOf.AccuracyShort.Worker.GetValue(statReq);
-                float accMed = StatDefOf.AccuracyMedium.Worker.GetValue(statReq);
-                float accLong = StatDefOf.AccuracyLong.Worker.GetValue(statReq);
-                accuracy = 0.2f * accShort + 0.3f * accMed + 0.5f * accLong;
-                if (accuracy <= 0f) accuracy = 0.5f;
-                float baseAp = verb.defaultProjectile.projectile.GetArmorPenetration(null);
-                float apMult = StatDefOf.RangedWeapon_ArmorPenetrationMultiplier.Worker.GetValue(statReq);
-                float ap = baseAp * apMult;
-                apBonus = 1.0f + ap;
+                var p = ComputeRangedParts(weapon, statReq, verb);
+                dps = p.dps * p.sustain;
+                accuracy = p.accuracy;
+                apBonus = p.apBonus;
                 hasAccuracy = true;
                 canCompute = true;
 
-                s += "Type: Ranged\n\n";
+                s += p.ce ? "Type: Ranged (Combat Extended)\n\n" : "Type: Ranged\n\n";
                 s += "Cycle:\n";
-                s += $"  Damage/shot: {damage:F1}\n";
-                s += $"  Burst count: {burstCount}\n";
-                s += $"  Warmup: {warmup:F2}s\n";
-                s += $"  Burst gap: {burstGap:F2}s\n";
-                s += $"  Cooldown: {cooldown:F2}s\n";
-                s += $"  Total cycle: {cycle:F2}s\n";
-                s += $"  DPS (dmg×burst÷cycle): {dps:F2}\n";
+                if (p.pellets > 1)
+                    s += $"  Damage/shot: {p.damage:F1} ({p.pellets} pellets, extras at {Constants.CEExtraPelletValue:P0})\n";
+                else
+                    s += $"  Damage/shot: {p.damage:F1}\n";
+                s += $"  Burst count: {p.burst}\n";
+                s += $"  Warmup: {p.warmup:F2}s\n";
+                s += $"  Burst gap: {p.burstGap:F2}s\n";
+                s += $"  Cooldown: {p.cooldown:F2}s\n";
+                s += $"  Total cycle: {p.cycle:F2}s\n";
+                s += $"  DPS (dmg×burst÷cycle): {p.dps:F2}\n";
+                if (p.mag > 0)
+                    s += $"  Magazine {p.mag}, reload {p.reload:F2}s: ×{p.sustain:F2} sustained\n";
                 s += "\nHit & pen:\n";
-                s += $"  Acc short/med/long: {accShort:P0} / {accMed:P0} / {accLong:P0}\n";
-                s += $"  Blended accuracy: {accuracy:P0} (0.2·S + 0.3·M + 0.5·L)\n";
-                s += $"  Armor pen: {ap:P0}\n";
-                s += $"  AP bonus (1+AP): ×{apBonus:F2}\n";
+                if (p.ce)
+                {
+                    s += $"  Accuracy (√sights efficiency): ×{p.accuracy:F2}\n";
+                    s += $"  Sharp pen: {p.ap:F2} mm\n";
+                    s += $"  AP bonus (1+pen÷{Constants.CESharpPenScale:F0}): ×{p.apBonus:F2}\n";
+                }
+                else
+                {
+                    s += $"  Blended accuracy: {p.accuracy:P0} (0.2·S + 0.3·M + 0.5·L)\n";
+                    s += $"  Armor pen: {p.ap:P0}\n";
+                    s += $"  AP bonus (1+AP): ×{p.apBonus:F2}\n";
+                }
             }
             else
             {
@@ -332,35 +330,97 @@ namespace AutoArm
             return blended;
         }
 
+        private struct RangedParts
+        {
+            public float damage;
+            public int pellets;
+            public int burst;
+            public float warmup;
+            public float burstGap;
+            public float cooldown;
+            public float cycle;
+            public float dps;
+            public int mag;
+            public float reload;
+            public float sustain;
+            public float accuracy;
+            public float ap;
+            public float apBonus;
+            public bool ce;
+        }
+
+        private static RangedParts ComputeRangedParts(ThingWithComps weapon, StatRequest req, VerbProperties verb)
+        {
+            var proj = verb.defaultProjectile.projectile;
+            var p = new RangedParts { ce = CECompat.IsLoaded, pellets = 1, sustain = 1f };
+
+            p.damage = proj.GetDamageAmount(weapon);
+            if (p.ce)
+            {
+                p.pellets = CECompat.Pellets(proj);
+                p.damage *= 1f + (p.pellets - 1) * Constants.CEExtraPelletValue;
+            }
+
+            float burst = verb.burstShotCount;
+            float gapTicks = verb.ticksBetweenBurstShots;
+            if (weapon.TryGetComp<CompUniqueWeapon>(out var unique))
+            {
+                var traits = unique.TraitsListForReading;
+                for (int i = 0; i < traits.Count; i++)
+                {
+                    burst *= traits[i].burstShotCountMultiplier;
+                    gapTicks /= traits[i].burstShotSpeedMultiplier;
+                }
+            }
+
+            p.burst = Math.Max(1, p.ce ? CECompat.Burst(weapon, verb) : UnityEngine.Mathf.CeilToInt(burst));
+            p.warmup = verb.warmupTime * StatDefOf.RangedWeapon_WarmupMultiplier.Worker.GetValue(req);
+            p.cooldown = StatDefOf.RangedWeapon_Cooldown.Worker.GetValue(req);
+            p.burstGap = gapTicks / 60f;
+            p.cycle = p.warmup + (p.burst - 1) * p.burstGap + p.cooldown;
+            if (p.cycle < 0.1f)
+                p.cycle = 0.1f;
+            p.dps = p.damage * p.burst / p.cycle;
+
+            if (p.ce)
+            {
+                p.mag = CECompat.Magazine(weapon, out p.reload);
+                if (p.mag > 0 && p.reload > 0f)
+                {
+                    float firing = Math.Max(1f, (float)p.mag / p.burst) * p.cycle;
+                    p.sustain = firing / (firing + p.reload);
+                }
+                p.accuracy = (float)Math.Sqrt(CECompat.Sights(weapon));
+            }
+            else
+            {
+                p.accuracy = ComputeBlendedAccuracyAbstract(req);
+            }
+
+            float apMult = StatDefOf.RangedWeapon_ArmorPenetrationMultiplier.Worker.GetValue(req);
+            if (p.ce && CECompat.TrySharpPen(proj, out float sharp))
+            {
+                p.ap = sharp * apMult;
+                p.apBonus = 1f + p.ap / Constants.CESharpPenScale;
+            }
+            else
+            {
+                p.ap = proj.GetArmorPenetration(null) * apMult;
+                p.apBonus = 1f + p.ap;
+            }
+            return p;
+        }
+
         private static float ComputeRangedBaseScore(ThingWithComps weapon, StatRequest req, VerbProperties verb)
         {
             if (verb == null || verb.defaultProjectile?.projectile == null)
                 return 0f;
 
-            float damage = verb.defaultProjectile.projectile.GetDamageAmount(weapon);
-            int burstCount = Math.Max(1, verb.burstShotCount);
-
-            float warmupMult = StatDefOf.RangedWeapon_WarmupMultiplier.Worker.GetValue(req);
-            float warmup = verb.warmupTime * warmupMult;
-            float cooldown = StatDefOf.RangedWeapon_Cooldown.Worker.GetValue(req);
-            float burstGap = verb.ticksBetweenBurstShots / 60f;
-            float cycle = warmup + (burstCount - 1) * burstGap + cooldown;
-            if (cycle < 0.1f)
-                cycle = 0.1f;
-
-            float dps = damage * burstCount / cycle;
-
-            float accuracy = ComputeBlendedAccuracyAbstract(req);
-
-            float baseAp = verb.defaultProjectile.projectile.GetArmorPenetration(null);
-            float apMult = StatDefOf.RangedWeapon_ArmorPenetrationMultiplier.Worker.GetValue(req);
-            float ap = baseAp * apMult;
-            float apBonus = 1.0f + ap;
-
-            float result = dps * accuracy * apBonus;
-            if (float.IsNaN(result) || float.IsInfinity(result))
+            var p = ComputeRangedParts(weapon, req, verb);
+            float score = p.dps * p.sustain * p.accuracy * p.apBonus;
+            if (float.IsNaN(score) || float.IsInfinity(score))
                 return 0f;
-            return result;
+            return score;
         }
 
         private static void EvictOldestEntries()
@@ -390,8 +450,6 @@ namespace AutoArm
 
         private static WeaponBaseProperties CalculateBaseWeaponProperties(ThingWithComps weapon)
         {
-            QualityCategory quality = QualityCategory.Normal;
-            Caching.Components.TryGetWeaponQuality(weapon, out quality);
             var statReq = StatRequest.For(weapon);
 
             bool isMelee = weapon.def.IsMeleeWeapon;
@@ -399,6 +457,7 @@ namespace AutoArm
 
             float rangePref = 1f;
             float computedBaseScore = 0f;
+            float[] rangeWeights = null;
 
             if (isRanged)
             {
@@ -408,6 +467,7 @@ namespace AutoArm
                     rangePref = verb.range / 28f;
                     if (rangePref < 0.7f) rangePref = 0.7f;
                     else if (rangePref > 1.2f) rangePref = 1.2f;
+                    rangeWeights = ComputeRangeWeights(verb, weapon);
                 }
                 computedBaseScore = ComputeRangedBaseScore(weapon, statReq, verb);
             }
@@ -424,7 +484,52 @@ namespace AutoArm
                 RangePreference = rangePref,
                 ComputedBaseScore = computedBaseScore,
                 AbilityMultiplier = ComputeAbilityMultiplier(weapon),
+                RangeWeights = rangeWeights,
             };
+        }
+
+        private static float[] ComputeRangeWeights(VerbProperties verb, ThingWithComps weapon)
+        {
+            var weights = new float[RangeSamples.Length];
+            bool any = false;
+            for (int i = 0; i < RangeSamples.Length; i++)
+            {
+                float d = RangeSamples[i];
+                if (d > verb.range)
+                    break;
+                weights[i] = d * verb.GetHitChanceFactor(weapon, d);
+                any = true;
+            }
+            return any ? weights : null;
+        }
+
+        internal static float RangeFit(Pawn pawn, float[] weights)
+        {
+            float touch = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Touch, true, 2500);
+            float shrt = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Short, true, 2500);
+            float medium = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Medium, true, 2500);
+            float lng = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Long, true, 2500);
+            if (touch == 1f && shrt == 1f && medium == 1f && lng == 1f)
+                return 1f;
+
+            float sum = 0f;
+            float fit = 0f;
+            for (int i = 0; i < weights.Length; i++)
+            {
+                float w = weights[i];
+                if (w <= 0f)
+                    continue;
+                float d = RangeSamples[i];
+                float f;
+                if (d <= 3f) f = touch;
+                else if (d <= 12f) f = UnityEngine.Mathf.Lerp(touch, shrt, (d - 3f) / 9f);
+                else if (d <= 25f) f = UnityEngine.Mathf.Lerp(shrt, medium, (d - 12f) / 13f);
+                else if (d <= 40f) f = UnityEngine.Mathf.Lerp(medium, lng, (d - 25f) / 15f);
+                else f = lng;
+                sum += w;
+                fit += w * f;
+            }
+            return sum > 0f ? fit / sum : 1f;
         }
 
         private static CompProperties_EquippableAbility ResolveAbilityProps(ThingWithComps weapon)
@@ -686,7 +791,7 @@ namespace AutoArm
 
             bool isRanged, isMelee;
             QualityCategory quality = QualityCategory.Normal;
-            Caching.Components.TryGetWeaponQuality(weapon, out quality);
+            weapon.TryGetQuality(out quality);
 
             int stuffHash = weapon.Stuff != null ? weapon.Stuff.shortHash : -1;
             var cacheKey = new WeaponCacheKey(weapon.def.shortHash, (int)quality, stuffHash);
@@ -702,86 +807,9 @@ namespace AutoArm
                 isMelee = weapon.def.IsMeleeWeapon;
             }
 
-            float shootingSkill = 0f;
-            float meleeSkill = 0f;
-            int currentTick = Find.TickManager.TicksGame;
-
-            int pawnId = pawn.thingIDNumber;
-
-            if (skillCache.TryGetValue(pawnId, out var cached) &&
-                (currentTick - cached.lastUpdateTick) < SkillCacheLifetimeTicks)
-            {
-                PerfMetrics.ReportSkillCacheHit();
-
-                shootingSkill = cached.shooting;
-                meleeSkill = cached.melee;
-            }
-            else
-            {
-                PerfMetrics.ReportSkillCacheMiss();
-
-                if (pawn.skills?.skills != null)
-                {
-                    if (skillIndexCache.TryGetValue(pawnId, out var indices) &&
-                        (currentTick - indices.lastUpdateTick) < SkillCacheLifetimeTicks * 4)
-                    {
-                        var skills = pawn.skills.skills;
-                        if (indices.shootingIndex >= 0 && indices.shootingIndex < skills.Count &&
-                            skills[indices.shootingIndex].def == SkillDefOf.Shooting)
-                        {
-                            shootingSkill = skills[indices.shootingIndex].Level;
-                        }
-                        else
-                        {
-                            shootingSkill = GetSkillIndex(pawn, SkillDefOf.Shooting, true);
-                        }
-
-                        if (indices.meleeIndex >= 0 && indices.meleeIndex < skills.Count &&
-                            skills[indices.meleeIndex].def == SkillDefOf.Melee)
-                        {
-                            meleeSkill = skills[indices.meleeIndex].Level;
-                        }
-                        else
-                        {
-                            meleeSkill = GetSkillIndex(pawn, SkillDefOf.Melee, false);
-                        }
-                    }
-                    else
-                    {
-                        int shootingIndex = -1;
-                        int meleeIndex = -1;
-
-                        for (int i = 0; i < pawn.skills.skills.Count; i++)
-                        {
-                            var skill = pawn.skills.skills[i];
-                            if (skill.def == SkillDefOf.Shooting)
-                            {
-                                shootingIndex = i;
-                                shootingSkill = skill.Level;
-                                if (meleeIndex >= 0) break;
-                            }
-                            else if (skill.def == SkillDefOf.Melee)
-                            {
-                                meleeIndex = i;
-                                meleeSkill = skill.Level;
-                                if (shootingIndex >= 0) break;
-                            }
-                        }
-
-                        if (shootingIndex < 0) shootingSkill = 0f;
-                        if (meleeIndex < 0) meleeSkill = 0f;
-
-                        skillIndexCache[pawnId] = (shootingIndex, meleeIndex, currentTick);
-                    }
-                }
-                else
-                {
-                    shootingSkill = 0f;
-                    meleeSkill = 0f;
-                }
-
-                skillCache[pawnId] = (shootingSkill, meleeSkill, currentTick);
-            }
+            var skills = pawn.skills;
+            float shootingSkill = skills != null ? skills.GetSkill(SkillDefOf.Shooting).Level : 0f;
+            float meleeSkill = skills != null ? skills.GetSkill(SkillDefOf.Melee).Level : 0f;
 
             float score = 0f;
 
@@ -819,39 +847,6 @@ namespace AutoArm
             }
 
             return score;
-        }
-
-        private static float GetSkillIndex(Pawn pawn, SkillDef skillDef, bool isShooting)
-        {
-            if (pawn.skills?.skills == null) return 0f;
-
-            for (int i = 0; i < pawn.skills.skills.Count; i++)
-            {
-                if (pawn.skills.skills[i].def == skillDef)
-                {
-                    int pawnId = pawn.thingIDNumber;
-                    int currentTick = Find.TickManager.TicksGame;
-
-                    if (skillIndexCache.TryGetValue(pawnId, out var indices))
-                    {
-                        if (isShooting)
-                            skillIndexCache[pawnId] = (i, indices.meleeIndex, currentTick);
-                        else
-                            skillIndexCache[pawnId] = (indices.shootingIndex, i, currentTick);
-                    }
-                    else
-                    {
-                        if (isShooting)
-                            skillIndexCache[pawnId] = (i, -1, currentTick);
-                        else
-                            skillIndexCache[pawnId] = (-1, i, currentTick);
-                    }
-
-                    return pawn.skills.skills[i].Level;
-                }
-            }
-
-            return 0f;
         }
 
         private static VerbProperties SelectPrimaryVerb(ThingDef weaponDef, ThingWithComps weapon)
@@ -935,114 +930,6 @@ namespace AutoArm
             }
 
             return score;
-        }
-
-        public static void CleanupSkillCache()
-        {
-
-            int currentTick = Find.TickManager.TicksGame;
-
-            if (skillCache.Count > 150)
-            {
-                var expiredIds = ListPool<int>.Get();
-                try
-                {
-                    foreach (var kvp in skillCache)
-                    {
-                        if ((currentTick - kvp.Value.lastUpdateTick) > SkillCacheLifetimeTicks * 2)
-                        {
-                            expiredIds.Add(kvp.Key);
-                        }
-                    }
-                    foreach (var id in expiredIds)
-                        skillCache.Remove(id);
-                }
-                finally
-                {
-                    ListPool<int>.Return(expiredIds);
-                }
-            }
-
-            if (skillIndexCache.Count > 150)
-            {
-                var expiredIds = ListPool<int>.Get();
-                try
-                {
-                    foreach (var kvp in skillIndexCache)
-                    {
-                        if ((currentTick - kvp.Value.lastUpdateTick) > SkillCacheLifetimeTicks * 8)
-                        {
-                            expiredIds.Add(kvp.Key);
-                        }
-                    }
-                    foreach (var id in expiredIds)
-                        skillIndexCache.Remove(id);
-                }
-                finally
-                {
-                    ListPool<int>.Return(expiredIds);
-                }
-            }
-
-            if (skillCache.Count > 200)
-            {
-                var pairs = ListPool<KeyValuePair<int, (float shootingSkill, float meleeSkill, int lastUpdateTick)>>.Get(skillCache.Count);
-                try
-                {
-                    foreach (var kvp in skillCache)
-                    {
-                        pairs.Add(kvp);
-                    }
-
-                    pairs.SortBy(kvp => -kvp.Value.lastUpdateTick);
-
-                    int keepCount = Math.Min(100, pairs.Count);
-
-                    skillCache.Clear();
-                    for (int i = 0; i < keepCount; i++)
-                    {
-                        skillCache[pairs[i].Key] = pairs[i].Value;
-                    }
-                }
-                finally
-                {
-                    ListPool<KeyValuePair<int, (float shootingSkill, float meleeSkill, int lastUpdateTick)>>.Return(pairs);
-                }
-            }
-
-            if (skillIndexCache.Count > 200)
-            {
-                var pairs = ListPool<KeyValuePair<int, (int shootingIndex, int meleeIndex, int lastUpdateTick)>>.Get(skillIndexCache.Count);
-                try
-                {
-                    foreach (var kvp in skillIndexCache)
-                    {
-                        pairs.Add(kvp);
-                    }
-
-                    pairs.SortBy(kvp => -kvp.Value.lastUpdateTick);
-
-                    int keepCount = Math.Min(100, pairs.Count);
-
-                    skillIndexCache.Clear();
-                    for (int i = 0; i < keepCount; i++)
-                    {
-                        skillIndexCache[pairs[i].Key] = pairs[i].Value;
-                    }
-                }
-                finally
-                {
-                    ListPool<KeyValuePair<int, (int shootingIndex, int meleeIndex, int lastUpdateTick)>>.Return(pairs);
-                }
-            }
-        }
-
-        public static void ResetSkillCache()
-        {
-            skillCache.Clear();
-            skillIndexCache.Clear();
-            // TickScheduler clears events
-            AutoArmLogger.Debug(() => "Scoring skill cache reset");
         }
 
         internal struct ScoreBreakdown

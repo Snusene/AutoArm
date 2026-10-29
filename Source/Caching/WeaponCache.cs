@@ -4,57 +4,12 @@ using AutoArm.Helpers;
 using RimWorld;
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Verse;
 
 namespace AutoArm.Caching
 {
     internal static class WeaponCache
     {
-        private static readonly Func<IEnumerable<Pawn>> GetAllColonists;
-
-        static WeaponCache()
-        {
-            var pawnsFinderType = typeof(PawnsFinder);
-            PropertyInfo colonistsProperty = null;
-
-            colonistsProperty = pawnsFinderType.GetProperty(
-                "AllMapsCaravansAndTravellingTransporters_Alive_Colonists",
-                BindingFlags.Public | BindingFlags.Static);
-
-            if (colonistsProperty == null)
-            {
-                colonistsProperty = pawnsFinderType.GetProperty(
-                    "AllMapsCaravansAndTravellingTransporters_Alive_FreeColonists",
-                    BindingFlags.Public | BindingFlags.Static);
-            }
-
-            if (colonistsProperty != null)
-            {
-                GetAllColonists = () => (IEnumerable<Pawn>)colonistsProperty.GetValue(null);
-            }
-            else
-            {
-                GetAllColonists = () =>
-                {
-                    var colonists = new List<Pawn>();
-                    if (Find.Maps != null)
-                    {
-                        foreach (Map map in Find.Maps)
-                        {
-                            if (map?.mapPawns != null)
-                            {
-                                colonists.AddRange(map.mapPawns.FreeColonistsSpawned);
-                            }
-                        }
-                    }
-                    return colonists;
-                };
-
-                AutoArmLogger.Warn("[AutoArm] PawnsFinder colonist property not found, using fallback");
-            }
-        }
-
         public sealed class AutoArmWeaponMapComponent : MapComponent
         {
             public HashSet<ThingWithComps> weapons = new HashSet<ThingWithComps>();
@@ -119,25 +74,7 @@ namespace AutoArm.Caching
                     InitializeCache();
                 }
 
-                if (map?.mapPawns?.FreeColonistsSpawned != null)
-                {
-                    int colonistCount = 0;
-                    foreach (var pawn in map.mapPawns.FreeColonistsSpawned)
-                    {
-                        if (pawn != null && !pawn.Dead && !pawn.Downed)
-                        {
-                            PreWarmColonistScore(pawn, true);
-                            PreWarmColonistScore(pawn, false);
-                            colonistCount++;
-                        }
-                    }
-                    if (colonistCount > 0)
-                    {
-                        AutoArmLogger.Debug(() => $"Pre-warmed skill caches for {colonistCount} colonists");
-                    }
-                }
-
-                AutoArmLogger.Debug(() => $"Initialized and pre-warmed weapon cache for map {map.uniqueID} on map creation/load");
+                AutoArmLogger.Debug(() => $"Initialized weapon cache for map {map.uniqueID} on map creation/load");
             }
 
             public override void MapRemoved()
@@ -559,14 +496,15 @@ namespace AutoArm.Caching
         }
 
 
-        public static List<ThingWithComps> GetAllWeapons(Map map)
+        public static void Collect(Map map, List<ThingWithComps> into, ApparelPolicy outfit = null, bool storageOnly = false)
         {
-            var result = new List<ThingWithComps>();
             var component = GetMapComponent(map);
             if (component == null)
-                return result;
+                return;
 
             var playerFaction = Find.FactionManager?.OfPlayer;
+            if (outfit?.filter == null)
+                outfit = null;
 
             foreach (var weapon in component.weapons)
             {
@@ -574,31 +512,12 @@ namespace AutoArm.Caching
                     continue;
                 if (playerFaction != null && weapon.IsForbidden(playerFaction))
                     continue;
-                result.Add(weapon);
+                if (storageOnly && !IsInStorageZone(weapon))
+                    continue;
+                if (outfit != null && !AllowedByOutfit(weapon, outfit))
+                    continue;
+                into.Add(weapon);
             }
-            return result;
-        }
-
-        public static List<ThingWithComps> GetAllStorageWeapons(Map map)
-        {
-            var result = new List<ThingWithComps>();
-            var component = GetMapComponent(map);
-            if (component == null)
-                return result;
-
-            var playerFaction = Find.FactionManager?.OfPlayer;
-
-            foreach (var weapon in component.weapons)
-            {
-                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
-                    continue;
-                if (playerFaction != null && weapon.IsForbidden(playerFaction))
-                    continue;
-                if (!IsInStorageZone(weapon))
-                    continue;
-                result.Add(weapon);
-            }
-            return result;
         }
 
         public static bool AnyWeaponForOutfit(Map map, ApparelPolicy outfit)
@@ -615,93 +534,21 @@ namespace AutoArm.Caching
                     continue;
                 if (playerFaction != null && weapon.IsForbidden(playerFaction))
                     continue;
-
-                var key = new OutfitDefKey(outfit.id, weapon.def);
-                if (!outfitFilterCache.TryGetValue(key, out bool allowed))
-                {
-                    allowed = outfit.filter.Allows(weapon.def);
-                    outfitFilterCache[key] = allowed;
-                }
-                if (allowed && CheckQualityRequirements(weapon, outfit))
+                if (AllowedByOutfit(weapon, outfit))
                     return true;
             }
             return false;
         }
 
-        public static List<ThingWithComps> GetWeaponsForOutfit(Map map, ApparelPolicy outfit)
+        private static bool AllowedByOutfit(ThingWithComps weapon, ApparelPolicy outfit)
         {
-            var result = new List<ThingWithComps>();
-            var component = GetMapComponent(map);
-            if (component == null)
-                return result;
-
-            var playerFaction = Find.FactionManager?.OfPlayer;
-            bool hasFilter = outfit?.filter != null;
-            int outfitId = outfit?.id ?? -1;
-
-            foreach (var weapon in component.weapons)
+            var key = new OutfitDefKey(outfit.id, weapon.def);
+            if (!outfitFilterCache.TryGetValue(key, out bool allowed))
             {
-                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
-                    continue;
-                if (playerFaction != null && weapon.IsForbidden(playerFaction))
-                    continue;
-
-                if (hasFilter)
-                {
-                    var key = new OutfitDefKey(outfitId, weapon.def);
-                    if (!outfitFilterCache.TryGetValue(key, out bool allowed))
-                    {
-                        allowed = outfit.filter.Allows(weapon.def);
-                        outfitFilterCache[key] = allowed;
-                    }
-                    if (!allowed)
-                        continue;
-                    if (!CheckQualityRequirements(weapon, outfit))
-                        continue;
-                }
-
-                result.Add(weapon);
+                allowed = outfit.filter.Allows(weapon.def);
+                outfitFilterCache[key] = allowed;
             }
-            return result;
-        }
-
-        public static List<ThingWithComps> GetStorageWeapons(Map map, ApparelPolicy outfit)
-        {
-            var result = new List<ThingWithComps>();
-            var component = GetMapComponent(map);
-            if (component == null)
-                return result;
-
-            var playerFaction = Find.FactionManager?.OfPlayer;
-            bool hasFilter = outfit?.filter != null;
-            int outfitId = outfit?.id ?? -1;
-
-            foreach (var weapon in component.weapons)
-            {
-                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
-                    continue;
-                if (playerFaction != null && weapon.IsForbidden(playerFaction))
-                    continue;
-                if (!IsInStorageZone(weapon))
-                    continue;
-
-                if (hasFilter)
-                {
-                    var key = new OutfitDefKey(outfitId, weapon.def);
-                    if (!outfitFilterCache.TryGetValue(key, out bool allowed))
-                    {
-                        allowed = outfit.filter.Allows(weapon.def);
-                        outfitFilterCache[key] = allowed;
-                    }
-                    if (!allowed)
-                        continue;
-                    if (!CheckQualityRequirements(weapon, outfit))
-                        continue;
-                }
-
-                result.Add(weapon);
-            }
-            return result;
+            return allowed && CheckQualityRequirements(weapon, outfit);
         }
 
         private static bool CheckQualityRequirements(ThingWithComps weapon, ApparelPolicy outfit)
@@ -978,8 +825,7 @@ namespace AutoArm.Caching
 
             UI.StatusOverviewDataGatherer.InvalidateOutfitWeaponCount(outfit);
 
-            var colonists = GetAllColonists();
-            if (colonists == null) return;
+            var colonists = PawnsFinder.AllMapsCaravansAndTravellingTransporters_Alive_Colonists;
 
             var affectedMaps = HashSetPool<Map>.Get();
             try
@@ -1197,62 +1043,6 @@ namespace AutoArm.Caching
             catch (Exception ex)
             {
                 AutoArmLogger.WarnCleanup(ex, "CleanupDestroyedMaps");
-            }
-        }
-
-        public static void PreWarmFilterCheck(ThingDef weaponDef, ApparelPolicy outfit)
-        {
-            if (weaponDef == null || outfit?.filter == null)
-                return;
-
-            if (!weaponDef.IsWeapon)
-                return;
-
-            outfit.filter.Allows(weaponDef);
-        }
-
-        public static void PreWarmColonistScore(Pawn pawn, bool isRanged)
-        {
-            if (pawn?.skills?.skills == null)
-                return;
-
-
-            var shootingSkill = pawn.skills.GetSkill(SkillDefOf.Shooting);
-            var meleeSkill = pawn.skills.GetSkill(SkillDefOf.Melee);
-
-            var weaponDef = isRanged ? AutoArmDefOf.Gun_BoltActionRifle : AutoArmDefOf.MeleeWeapon_Knife;
-            if (weaponDef != null)
-            {
-                ThingWithComps dummyWeapon = null;
-                try
-                {
-                    if (weaponDef.MadeFromStuff)
-                    {
-                        var stuff = GenStuff.DefaultStuffFor(weaponDef);
-                        dummyWeapon = ThingMaker.MakeThing(weaponDef, stuff) as ThingWithComps;
-                    }
-                    else
-                    {
-                        dummyWeapon = ThingMaker.MakeThing(weaponDef) as ThingWithComps;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    AutoArmLogger.Debug(() => $"[Warmup] Failed to create test weapon '{AutoArmLogger.GetDefLabel(weaponDef)}': {ex.Message}");
-                }
-
-                if (dummyWeapon != null)
-                {
-                    try
-                    {
-                        Scoring.GetSkillScore(pawn, dummyWeapon, out _);
-                        Scoring.GetWeaponPropertyScore(pawn, dummyWeapon);
-                    }
-                    finally
-                    {
-                        dummyWeapon.Destroy();
-                    }
-                }
             }
         }
 

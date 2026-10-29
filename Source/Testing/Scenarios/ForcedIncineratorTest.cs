@@ -73,7 +73,7 @@ namespace AutoArm.Testing.Scenarios
             var jobGiver = new JobGiver_PickUpBetterWeapon();
             var job = jobGiver.TestTryGiveJob(testPawn);
 
-            bool noSwap = (job == null);
+            bool noSwap = job == null || job.def != JobDefOf.Equip;
             result.Data["NoSwapJobCreated"] = noSwap;
 
             if (!noSwap)

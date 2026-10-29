@@ -441,65 +441,6 @@ namespace AutoArm
                 ListPool<int>.Return(invalidWeaponIds);
             }
 
-            var phantomForcedIds = ListPool<int>.Get();
-            try
-            {
-                foreach (var kvp in forcedPrimaryWeapon)
-                {
-                    int pawnId = kvp.Key;
-                    int weaponId = kvp.Value;
-
-                    if (!idToPawn.TryGetValue(pawnId, out var pawn) || pawn == null || pawn.Dead || !pawn.Spawned)
-                        continue;
-
-                    bool hasWeaponAsPrimary = pawn.equipment?.Primary?.thingIDNumber == weaponId;
-                    bool hasWeaponInInventory = false;
-
-                    if (!hasWeaponAsPrimary && pawn.inventory?.innerContainer != null)
-                    {
-                        var inv = pawn.inventory.innerContainer;
-                        for (int i = 0; i < inv.Count; i++)
-                        {
-                            if (inv[i] is ThingWithComps twc && twc.thingIDNumber == weaponId)
-                            {
-                                hasWeaponInInventory = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!hasWeaponAsPrimary && !hasWeaponInInventory)
-                    {
-                        phantomForcedIds.Add(pawnId);
-                    }
-                }
-
-                foreach (var pawnId in phantomForcedIds)
-                {
-                    int phantomWeaponId = forcedPrimaryWeapon[pawnId];
-                    forcedPrimaryWeapon.Remove(pawnId);
-
-                    if (forcedWeaponIds.ContainsKey(pawnId))
-                    {
-                        forcedWeaponIds[pawnId].Remove(phantomWeaponId);
-                        if (forcedWeaponIds[pawnId].Count == 0)
-                        {
-                            forcedWeaponIds.Remove(pawnId);
-                        }
-                    }
-
-                    if (idToPawn.TryGetValue(pawnId, out var pawn) && pawn != null)
-                    {
-                        AutoArmLogger.Debug(() => $"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared phantom forced weapon (weapon not found on pawn)");
-                    }
-                    removed++;
-                }
-            }
-            finally
-            {
-                ListPool<int>.Return(phantomForcedIds);
-            }
-
             return removed;
         }
 
@@ -785,100 +726,20 @@ namespace AutoArm
             return true;
         }
 
-        private static readonly Func<List<Pawn>> mapsCaravansTransitGetter = BindMapsCaravansTransitGetter();
-
-        private static Func<List<Pawn>> BindMapsCaravansTransitGetter()
-        {
-            try
-            {
-                var finder = typeof(PawnsFinder);
-                var prop = finder.GetProperty("AllMapsCaravansAndTravellingTransporters_Alive",
-                               BindingFlags.Public | BindingFlags.Static)
-                           ?? finder.GetProperty("AllMapsCaravansAndTravelingTransportPods_Alive",
-                               BindingFlags.Public | BindingFlags.Static);
-
-                var getter = prop?.GetGetMethod();
-                if (getter != null && typeof(List<Pawn>).IsAssignableFrom(getter.ReturnType))
-                {
-                    var bound = (Func<List<Pawn>>)Delegate.CreateDelegate(typeof(Func<List<Pawn>>), getter, throwOnBindFailure: false);
-                    if (bound != null)
-                    {
-                        AutoArmLogger.Debug(() => $"Pawn enumeration bound to PawnsFinder.{prop.Name}");
-                        return bound;
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.Warn($"PawnsFinder bind failed, using manual pawn enumeration: {e.Message}");
-            }
-            return null;
-        }
-
         private static void ResolvePawnsByIds(HashSet<int> ids, Dictionary<int, Pawn> outPawns)
         {
             if (ids.Count == 0)
                 return;
 
-            List<Pawn> combined = null;
-            if (mapsCaravansTransitGetter != null)
+            var combined = PawnsFinder.AllMapsCaravansAndTravellingTransporters_Alive;
+            for (int i = 0; i < combined.Count; i++)
             {
-                try { combined = mapsCaravansTransitGetter(); }
-                catch (Exception e) { AutoArmLogger.WarnFileOnly($"PawnsFinder enumeration failed: {e.Message}"); }
-            }
-
-            if (combined != null)
-            {
-                for (int i = 0; i < combined.Count; i++)
+                var p = combined[i];
+                if (p != null && ids.Contains(p.thingIDNumber))
                 {
-                    var p = combined[i];
-                    if (p != null && ids.Contains(p.thingIDNumber))
-                    {
-                        outPawns[p.thingIDNumber] = p;
-                        if (outPawns.Count == ids.Count)
-                            return;
-                    }
-                }
-            }
-            else
-            {
-                if (Find.Maps != null)
-                {
-                    foreach (var gameMap in Find.Maps)
-                    {
-                        var all = gameMap?.mapPawns?.AllPawns;
-                        if (all == null) continue;
-                        for (int i = 0; i < all.Count; i++)
-                        {
-                            var p = all[i];
-                            if (p != null && ids.Contains(p.thingIDNumber))
-                            {
-                                outPawns[p.thingIDNumber] = p;
-                                if (outPawns.Count == ids.Count)
-                                    return;
-                            }
-                        }
-                    }
-                }
-
-                if (Find.World != null && Find.WorldObjects != null)
-                {
-                    var caravans = Find.WorldObjects.Caravans;
-                    for (int i = 0; i < caravans.Count; i++)
-                    {
-                        var pawns = caravans[i]?.PawnsListForReading;
-                        if (pawns == null) continue;
-                        for (int j = 0; j < pawns.Count; j++)
-                        {
-                            var p = pawns[j];
-                            if (p != null && ids.Contains(p.thingIDNumber))
-                            {
-                                outPawns[p.thingIDNumber] = p;
-                                if (outPawns.Count == ids.Count)
-                                    return;
-                            }
-                        }
-                    }
+                    outPawns[p.thingIDNumber] = p;
+                    if (outPawns.Count == ids.Count)
+                        return;
                 }
             }
 
@@ -903,54 +764,12 @@ namespace AutoArm
             var seen = HashSetPool<int>.Get();
             try
             {
-                List<Pawn> combined = null;
-                if (mapsCaravansTransitGetter != null)
+                var combined = PawnsFinder.AllMapsCaravansAndTravellingTransporters_Alive;
+                for (int i = 0; i < combined.Count; i++)
                 {
-                    try { combined = mapsCaravansTransitGetter(); }
-                    catch (Exception e) { AutoArmLogger.WarnFileOnly($"PawnsFinder enumeration failed: {e.Message}"); }
-                }
-
-                if (combined != null)
-                {
-                    for (int i = 0; i < combined.Count; i++)
-                    {
-                        var p = combined[i];
-                        if (p != null && seen.Add(p.thingIDNumber))
-                            outPawns.Add(p);
-                    }
-                }
-                else
-                {
-                    if (Find.Maps != null)
-                    {
-                        foreach (var gameMap in Find.Maps)
-                        {
-                            var all = gameMap?.mapPawns?.AllPawns;
-                            if (all == null) continue;
-                            for (int i = 0; i < all.Count; i++)
-                            {
-                                var p = all[i];
-                                if (p != null && seen.Add(p.thingIDNumber))
-                                    outPawns.Add(p);
-                            }
-                        }
-                    }
-
-                    if (Find.World != null && Find.WorldObjects != null)
-                    {
-                        var caravans = Find.WorldObjects.Caravans;
-                        for (int i = 0; i < caravans.Count; i++)
-                        {
-                            var pawns = caravans[i]?.PawnsListForReading;
-                            if (pawns == null) continue;
-                            for (int j = 0; j < pawns.Count; j++)
-                            {
-                                var p = pawns[j];
-                                if (p != null && seen.Add(p.thingIDNumber))
-                                    outPawns.Add(p);
-                            }
-                        }
-                    }
+                    var p = combined[i];
+                    if (p != null && seen.Add(p.thingIDNumber))
+                        outPawns.Add(p);
                 }
 
                 var worldPawns = Find.World?.worldPawns;

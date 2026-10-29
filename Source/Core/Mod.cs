@@ -265,7 +265,9 @@ namespace AutoArm
             }
         }
 
-        private void DrawSlider(Listing_Standard listing, string label, ref float value, float min, float max, string format = "P0", string tooltip = null, bool isPercentageBetter = false, bool isWeaponPreferenceMode = false)
+        private const float SubIndent = 20f;
+
+        private void DrawSlider(Listing_Standard listing, string label, ref float value, float min, float max, string format = "P0", string tooltip = null, bool isPercentageBetter = false, bool isWeaponPreferenceMode = false, float indent = 0f)
         {
             listing.Gap(4f);
             Rect row = listing.GetRect(Constants.UI_LINE_HEIGHT);
@@ -339,7 +341,7 @@ namespace AutoArm
 
             value = Mathf.Clamp(value, min, max);
 
-            Rect labelRect = new Rect(row.x, row.y, row.width - sliderWidth - valueWidth - 16f, row.height);
+            Rect labelRect = new Rect(row.x + indent, row.y, row.width - sliderWidth - valueWidth - 16f - indent, row.height);
             using (new TextBlock(TextAnchor.MiddleLeft))
                 Widgets.Label(labelRect, label);
 
@@ -449,11 +451,11 @@ namespace AutoArm
             DrawSlider(listing, "AutoArm_Threshold".Translate(), ref settings.weaponUpgradeThreshold,
                 Constants.WeaponUpgradeThresholdMin, Constants.WeaponUpgradeThresholdMax, "F2",
                 "AutoArm_ThresholdDesc".Translate(),
-                true);
+                true, indent: SubIndent);
 
             bool prevAllowForced = settings.allowForcedWeaponUpgrades;
             DrawCheckbox(listing, "AutoArm_AllowForcedWeaponUpgrades".Translate(), ref settings.allowForcedWeaponUpgrades,
-                "AutoArm_AllowForcedWeaponUpgradesDesc".Translate());
+                "AutoArm_AllowForcedWeaponUpgradesDesc".Translate(), SubIndent);
             if (prevAllowForced != settings.allowForcedWeaponUpgrades)
                 WeaponCache.ClearScoreCache();
 
@@ -518,13 +520,7 @@ namespace AutoArm
         {
             Text.Font = GameFont.Small;
             var nameRect = listing.GetRect(Text.LineHeight);
-
-            string fullText = $"{name}: ";
-            Widgets.Label(new Rect(nameRect.x, nameRect.y, 200f, nameRect.height), fullText);
-
-            float statusX = nameRect.x + Text.CalcSize(fullText).x;
-            using (new TextBlock(UIColors.Active))
-                Widgets.Label(new Rect(statusX, nameRect.y, 400f, nameRect.height), "AutoArm_Loaded".Translate());
+            Widgets.Label(nameRect, $"{name}: " + "AutoArm_Loaded".Translate().Colorize(UIColors.Active));
         }
 
         private void DrawSimpleSidearmsSettings(Listing_Standard listing)
@@ -553,7 +549,7 @@ namespace AutoArm
 
             bool tempAutoEquipSidearms = settings.autoEquipSidearms;
             DrawCheckbox(listing, "AutoArm_EnableSidearmAutoEquip".Translate(), ref tempAutoEquipSidearms,
-                "AutoArm_EnableSidearmAutoEquipDesc".Translate(), 30f);
+                "AutoArm_EnableSidearmAutoEquipDesc".Translate(), SubIndent);
             settings.autoEquipSidearms = tempAutoEquipSidearms;
 
             if (SimpleSidearmsCompat.CanAutoEquipSidearms())
@@ -564,7 +560,7 @@ namespace AutoArm
                 bool tempAllowSidearmUpgrades = settings.allowSidearmUpgrades;
 
                 DrawCheckbox(listing, "AutoArm_AllowSidearmUpgrades".Translate(), ref tempAllowSidearmUpgrades,
-                    "AutoArm_AllowSidearmUpgradesDesc".Translate(), 30f, "AutoArm_Experimental".Translate());
+                    "AutoArm_AllowSidearmUpgradesDesc".Translate(), SubIndent, "AutoArm_Experimental".Translate());
 
                 settings.allowSidearmUpgrades = tempAllowSidearmUpgrades;
                 GUI.enabled = priorEnabled;
@@ -607,7 +603,7 @@ namespace AutoArm
 
             bool prevCheckCEAmmo = settings.checkCEAmmo;
             DrawCheckbox(listing, "AutoArm_RequireAmmunition".Translate(), ref settings.checkCEAmmo,
-                "AutoArm_RequireAmmunitionDesc".Translate(), 30f);
+                "AutoArm_RequireAmmunitionDesc".Translate(), SubIndent);
 
             if (!ceAmmoSystemEnabled && settings.checkCEAmmo)
             {
@@ -675,7 +671,7 @@ namespace AutoArm
                 DrawSlider(listing, "AutoArm_MinimumAge".Translate(), ref tempAge,
                     Constants.ChildMinAgeLimit, Constants.ChildMaxAgeLimit, "F0",
                     "AutoArm_MinimumAgeDesc".Translate(),
-                    false);
+                    false, indent: SubIndent);
                 settings.childrenMinAge = Mathf.RoundToInt(tempAge);
 
                 if (settings.childrenMinAge <= 3)
@@ -731,7 +727,7 @@ namespace AutoArm
                         continue;
 
                     if (pawn.equipment?.Primary != null &&
-                        ValidationHelper.IsWeaponBondedToPawn(pawn.equipment.Primary, pawn))
+                        EquipmentUtility.IsBondedTo(pawn.equipment.Primary, pawn))
                     {
                         ForcedWeapons.SetForced(pawn, pawn.equipment.Primary);
                         count++;
@@ -748,7 +744,7 @@ namespace AutoArm
                         {
                             if (item is ThingWithComps weapon &&
                                 weapon.def.IsWeapon &&
-                                ValidationHelper.IsWeaponBondedToPawn(weapon, pawn))
+                                EquipmentUtility.IsBondedTo(weapon, pawn))
                             {
                                 ForcedWeapons.AddSidearm(pawn, weapon);
                                 count++;

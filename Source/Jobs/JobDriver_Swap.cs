@@ -122,6 +122,12 @@ namespace AutoArm
                 return;
             }
 
+            if (Jobs.AutoEquipState.ShouldForceWeapon(pawn, pickedUp))
+            {
+                ForcedWeapons.AddSidearm(pawn, pickedUp);
+                Jobs.AutoEquipState.ClearWeaponToForce(pawn);
+            }
+
             if (pickedUp.def.soundInteract != null)
             {
                 pickedUp.def.soundInteract.PlayOneShot(new TargetInfo(pawn.Position, pawn.MapHeld, false));
@@ -148,7 +154,7 @@ namespace AutoArm
             }
 
             if (placed)
-                DroppedItems.MarkAsDropped(oldWeaponToPlace, Constants.LongDropCooldownTicks, pawn);
+                DroppedItems.MarkAsDropped(oldWeaponToPlace, Constants.LongDropCooldownTicks);
 
             if (AutoArmMod.settings?.debugLogging == true)
             {
@@ -161,8 +167,8 @@ namespace AutoArm
             {
                 Messages.Message("AutoArm_UpgradedSidearm".Translate(
                     pawn.LabelShort.CapitalizeFirst(),
-                    oldWeapon.Label,
-                    newWeapon.Label
+                    ForcedWeaponLabelHelper.StripForcedSuffix(oldWeapon.Label),
+                    ForcedWeaponLabelHelper.StripForcedSuffix(newWeapon.Label)
                 ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
             }
 
@@ -278,7 +284,7 @@ namespace AutoArm
                 }
             }
 
-            DroppedItems.MarkAsDropped(droppedWeapon, Constants.LongDropCooldownTicks, pawn);
+            DroppedItems.MarkAsDropped(droppedWeapon, Constants.LongDropCooldownTicks);
 
             if (AutoArmMod.settings?.debugLogging == true)
             {

@@ -28,28 +28,4 @@ namespace AutoArm
         }
     }
 
-
-    internal static class OutfitFilterCache
-    {
-        private static readonly Dictionary<ThingFilter, ApparelPolicy> filterToPolicyMap = new Dictionary<ThingFilter, ApparelPolicy>();
-
-        public static void RebuildCache()
-        {
-            filterToPolicyMap.Clear();
-
-            var outfitDatabase = Current.Game?.outfitDatabase;
-            if (outfitDatabase?.AllOutfits == null)
-                return;
-
-            foreach (var policy in outfitDatabase.AllOutfits)
-            {
-                if (policy?.filter != null)
-                {
-                    filterToPolicyMap[policy.filter] = policy;
-                }
-            }
-        }
-
-    }
-
 }

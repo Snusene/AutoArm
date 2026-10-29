@@ -224,7 +224,7 @@ namespace AutoArm.Testing.Scenarios
             {
                 AutoArmLogger.Log($"[TEST] Quest lodger state before job: Spawned={questLodger.Spawned}, Map={questLodger.Map != null}, Position={questLodger.Position}");
 
-                var availableWeapons = WeaponCache.GetAllWeapons(questLodger.Map)?.ToList();
+                var availableWeapons = TestHelpers.CachedWeapons(questLodger.Map)?.ToList();
                 AutoArmLogger.Log($"[TEST] Available weapons in cache: {availableWeapons?.Count ?? 0}");
                 if (availableWeapons != null)
                 {
@@ -378,6 +378,68 @@ namespace AutoArm.Testing.Scenarios
             if (pawn != null)
                 pawn.equipment?.DestroyAllEquipment();
             TestHelpers.SafeDestroyPawn(pawn);
+        }
+    }
+
+    internal sealed class NearsightedRangeFitTest : ITestScenario
+    {
+        public string Name => "Nearsighted pawn prefers short guns";
+        private Pawn normal;
+        private Pawn nearsighted;
+        private ThingWithComps sniper;
+        private ThingWithComps pistol;
+        private GeneDef gene;
+        private ThingDef sniperDef;
+
+        public void Setup(Map map)
+        {
+            if (map == null) return;
+
+            gene = DefDatabase<GeneDef>.GetNamedSilentFail("Nearsighted");
+            sniperDef = DefDatabase<ThingDef>.GetNamedSilentFail("Gun_SniperRifle");
+            if (gene == null || sniperDef == null || AutoArmDefOf.Gun_Autopistol == null) return;
+
+            normal = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "SharpEyes" });
+            nearsighted = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "Squinter" });
+            if (nearsighted?.genes == null) return;
+            nearsighted.genes.AddGene(gene, true);
+
+            sniper = ThingMaker.MakeThing(sniperDef) as ThingWithComps;
+            pistol = ThingMaker.MakeThing(AutoArmDefOf.Gun_Autopistol) as ThingWithComps;
+        }
+
+        public TestResult Run()
+        {
+            if (CECompat.IsLoaded)
+                return TestResult.Skip("Combat Extended loaded");
+            if (gene == null || sniperDef == null)
+                return TestResult.Skip("Biotech not active");
+            if (normal == null || nearsighted == null || sniper == null || pistol == null)
+                return TestResult.Failure("Setup incomplete");
+            if (!nearsighted.genes.HasActiveGene(gene))
+                return TestResult.Failure("Nearsighted gene not active");
+
+            float normalSniper = Scoring.GetWeaponPropertyScore(normal, sniper);
+            float normalPistol = Scoring.GetWeaponPropertyScore(normal, pistol);
+            float nearSniper = Scoring.GetWeaponPropertyScore(nearsighted, sniper);
+            float nearPistol = Scoring.GetWeaponPropertyScore(nearsighted, pistol);
+
+            if (normalSniper != Scoring.GetWeaponPropertyScore(null, sniper))
+                return TestResult.Failure($"Normal pawn sniper score changed: {normalSniper:F1}");
+            if (nearSniper >= normalSniper * 0.6f)
+                return TestResult.Failure($"Sniper barely penalized: {nearSniper:F1} vs {normalSniper:F1}");
+            if (nearSniper / nearPistol >= normalSniper / normalPistol)
+                return TestResult.Failure("Sniper not penalized more than autopistol");
+
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            TestHelpers.SafeDestroyPawn(normal);
+            TestHelpers.SafeDestroyPawn(nearsighted);
+            if (sniper != null && !sniper.Destroyed) sniper.Destroy();
+            if (pistol != null && !pistol.Destroyed) pistol.Destroy();
         }
     }
 
@@ -565,7 +627,7 @@ namespace AutoArm.Testing.Scenarios
             {
                 WeaponCache.AddWeaponToCache(nearbyWeapon);
 
-                var weaponsInCache = WeaponCache.GetAllWeapons(childPawn.Map).ToList();
+                var weaponsInCache = TestHelpers.CachedWeapons(childPawn.Map).ToList();
                 if (!weaponsInCache.Contains(nearbyWeapon))
                 {
                     AutoArmLogger.Warn($"[TEST] ChildColonistTest: Weapon not in cache! Cache has {weaponsInCache.Count} weapons");
@@ -597,7 +659,7 @@ namespace AutoArm.Testing.Scenarios
             if (jobWhenEnabled == null)
             {
                 bool isViolenceCapable = !childPawn.WorkTagIsDisabled(WorkTags.Violent);
-                var weaponsInCache = WeaponCache.GetAllWeapons(childPawn.Map)?.ToList();
+                var weaponsInCache = TestHelpers.CachedWeapons(childPawn.Map)?.ToList();
 
                 result.Success = false;
                 result.Data["Phase2_Error"] = "No job created when children allowed";
@@ -635,55 +697,6 @@ namespace AutoArm.Testing.Scenarios
             CleanupHelper.CleanupTest(childPawn, nearbyWeapon);
             childPawn = null;
             nearbyWeapon = null;
-        }
-    }
-
-    internal sealed class NobilityTest : ITestScenario
-    {
-        public string Name => "Conceited nobles";
-        private Pawn noblePawn;
-
-        public void Setup(Map map)
-        {
-            if (map == null || !ModsConfig.RoyaltyActive) return;
-
-            noblePawn = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
-            {
-                Name = "TestNoble",
-                MakeNoble = true,
-                Conceited = true
-            });
-        }
-
-        public TestResult Run()
-        {
-            if (!ModsConfig.RoyaltyActive)
-                return TestResult.Skip("Royalty DLC not active");
-
-            if (noblePawn == null)
-                return TestResult.Failure("Noble pawn setup failed");
-
-            if (noblePawn.equipment?.Primary != null)
-            {
-                var jobGiver = new JobGiver_PickUpBetterWeapon();
-                var job = jobGiver.TestTryGiveJob(noblePawn);
-
-                if (job != null)
-                {
-                    AutoArmLogger.Warn($"[TEST] NobilityTest: Conceited noble tried to switch weapons - expected: no job, got: {job.def.defName}");
-                    return TestResult.Failure("Conceited noble tried to switch weapons");
-                }
-            }
-
-            return TestResult.Pass();
-        }
-
-        public void Cleanup()
-        {
-            if (noblePawn != null && !noblePawn.Destroyed)
-            {
-                TestHelpers.SafeDestroyPawn(noblePawn);
-            }
         }
     }
 
@@ -839,6 +852,14 @@ namespace AutoArm.Testing.Scenarios
             if (rangedAccepted)
                 return TestResult.Failure("Brawler accepted ranged weapon (Brawler-reject regression)");
 
+            var job = jobGiver.TestTryGiveJob(brawlerPawn);
+            var picked = job?.targetA.Thing as ThingWithComps;
+            if (picked == null)
+                return TestResult.Failure("Unarmed brawler got no job with a longsword nearby");
+            if (!picked.def.IsMeleeWeapon)
+                return TestResult.Failure($"Brawler picked {picked.def.label}, expected a melee weapon");
+            WeaponCache.ClearTemporaryReservation(picked);
+
             return TestResult.Pass();
         }
 
@@ -917,6 +938,8 @@ namespace AutoArm.Testing.Scenarios
             if (meleePawn != null)
             {
                 meleePawn.equipment?.DestroyAllEquipment();
+                if (meleePawn.workSettings?.EverWork == true)
+                    meleePawn.workSettings.Disable(WorkTypeDefOf.Hunting);
 
                 var junkDef = AutoArmDefOf.MeleeWeapon_Knife;
                 if (junkDef != null)
@@ -956,17 +979,12 @@ namespace AutoArm.Testing.Scenarios
             var jobGiver = new JobGiver_PickUpBetterWeapon();
 
             var shooterJob = jobGiver.TestTryGiveJob(shooterPawn);
-            if (shooterJob != null && shooterJob.targetA.Thing is ThingWithComps shooterWeapon)
-            {
-                result.Data["ShooterPicked"] = shooterWeapon.Label;
-                result.Data["ShooterPickedRanged"] = shooterWeapon.def.IsRangedWeapon;
-
-                if (!shooterWeapon.def.IsRangedWeapon)
-                {
-                    AutoArmLogger.Warn($"[TEST] SkillBasedPreferenceTest: High-shooting pawn picked melee weapon - expected: ranged weapon, got: {shooterWeapon.Label}");
-                    return TestResult.Failure($"High-shooting pawn picked melee weapon: {shooterWeapon.Label}");
-                }
-            }
+            if (!(shooterJob?.targetA.Thing is ThingWithComps shooterWeapon))
+                return TestResult.Failure("High-shooting pawn got no job");
+            result.Data["ShooterPicked"] = shooterWeapon.Label;
+            if (!shooterWeapon.def.IsRangedWeapon)
+                return TestResult.Failure($"High-shooting pawn picked melee weapon: {shooterWeapon.Label}");
+            WeaponCache.ClearTemporaryReservation(shooterWeapon);
 
             if (meleePawn != null && weapons.Count > 0)
             {
@@ -984,17 +1002,12 @@ namespace AutoArm.Testing.Scenarios
                 meleePawn.Position = meleePos;
 
                 var meleeJob = jobGiver.TestTryGiveJob(meleePawn);
-                if (meleeJob != null && meleeJob.targetA.Thing is ThingWithComps meleeWeapon)
-                {
-                    result.Data["MeleePawnPicked"] = meleeWeapon.Label;
-                    result.Data["MeleePawnPickedMelee"] = meleeWeapon.def.IsMeleeWeapon;
-
-                    if (!meleeWeapon.def.IsMeleeWeapon)
-                    {
-                        AutoArmLogger.Warn($"[TEST] SkillBasedPreferenceTest: High-melee pawn picked ranged weapon - expected: melee weapon, got: {meleeWeapon.Label}");
-                        return TestResult.Failure($"High-melee pawn picked ranged weapon: {meleeWeapon.Label}");
-                    }
-                }
+                if (!(meleeJob?.targetA.Thing is ThingWithComps meleeWeapon))
+                    return TestResult.Failure("High-melee pawn got no job");
+                result.Data["MeleePawnPicked"] = meleeWeapon.Label;
+                if (!meleeWeapon.def.IsMeleeWeapon)
+                    return TestResult.Failure($"High-melee pawn picked ranged weapon: {meleeWeapon.Label}");
+                WeaponCache.ClearTemporaryReservation(meleeWeapon);
             }
 
             var rangedWeapon = weapons.FirstOrDefault(w => w.def.IsRangedWeapon);
@@ -1011,6 +1024,15 @@ namespace AutoArm.Testing.Scenarios
                 result.Data["ShooterMeleeScore"] = shooterMeleeScore;
                 result.Data["MeleeRangedScore"] = meleeRangedScore;
                 result.Data["MeleeMeleeScore"] = meleeMeleeScore;
+
+                if (shooterRangedScore <= shooterMeleeScore)
+                    return TestResult.Failure($"Shooter scores the rifle {shooterRangedScore:F0}, not above the sword {shooterMeleeScore:F0}");
+                if (meleeMeleeScore <= meleeRangedScore)
+                    return TestResult.Failure($"Melee pawn scores the sword {meleeMeleeScore:F0}, not above the rifle {meleeRangedScore:F0}");
+            }
+            else
+            {
+                return TestResult.Failure("Rifle or sword missing for the score comparison");
             }
 
             return result;

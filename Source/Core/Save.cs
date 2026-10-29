@@ -661,14 +661,11 @@ namespace AutoArm
             // Clear scheduler
             TickScheduler.Reset();
 
-            CooldownMetrics.Reset();
             DroppedItems.Reset();
             AutoArm.Blacklist.Reset();
             ForcedWeapons.Reset();
             ForcedWeaponState.Reset();
             AutoArm.Jobs.AutoEquipState.Reset();
-
-            Scoring.ResetSkillCache();
 
             // Built in FinalizeInit
             foreach (var map in Find.Maps)
@@ -684,7 +681,6 @@ namespace AutoArm
 
             try
             {
-                OutfitFilterCache.RebuildCache();
                 EquipEligibility.Clear();
             }
             catch (Exception e)
@@ -738,12 +734,10 @@ namespace AutoArm
 
             TickScheduler.Reset();
 
-            CooldownMetrics.Reset();
             DroppedItems.Reset();
             Blacklist.Reset();
             ForcedWeaponState.Reset();
             AutoArm.Jobs.AutoEquipState.Reset();
-            Scoring.ResetSkillCache();
 
             foreach (var map in Find.Maps)
             {
@@ -756,7 +750,6 @@ namespace AutoArm
                 Game_LoadGame_InjectThinkTree_Patch.Postfix();
                 PawnValidation.ClearCache();
                 EquipEligibility.Clear();
-                OutfitFilterCache.RebuildCache();
             }
             catch (Exception e)
             {
@@ -778,79 +771,9 @@ namespace AutoArm
 
         private void WarmupCaches()
         {
-            var maps = Find.Maps;
-            if (maps == null || maps.Count == 0)
-                return;
-
-            // Warm SimpleSidearms
-            bool ssLoaded = Compatibility.SimpleSidearmsCompat.IsLoaded;
-            if (ssLoaded)
-            {
+            if (AutoArmMod.settings?.modEnabled == true)
                 Compatibility.SimpleSidearmsCompat.EnsureInitialized();
-            }
 
-            int colonistCount = 0;
-            int weaponScores = 0;
-
-            foreach (var map in maps)
-            {
-                if (map?.mapPawns?.FreeColonistsSpawned == null)
-                    continue;
-
-                // Get all weapons
-                var weapons = Caching.WeaponCache.GetAllWeapons(map);
-                var weaponList = new List<ThingWithComps>();
-                foreach (var w in weapons)
-                    weaponList.Add(w);
-
-                // Snapshot colonists
-                var colonists = new List<Pawn>(map.mapPawns.FreeColonistsSpawned);
-                foreach (var pawn in colonists)
-                {
-                    if (pawn == null || pawn.Dead || pawn.Downed)
-                        continue;
-
-                    // Warm validation cache
-                    Caching.PawnValidation.CanConsiderWeapons(pawn);
-
-                    // Warm skill cache
-                    if (pawn.skills?.skills != null)
-                    {
-                        Caching.WeaponCache.PreWarmColonistScore(pawn, true);
-                        Caching.WeaponCache.PreWarmColonistScore(pawn, false);
-                    }
-
-                    // Pre-warm scores
-                    foreach (var weapon in weaponList)
-                    {
-                        if (weapon != null && !weapon.Destroyed)
-                        {
-                            // Warm score cache
-                            Scoring.GetTotalScore(pawn, weapon);
-
-                            // Warm eligibility
-                            Caching.EquipEligibility.CanEquip(pawn, weapon, out _);
-
-                            // Warm SS cache
-                            if (ssLoaded)
-                            {
-                                Compatibility.SimpleSidearmsCompat.CanPickupSidearm(weapon, pawn, out _);
-                            }
-
-                            weaponScores++;
-                        }
-                    }
-
-                    colonistCount++;
-                }
-            }
-
-            if (AutoArmMod.settings?.debugLogging == true && colonistCount > 0)
-            {
-                AutoArmLogger.Debug(() => $"Pre-warmed caches: {colonistCount} colonists, {weaponScores} weapon scores");
-            }
-
-            // Start grace period
             Cleanup.OnWarmupCompleted();
         }
 
@@ -861,11 +784,6 @@ namespace AutoArm
             int currentTick = Find.TickManager.TicksGame;
 
             TickScheduler.ProcessTick(currentTick);
-
-            if (currentTick % 12000 == 0)
-            {
-                CooldownMetrics.CorrectDrift(out int eventCount, out int actualCount);
-            }
 
             if (currentTick % 61 == 0)
             {

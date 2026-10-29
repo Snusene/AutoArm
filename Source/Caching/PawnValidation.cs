@@ -96,15 +96,24 @@ namespace AutoArm.Caching
             public int CachedAtTick { get; set; }
 
             public bool IsValidForWeapons { get; set; }
+
+            public string BlockReason { get; set; }
         }
 
 
+        public const string LordReason = "In lord job";
+
         public static bool CanConsiderWeapons(Pawn pawn)
+            => CanConsiderWeapons(pawn, out _, out _);
+
+        public static bool CanConsiderWeapons(Pawn pawn, out string reason, out bool transient)
         {
-            if (!CheckDynamicProperties(pawn))
+            reason = DynamicBlock(pawn);
+            transient = reason != null;
+            if (transient)
                 return false;
 
-            return CheckCachedProperties(pawn);
+            return CheckCachedProperties(pawn, out reason);
         }
 
         public static bool CanShoot(Pawn pawn)
@@ -163,32 +172,29 @@ namespace AutoArm.Caching
 
 
 
-        private static bool CheckDynamicProperties(Pawn pawn)
+        private static string DynamicBlock(Pawn pawn)
         {
-
-            if (pawn?.Spawned != true || pawn.Dead || pawn.Downed)
-                return false;
-
+            if (pawn?.Spawned != true)
+                return "Not spawned";
+            if (pawn.Dead)
+                return "Dead";
+            if (pawn.Downed)
+                return "Downed";
             if (pawn.Drafted)
-                return false;
-
+                return "Drafted";
             if (pawn.InMentalState)
-                return false;
-
-
+                return "In mental state";
             if (IsInRestrictedLord(pawn))
-                return false;
-
-            if (pawn.IsCaravanMember() || pawn.carryTracker?.CarriedThing != null)
-                return false;
-
+                return LordReason;
+            if (pawn.IsCaravanMember())
+                return "In caravan";
+            if (pawn.carryTracker?.CarriedThing != null)
+                return "Carrying something";
             if (ValidationHelper.IsInRitual(pawn))
-                return false;
-
+                return "In ritual or ceremony";
             if (IsCurrentlyHauling(pawn))
-                return false;
-
-            return true;
+                return "Currently hauling";
+            return null;
         }
 
 
@@ -203,7 +209,7 @@ namespace AutoArm.Caching
 
 
 
-        private static bool CheckCachedProperties(Pawn pawn)
+        private static bool CheckCachedProperties(Pawn pawn, out string reason)
         {
             int currentTick = Find.TickManager.TicksGame;
 
@@ -211,12 +217,14 @@ namespace AutoArm.Caching
             {
                 PerfMetrics.ReportCacheHit();
                 PerfMetrics.ReportValidationCacheHit();
+                reason = cached.BlockReason;
                 return cached.IsValidForWeapons;
             }
 
             PerfMetrics.ReportValidationCacheMiss();
             var validation = BuildCacheEntry(pawn);
             _cache.Set(pawn.thingIDNumber, validation, currentTick);
+            reason = validation.BlockReason;
             return validation.IsValidForWeapons;
         }
 
@@ -232,35 +240,28 @@ namespace AutoArm.Caching
             entry.IsBrawler = pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) ?? false;
 
             if (pawn.health?.capacities == null)
-            {
-                entry.HasManipulation = false;
-                entry.IsValidForWeapons = false;
-                return entry;
-            }
+                return Block(entry, "No health capacities");
 
             entry.HasManipulation = pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation);
             if (!entry.HasManipulation)
-            {
-                entry.IsValidForWeapons = false;
-                return entry;
-            }
+                return Block(entry, "Incapable of manipulation");
 
             if (pawn.RaceProps == null)
-            {
-                entry.IsValidForWeapons = false;
-                return entry;
-            }
+                return Block(entry, "No race properties");
 
             entry.IsAnimal = pawn.RaceProps.Animal;
             entry.IsMechanoid = pawn.RaceProps.IsMechanoid;
             entry.IsToolUser = pawn.RaceProps.ToolUser;
             entry.HasSufficientIntelligence = pawn.RaceProps.intelligence >= Intelligence.ToolUser;
 
-            if (entry.IsAnimal || entry.IsMechanoid || !entry.IsToolUser || !entry.HasSufficientIntelligence)
-            {
-                entry.IsValidForWeapons = false;
-                return entry;
-            }
+            if (entry.IsAnimal)
+                return Block(entry, "Is animal");
+            if (entry.IsMechanoid)
+                return Block(entry, "Is mechanoid");
+            if (!entry.IsToolUser)
+                return Block(entry, "Cannot use tools");
+            if (!entry.HasSufficientIntelligence)
+                return Block(entry, "Intelligence too low");
 
             entry.IsColonist = ValidationHelper.SafeIsColonist(pawn);
             entry.IsTemporaryColonist = AutoArm.Jobs.JobHelper.IsTemporary(pawn);
@@ -271,18 +272,20 @@ namespace AutoArm.Caching
             {
                 AutoArmLogger.Debug(() => $"[TEST] PawnValidation: Allowing test pawn");
             }
-            else if (!entry.IsColonist || entry.IsPrisoner)
+            else if (entry.IsPrisoner)
             {
-                entry.IsValidForWeapons = false;
-                return entry;
+                return Block(entry, "Is prisoner");
+            }
+            else if (!entry.IsColonist)
+            {
+                return Block(entry, "Not a colonist");
             }
 
             var primary = pawn.equipment?.Primary;
             if (primary != null && pawn.IsQuestLodger() && !EquipmentUtility.QuestLodgerCanUnequip(primary, pawn))
             {
                 AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Blocked - quest lodger with locked weapon");
-                entry.IsValidForWeapons = false;
-                return entry;
+                return Block(entry, "Quest lodger with locked equipment");
             }
 
             if (entry.IsTemporaryColonist)
@@ -291,51 +294,27 @@ namespace AutoArm.Caching
                 if (!allowSetting)
                 {
                     AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Temporary colonist blocked (allowTemporaryColonists=false)");
-                    entry.IsValidForWeapons = false;
-                    return entry;
+                    return Block(entry, "Temporary colonist (quest/borrowed) - not allowed");
                 }
                 AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Temporary colonist allowed");
             }
 
             entry.CanDoViolence = !pawn.WorkTagIsDisabled(WorkTags.Violent);
-
             if (!entry.CanDoViolence)
-            {
-                entry.IsValidForWeapons = false;
-                return entry;
-            }
+                return Block(entry, "Incapable of violence");
 
-            if (ModsConfig.BiotechActive)
-            {
-                bool isRaceAdult = pawn.ageTracker?.Adult == true;
-                var devStage = pawn.DevelopmentalStage;
-                bool sliderActive = AutoArmMod.settings?.allowChildrenToEquipWeapons ?? false;
-
-                if (!sliderActive)
-                {
-                    // Match vanilla: Child and Adult can equip, only Baby blocked
-                    entry.MeetsAgeRequirement = devStage >= DevelopmentalStage.Child;
-                }
-                else
-                {
-                    // Slider active: apply minAge restriction
-                    int minAge = AutoArmMod.settings?.childrenMinAge ?? Constants.ChildDefaultMinAge;
-                    int age = pawn.ageTracker?.AgeBiologicalYears ?? 0;
-                    entry.MeetsAgeRequirement = isRaceAdult || age >= minAge;
-                }
-            }
-            else
-            {
-                entry.MeetsAgeRequirement = true;
-            }
-
+            entry.MeetsAgeRequirement = ValidationHelper.PassesAgeGate(pawn, out string ageReason);
             if (!entry.MeetsAgeRequirement)
-            {
-                entry.IsValidForWeapons = false;
-                return entry;
-            }
+                return Block(entry, ageReason);
 
             entry.IsValidForWeapons = true;
+            return entry;
+        }
+
+        private static CachedPawnValidation Block(CachedPawnValidation entry, string reason)
+        {
+            entry.IsValidForWeapons = false;
+            entry.BlockReason = reason;
             return entry;
         }
 

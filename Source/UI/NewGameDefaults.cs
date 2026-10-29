@@ -43,9 +43,7 @@ namespace AutoArm
         {
             if (applied) return;
 
-            var policies = new List<ApparelPolicy>();
-            foreach (var p in AutoArm.UI.PolicyDBHelper.GetAllPolicies())
-                if (p != null) policies.Add(p);
+            var policies = Current.Game.outfitDatabase.AllOutfits;
             if (policies.Count == 0) return;
 
             var weaponsRoot = DefDatabase<ThingCategoryDef>.GetNamedSilentFail(WeaponsCategoryDefName) ?? ThingCategoryDefOf.Weapons;
@@ -72,6 +70,10 @@ namespace AutoArm
                     allWeaponDefs.Add(def);
             }
 
+            string slaveLabel = "OutfitSlave".Translate();
+            string nudistLabel = "OutfitNudist".Translate();
+            string anythingLabel = "OutfitAnything".Translate();
+
             int outfitsModified = 0;
             int nudistOutfits = 0;
             int slaveOutfits = 0;
@@ -83,9 +85,11 @@ namespace AutoArm
                 if (filter == null) continue;
 
                 string label = policy.label ?? string.Empty;
-                bool isSlave = label.Equals(SlaveOutfitLabel, StringComparison.OrdinalIgnoreCase);
+                bool isSlave = label.Equals(SlaveOutfitLabel, StringComparison.OrdinalIgnoreCase) ||
+                               label == slaveLabel;
                 bool isNudist = label.IndexOf(NudistOutfitToken1, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                               label.IndexOf(NudistOutfitToken2, StringComparison.OrdinalIgnoreCase) >= 0;
+                               label.IndexOf(NudistOutfitToken2, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                               label == nudistLabel;
 
                 if (isNudist)
                 {
@@ -108,7 +112,8 @@ namespace AutoArm
                     SetAllowOnTree(filter, weaponsRoot, allow: true);
 
                     bool isAnything = label.Equals(AnythingOutfitLabel, StringComparison.OrdinalIgnoreCase) ||
-                                     label.Equals(EverythingOutfitLabel, StringComparison.OrdinalIgnoreCase);
+                                     label.Equals(EverythingOutfitLabel, StringComparison.OrdinalIgnoreCase) ||
+                                     label == anythingLabel;
 
                     int weaponsEnabled = 0;
                     for (int i = 0; i < allWeaponDefs.Count; i++)
@@ -147,51 +152,6 @@ namespace AutoArm
             string summary = outfitSummaries.Count > 0 ? string.Join(", ", outfitSummaries) : "none";
             AutoArmLogger.Debug(() => $"Applied default outfits: {outfitsModified} modified ({summary})");
             ListPool<string>.Return(outfitSummaries);
-            PreWarmColonistSkillCaches();
-        }
-
-
-        private void PreWarmColonistSkillCaches()
-        {
-            var maps = Find.Maps;
-            if (maps == null)
-                return;
-
-            int totalColonists = 0;
-            var colonists = ListPool<Pawn>.Get();
-            try
-            {
-                for (int i = 0; i < maps.Count; i++)
-                {
-                    var map = maps[i];
-                    var live = map?.mapPawns?.FreeColonistsSpawned;
-                    if (live == null) continue;
-
-                    colonists.Clear();
-                    for (int j = 0; j < live.Count; j++)
-                        colonists.Add(live[j]);
-
-                    for (int j = 0; j < colonists.Count; j++)
-                    {
-                        var pawn = colonists[j];
-                        if (pawn != null && !pawn.Dead && !pawn.Downed && pawn.skills?.skills != null)
-                        {
-                            Caching.WeaponCache.PreWarmColonistScore(pawn, true);
-                            Caching.WeaponCache.PreWarmColonistScore(pawn, false);
-                            totalColonists++;
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                ListPool<Pawn>.Return(colonists);
-            }
-
-            if (totalColonists > 0 && AutoArmMod.settings?.debugLogging == true)
-            {
-                AutoArmLogger.Debug(() => $"Pre-warmed skill caches for {totalColonists} colonists");
-            }
         }
 
         private static bool CategoryIsUnderRoot(ThingCategoryDef cat, ThingCategoryDef root)

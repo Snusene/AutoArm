@@ -45,16 +45,18 @@ namespace AutoArm
             listing.Begin(inRect);
 
             Text.Font = GameFont.Small;
-            var headerRect = listing.GetRect(Text.LineHeight);
-            var saveLineRect = new Rect(headerRect.x, headerRect.y, headerRect.width - 200f, headerRect.height);
-            using (new TextBlock(UIColors.WarningSoft))
-                Widgets.Label(saveLineRect, "AutoArm_SaveBeforeDebug".Translate());
+            var headerRect = listing.GetRect(24f);
+            using (new TextBlock(UIColors.Dim))
+            using (new TextBlock(TextAnchor.MiddleLeft))
+                Widgets.Label(new Rect(headerRect.x, headerRect.y, headerRect.width - 220f, headerRect.height), DebugPanel.Summary(Find.CurrentMap));
 
-            var checkboxRect = new Rect(headerRect.xMax - 170f, headerRect.y + 3f, 24f, 24f);
-            var checkboxLabelRect = new Rect(checkboxRect.xMax + 5f, headerRect.y + 3f, 140f, headerRect.height);
+            string logLabel = "AutoArm_EnableDebugLogging".Translate();
+            float logWidth = Text.CalcSize(logLabel).x;
+            var checkboxRect = new Rect(headerRect.xMax - 44f, headerRect.y, 24f, 24f);
+            using (new TextBlock(TextAnchor.MiddleRight))
+                Widgets.Label(new Rect(checkboxRect.x - logWidth - 8f, headerRect.y, logWidth + 4f, headerRect.height), logLabel);
             bool oldDebugLogging = AutoArmMod.settings.debugLogging;
             Widgets.Checkbox(checkboxRect.x, checkboxRect.y, ref AutoArmMod.settings.debugLogging, 24f);
-            Widgets.Label(checkboxLabelRect, "AutoArm_EnableDebugLogging".Translate());
             if (oldDebugLogging != AutoArmMod.settings.debugLogging)
             {
                 AutoArmLogger.Info($"Debug logging {(AutoArmMod.settings.debugLogging ? "enabled" : "disabled")}");

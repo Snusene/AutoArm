@@ -79,7 +79,7 @@ namespace AutoArm.Patches
                     }
                     else if (settings.respectWeaponBonds &&
                         ModsConfig.RoyaltyActive &&
-                        Components.IsPersonaBondedTo(newEq, ___pawn))
+                        EquipmentUtility.IsBondedTo(newEq, ___pawn))
                     {
                         ForcedWeapons.SetForced(___pawn, newEq, "auto-forced (bonded)");
                     }
@@ -115,47 +115,20 @@ namespace AutoArm.Patches
                                 Messages.Message("AutoArm_UpgradedWeapon".Translate(
                                     ___pawn.LabelShort.CapitalizeFirst(),
                                     previousWeaponLabel,
-                                    newEq.Label ?? newEq.def?.label ?? "new weapon"
+                                    ForcedWeaponLabelHelper.StripForcedSuffix(newEq.Label)
                                 ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
                             }
                             else
                             {
                                 Messages.Message("AutoArm_EquippedWeapon".Translate(
                                     ___pawn.LabelShort.CapitalizeFirst(),
-                                    newEq.Label ?? newEq.def?.label ?? "weapon"
+                                    ForcedWeaponLabelHelper.StripForcedSuffix(newEq.Label)
                                 ), new LookTargets(___pawn), MessageTypeDefOf.SilentInput, false);
                             }
                         }
 
                         AutoEquipState.Clear(curJob);
                         AutoEquipState.ClearPreviousWeapon(___pawn);
-
-                        if (SimpleSidearmsCompat.CanAutoEquipSidearms() &&
-                            curJob?.def != AutoArmDefOf.AutoArmSwapPrimary)
-                        {
-                            var lastDropped = DroppedItems.GetLastDropped(___pawn);
-                            if (lastDropped != null && lastDropped.def == newEq.def &&
-                                lastDropped.Position.InHorDistOf(___pawn.Position, 10f))
-                            {
-                                try
-                                {
-                                    if (SimpleSidearmsCompat.IsManagingPawn(___pawn))
-                                    {
-                                        SimpleSidearmsCompat.InformOfDroppedWeapon(___pawn, lastDropped);
-                                        SimpleSidearmsCompat.InformOfAddedPrimary(___pawn, newEq);
-
-                                        if (settings.debugLogging)
-                                        {
-                                            AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Updated SimpleSidearms memory: forgot {AutoArmLogger.GetWeaponLabelLower(lastDropped)}, added {AutoArmLogger.GetWeaponLabelLower(newEq)}");
-                                        }
-                                    }
-                                }
-                                catch (Exception e)
-                                {
-                                    AutoArmLogger.WarnFileOnly($"Failed to handle SimpleSidearms integration: {e.Message}");
-                                }
-                            }
-                        }
                     }
                     else if (settings.debugLogging && !TestRunner.IsRunningTests)
                     {
@@ -208,8 +181,6 @@ namespace AutoArm.Patches
                     resultingEq.SetForbidden(false, false);
                 }
 
-                bool isSameTypeUpgrade = DroppedItems.IsPendingSameTypeUpgrade(resultingEq);
-
                 if (ForcedWeapons.IsForced(___pawn, resultingEq))
                 {
                     ForcedWeaponState.MarkForcedWeaponDropped(___pawn, resultingEq);
@@ -220,35 +191,16 @@ namespace AutoArm.Patches
                     }
                 }
 
-                if (isSameTypeUpgrade)
+                var job = ___pawn.CurJob;
+                if (job == null || job.def != JobDefOf.Equip || !AutoEquipState.IsAutoEquip(job))
                 {
-                    DroppedItems.ClearPendingUpgrade(resultingEq);
-                    DroppedItems.MarkAsDropped(resultingEq, Constants.ExtendedDropCooldownTicks);
-                }
-                else
-                {
-                    bool isPlayerDrop = false;
+                    DroppedItems.MarkAsDropped(resultingEq, DroppedItems.DefaultIgnoreTicks);
 
-                    if (___pawn.CurJob == null)
+                    if (settings.debugLogging)
                     {
-                        isPlayerDrop = true;
-                    }
-                    else if (___pawn.CurJob?.def != JobDefOf.Equip || !AutoEquipState.IsAutoEquip(___pawn.CurJob))
-                    {
-                        isPlayerDrop = true;
-                    }
-
-                    if (isPlayerDrop)
-                    {
-                        DroppedItems.MarkAsDropped(resultingEq, DroppedItems.DefaultIgnoreTicks);
-
-                        if (settings.debugLogging)
-                        {
-                            AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Dropped {AutoArmLogger.GetWeaponLabelLower(resultingEq)}, applying {DroppedItems.DefaultIgnoreTicks} tick cooldown");
-                        }
+                        AutoArmLogger.Debug(() => $"[{___pawn.LabelShort}] Dropped {AutoArmLogger.GetWeaponLabelLower(resultingEq)}, applying {DroppedItems.DefaultIgnoreTicks} tick cooldown");
                     }
                 }
-
             }
             catch (Exception e)
             {

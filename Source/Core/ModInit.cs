@@ -42,7 +42,6 @@ namespace AutoArm
 
         private static void WireUpTickScheduler()
         {
-            TickScheduler.OnCooldownExpired = CooldownMetrics.OnCooldownExpiredEvent;
             TickScheduler.OnDroppedItemExpired = DroppedItems.OnItemExpiredEvent;
             TickScheduler.OnForcedWeaponGraceCheck = ForcedWeaponState.OnGraceCheckEvent;
             TickScheduler.OnSimpleSidearmsExpired = SimpleSidearmsCompat.OnValidationExpiredEvent;
@@ -53,7 +52,7 @@ namespace AutoArm
 
     internal static class ModInit
     {
-        public static bool IsLargeRaidActive => RaidChecker.ShouldSkipDuringRaid();
+        public static bool IsLargeRaidActive => RaidChecker.ShouldSkipDuringRaid(Find.CurrentMap);
     }
 
     [HarmonyPatch(typeof(Root_Play), "Start")]
@@ -690,86 +689,6 @@ namespace AutoArm
 
                 Scoring.PreCalcWeapons();
 
-                var activeOutfits = new HashSet<ApparelPolicy>();
-
-                if (Find.Maps != null)
-                {
-                    foreach (var map in Find.Maps)
-                    {
-                        if (map?.mapPawns?.FreeColonistsSpawned == null) continue;
-
-                        foreach (var pawn in map.mapPawns.FreeColonistsSpawned)
-                        {
-                            if (pawn?.outfits?.CurrentApparelPolicy != null)
-                            {
-                                activeOutfits.Add(pawn.outfits.CurrentApparelPolicy);
-                            }
-                        }
-                    }
-                }
-
-                if (activeOutfits.Count == 0)
-                {
-                    var allOutfits = UI.PolicyDBHelper.GetAllPolicies();
-                    if (allOutfits != null)
-                    {
-                        foreach (var outfit in allOutfits)
-                        {
-                            if (outfit != null)
-                            {
-                                activeOutfits.Add(outfit);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (activeOutfits.Count > 0)
-                {
-                    var weaponDefs = Validation.AllWeapons;
-                    int combinationsWarmed = 0;
-
-                    foreach (var outfit in activeOutfits)
-                    {
-                        if (outfit?.filter == null) continue;
-
-                        foreach (var weaponDef in weaponDefs)
-                        {
-                            if (weaponDef == null) continue;
-
-                            WeaponCache.PreWarmFilterCheck(weaponDef, outfit);
-                            combinationsWarmed++;
-                        }
-                    }
-
-                    AutoArmLogger.Debug(() => $"Pre-warmed {combinationsWarmed} outfit-weapon combinations for {activeOutfits.Count} active outfits");
-                }
-
-                if (Find.Maps != null)
-                {
-                    int colonistScoresWarmed = 0;
-
-                    foreach (var map in Find.Maps)
-                    {
-                        if (map?.mapPawns?.FreeColonistsSpawned != null)
-                        {
-                            foreach (var pawn in map.mapPawns.FreeColonistsSpawned)
-                            {
-                                if (pawn == null || pawn.Dead || pawn.Downed) continue;
-
-                                WeaponCache.PreWarmColonistScore(pawn, true);
-                                WeaponCache.PreWarmColonistScore(pawn, false);
-                                colonistScoresWarmed++;
-                            }
-                        }
-                    }
-
-                    if (AutoArmMod.settings?.debugLogging == true && colonistScoresWarmed > 0)
-                    {
-                        AutoArmLogger.Debug(() => $"Pre-warmed scores for {colonistScoresWarmed} colonists");
-                    }
-                }
-
                 AutoArmLogger.Debug(() => "Cache pre-warming complete");
             }
             catch (Exception e)
@@ -825,7 +744,7 @@ namespace AutoArm
             if (!BasicPawnValidation.IsValid(pawn))
                 return 0f;
 
-            if (RaidChecker.ShouldSkipDuringRaid())
+            if (RaidChecker.ShouldSkipDuringRaid(pawn.Map))
                 return 0f;
 
             if (!PawnValidation.CanConsiderWeapons(pawn))
@@ -852,44 +771,10 @@ namespace AutoArm
 
     internal static class RaidChecker
     {
-        private static bool isLargeRaidActive = false;
-        private static int lastCheckTick = 0;
-        private const int CheckInterval = 300;
-
-        public static bool ShouldSkipDuringRaid()
+        public static bool ShouldSkipDuringRaid(Map map)
         {
-            if (AutoArmMod.settings?.disableDuringRaids != true)
-                return false;
-
-            UpdateRaidStatus();
-            return isLargeRaidActive;
-        }
-
-        private static void UpdateRaidStatus()
-        {
-            int currentTick = Find.TickManager?.TicksGame ?? 0;
-            if (currentTick < lastCheckTick || currentTick - lastCheckTick > CheckInterval)
-            {
-                lastCheckTick = currentTick;
-                isLargeRaidActive = CheckForHighDanger();
-
-                if (AutoArmMod.settings?.debugLogging == true && isLargeRaidActive)
-                {
-                    AutoArmLogger.Debug(() => "High danger detected - throttling weapon checks");
-                }
-            }
-        }
-
-        private static bool CheckForHighDanger()
-        {
-            if (Find.Maps == null) return false;
-
-            foreach (var map in Find.Maps)
-            {
-                if (map.IsPlayerHome && map.dangerWatcher?.DangerRating == StoryDanger.High)
-                    return true;
-            }
-            return false;
+            return AutoArmMod.settings?.disableDuringRaids == true &&
+                   map?.dangerWatcher?.DangerRating == StoryDanger.High;
         }
     }
 

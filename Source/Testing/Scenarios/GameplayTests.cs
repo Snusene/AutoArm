@@ -3,11 +3,11 @@ using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Jobs;
 using AutoArm.Testing.Helpers;
+using HarmonyLib;
 using RimWorld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Verse;
 using Verse.AI;
 
@@ -34,41 +34,36 @@ namespace AutoArm.Testing.Scenarios
             if (testPawn == null)
                 return TestResult.Failure("Test setup failed");
 
-            var raidCheckerType = typeof(ModInit).Assembly.GetType("AutoArm.RaidChecker");
-            if (raidCheckerType == null)
-                return TestResult.Failure("RaidChecker type not found");
+            var watcher = testPawn.Map?.dangerWatcher;
+            var ratingField = AccessTools.Field(typeof(DangerWatcher), "dangerRatingInt");
+            var tickField = AccessTools.Field(typeof(DangerWatcher), "lastUpdateTick");
+            if (watcher == null || ratingField == null || tickField == null)
+                return TestResult.Failure("DangerWatcher fields not found");
 
-            var activeField = raidCheckerType.GetField("isLargeRaidActive", BindingFlags.NonPublic | BindingFlags.Static);
-            var tickField = raidCheckerType.GetField("lastCheckTick", BindingFlags.NonPublic | BindingFlags.Static);
-            if (activeField == null || tickField == null)
-                return TestResult.Failure("RaidChecker fields not found");
-
-            bool savedActive = (bool)activeField.GetValue(null);
-            int savedTick = (int)tickField.GetValue(null);
-            int futureTick = (Find.TickManager?.TicksGame ?? 0) + 10000;
+            var savedRating = ratingField.GetValue(watcher);
+            int savedTick = (int)tickField.GetValue(watcher);
+            int futureTick = Find.TickManager.TicksGame + 10000;
 
             try
             {
+                ratingField.SetValue(watcher, StoryDanger.High);
+                tickField.SetValue(watcher, futureTick);
+
                 AutoArmMod.settings.disableDuringRaids = false;
-                activeField.SetValue(null, true);
-                tickField.SetValue(null, futureTick);
-                if (ModInit.IsLargeRaidActive)
-                    return TestResult.Failure("IsLargeRaidActive true when disableDuringRaids=false");
+                if (RaidChecker.ShouldSkipDuringRaid(testPawn.Map))
+                    return TestResult.Failure("Raid pause active when disableDuringRaids=false");
 
                 AutoArmMod.settings.disableDuringRaids = true;
-                activeField.SetValue(null, true);
-                tickField.SetValue(null, futureTick);
-                if (!ModInit.IsLargeRaidActive)
-                    return TestResult.Failure("IsLargeRaidActive false when forced true");
+                if (!RaidChecker.ShouldSkipDuringRaid(testPawn.Map))
+                    return TestResult.Failure("Raid pause inactive on a high danger map");
 
                 float priorityDuringRaid = new WeaponStatusEvaluator().EvaluatePriority(testPawn);
                 if (priorityDuringRaid > 0f)
                     return TestResult.Failure($"EvaluatePriority returned {priorityDuringRaid} during raid, expected 0");
 
-                activeField.SetValue(null, false);
-                tickField.SetValue(null, futureTick);
-                if (ModInit.IsLargeRaidActive)
-                    return TestResult.Failure("IsLargeRaidActive true when forced false");
+                ratingField.SetValue(watcher, StoryDanger.None);
+                if (RaidChecker.ShouldSkipDuringRaid(testPawn.Map))
+                    return TestResult.Failure("Raid pause active on a calm map");
 
                 float priorityCalm = new WeaponStatusEvaluator().EvaluatePriority(testPawn);
                 if (priorityCalm <= 0f)
@@ -78,8 +73,8 @@ namespace AutoArm.Testing.Scenarios
             }
             finally
             {
-                activeField.SetValue(null, savedActive);
-                tickField.SetValue(null, savedTick);
+                ratingField.SetValue(watcher, savedRating);
+                tickField.SetValue(watcher, savedTick);
             }
         }
 

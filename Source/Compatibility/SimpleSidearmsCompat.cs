@@ -34,6 +34,8 @@ namespace AutoArm.Compatibility
 
         private static PropertyInfo _rememberedWeaponsProp;
 
+        private static AccessTools.FieldRef<object, bool> _forcedUnarmedRef;
+
         private static PropertyInfo _ssSettingsActivePresetProp;
 
         private static PropertyInfo _ssModSettingsStaticProp;
@@ -74,7 +76,6 @@ namespace AutoArm.Compatibility
         private static readonly Dictionary<int, WeaponCheckCache> _pawnCaches = new Dictionary<int, WeaponCheckCache>();
 
         // TickScheduler lookups
-        private static readonly Dictionary<int, Pawn> idToPawnLookup = new Dictionary<int, Pawn>();
         private static readonly Dictionary<int, PairKey> hashToPairLookup = new Dictionary<int, PairKey>();
 
         private static readonly Dictionary<int, int> _lastUpgradeCheckTick = new Dictionary<int, int>();
@@ -94,6 +95,8 @@ namespace AutoArm.Compatibility
             public int LastCleanupTick = 0;
             public int CachedWeaponCount = -1;
             public int CachedWeaponCountTick = -1;
+            public readonly List<PairKey> Remembered = new List<PairKey>();
+            public int RememberedTick = -1;
         }
 
         private struct PairKey : IEquatable<PairKey>
@@ -236,6 +239,11 @@ namespace AutoArm.Compatibility
                 _informAddedPrimaryMethod = AccessTools.Method(_compSidearmMemoryType, "InformOfAddedPrimary",
                     new Type[] { typeof(Thing) });
                 _rememberedWeaponsProp = AccessTools.Property(_compSidearmMemoryType, "RememberedWeapons");
+
+                if (AccessTools.Field(_compSidearmMemoryType, "forcedUnarmedEx") != null)
+                    _forcedUnarmedRef = AccessTools.FieldRefAccess<bool>(_compSidearmMemoryType, "forcedUnarmedEx");
+                else
+                    AutoArmLogger.Warn("SimpleSidearms forcedUnarmedEx field not found - its unarmed setting will be ignored");
 
                 if (_ssModType != null)
                 {
@@ -495,6 +503,141 @@ namespace AutoArm.Compatibility
         }
 
 
+        internal enum SameDef { None, Blocked, Swap }
+
+        internal static SameDef SameDefSwap(Pawn pawn, ThingWithComps weapon, out ThingWithComps target)
+        {
+            target = null;
+            var inv = pawn.inventory?.innerContainer;
+            if (!IsReady || inv == null)
+                return SameDef.None;
+
+            bool upgrades = CanUpgradeSidearms();
+            bool forcedUpgrades = AutoArmMod.settings?.allowForcedWeaponUpgrades == true;
+            bool carried = false;
+            float targetScore = float.MaxValue;
+
+            for (int i = 0; i < inv.Count; i++)
+            {
+                if (!(inv[i] is ThingWithComps w) || w == weapon || w.def != weapon.def)
+                    continue;
+                carried = true;
+                if (!IsOwnSidearm(pawn, w))
+                    continue;
+                if (ForcedWeapons.IsForced(pawn, w) ? !forcedUpgrades : !upgrades)
+                    continue;
+
+                float s = CalculateWeaponScore(pawn, w);
+                if (s < targetScore)
+                {
+                    targetScore = s;
+                    target = w;
+                }
+            }
+
+            if (!carried)
+                return SameDef.None;
+            if (target == null)
+                return SameDef.Blocked;
+
+            if (!Caching.Components.IsUnique(weapon))
+            {
+                target.TryGetQuality(out var oldQuality);
+                weapon.TryGetQuality(out var newQuality);
+                if (newQuality < oldQuality)
+                {
+                    target = null;
+                    return SameDef.Blocked;
+                }
+            }
+
+            float threshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Definitions.Constants.WeaponUpgradeThreshold;
+            if (ForcedWeapons.IsForced(pawn, target))
+                threshold = Math.Min(threshold, 1.01f);
+
+            if (CalculateWeaponScore(pawn, weapon) <= targetScore * threshold)
+            {
+                target = null;
+                return SameDef.Blocked;
+            }
+
+            return SameDef.Swap;
+        }
+
+        public static bool IsOwnSidearm(Pawn pawn, ThingWithComps weapon)
+        {
+            return ForcedWeapons.IsForced(pawn, weapon) || IsRememberedSidearm(pawn, weapon);
+        }
+
+        public static bool IsRememberedSidearm(Pawn pawn, ThingWithComps weapon)
+        {
+            if (!IsLoaded || pawn == null || weapon == null) return false;
+            var remembered = RememberedPairs(pawn);
+            if (remembered == null)
+                return false;
+
+            var key = new PairKey(weapon.def, weapon.Stuff);
+            int count = 0;
+            for (int i = 0; i < remembered.Count; i++)
+            {
+                if (remembered[i].Equals(key))
+                    count++;
+            }
+
+            var primary = pawn.equipment?.Primary;
+            if (primary != null && primary != weapon && primary.def == weapon.def && primary.Stuff == weapon.Stuff)
+                count--;
+            return count > 0;
+        }
+
+        private static List<PairKey> RememberedPairs(Pawn pawn)
+        {
+            Initialize();
+            if (_reflectionFailed || _rememberedWeaponsProp == null || _pairThingField == null)
+                return null;
+
+            var cache = GetOrCreateCache(pawn);
+            int tick = Find.TickManager.TicksGame;
+            if (cache.RememberedTick != tick)
+            {
+                cache.Remembered.Clear();
+                cache.RememberedTick = tick;
+                var memory = GetMemoryComp(pawn);
+                if (memory != null && _rememberedWeaponsProp.GetValue(memory) is System.Collections.IEnumerable remembered)
+                {
+                    foreach (var pair in remembered)
+                    {
+                        if (pair == null) continue;
+                        cache.Remembered.Add(new PairKey(_pairThingField.GetValue(pair) as ThingDef, _pairStuffField?.GetValue(pair) as ThingDef));
+                    }
+                }
+            }
+            return cache.Remembered;
+        }
+
+        public static bool WantsUnarmed(Pawn pawn)
+        {
+            if (!IsLoaded || pawn == null) return false;
+            Initialize();
+            if (_reflectionFailed || _forcedUnarmedRef == null || !IsSimpleSidearmsActive())
+                return false;
+
+            var memory = GetMemoryComp(pawn);
+            return memory != null && _forcedUnarmedRef(memory);
+        }
+
+        internal static void SetForcedUnarmed(Pawn pawn, bool value)
+        {
+            if (!IsLoaded || pawn == null) return;
+            Initialize();
+            if (_reflectionFailed || _forcedUnarmedRef == null)
+                return;
+
+            var memory = GetMemoryComp(pawn);
+            if (memory != null)
+                _forcedUnarmedRef(memory) = value;
+        }
+
         private static string GetSimpleSidearmsActivePreset()
         {
             try
@@ -628,7 +771,6 @@ namespace AutoArm.Compatibility
             }
 
             // Track lookups
-            idToPawnLookup[pawnId] = pawn;
             hashToPairLookup[pairHash] = key;
             TickScheduler.Schedule(expireTick, TickScheduler.EventType.SimpleSidearmsValidation, pawnId, pairHash);
 
@@ -786,57 +928,26 @@ namespace AutoArm.Compatibility
 
             if (AutoArmMod.settings?.autoEquipSidearms == true)
             {
-                var inv = pawn.inventory?.innerContainer;
-                if (inv != null)
+                switch (SameDefSwap(pawn, weapon, out var target))
                 {
-                    ThingWithComps worstSameDef = null;
-                    float worstScore = float.MaxValue;
-                    int sidearmCount = 0;
-                    foreach (var thing in inv)
-                    {
-                        var w = thing as ThingWithComps;
-                        if (w == null || !Validation.IsWeapon(w.def)) continue;
-                        sidearmCount++;
-                        if (w.def != weapon.def) continue;
-
-                        float s = CalculateWeaponScore(pawn, w);
-                        if (s < worstScore)
-                        {
-                            worstScore = s;
-                            worstSameDef = w;
-                        }
-                    }
-
-                    if (worstSameDef != null)
-                    {
-                        if (AutoArmMod.settings?.upgradeEquippedWeapons == false)
-                            return null;
-
-                        float newScore = CalculateWeaponScore(pawn, weapon);
-
-                        if (newScore > worstScore)
-                        {
-                            string swapReason;
-                            if (!CanUseSidearmForSwap(weapon, worstSameDef, pawn, out swapReason))
-                            {
-                                AutoArmLogger.Debug(() => $"[SimpleSidearms] Same-def swap rejected: {swapReason}");
-                                return null;
-                            }
-                            AutoArmLogger.Debug(() => $"[SimpleSidearms] Same-def sidearm improvement: from {worstSameDef.Label} ({worstScore:F1}) to {weapon.Label} ({newScore:F1}), swapping");
-                            return CreateSidearmUpgradeJob(pawn, weapon, worstSameDef);
-                        }
-                        else
-                        {
-                            AutoArmLogger.Debug(() => $"[SimpleSidearms] Duplicate sidearm skipped (not better): existing {worstSameDef.Label} ({worstScore:F1}) vs new {weapon.Label} ({newScore:F1})");
-                            return null;
-                        }
-                    }
-
-                    if (!IsReady)
-                    {
-                        AutoArmLogger.Debug(() => "[SimpleSidearms] Sidearm add blocked - SS reflection unavailable");
+                    case SameDef.Blocked:
+                        AutoArmLogger.Debug(() => $"[SimpleSidearms] Skipping {weapon.Label} - same type already carried, no worthwhile swap");
                         return null;
-                    }
+                    case SameDef.Swap:
+                        string swapReason;
+                        if (!CanUseSidearmForSwap(weapon, target, pawn, out swapReason))
+                        {
+                            AutoArmLogger.Debug(() => $"[SimpleSidearms] Same-def swap rejected: {swapReason}");
+                            return null;
+                        }
+                        AutoArmLogger.Debug(() => $"[SimpleSidearms] Same-def sidearm improvement: from {target.Label} to {weapon.Label}, swapping");
+                        return CreateSidearmUpgradeJob(pawn, weapon, target);
+                }
+
+                if (!IsReady)
+                {
+                    AutoArmLogger.Debug(() => "[SimpleSidearms] Sidearm add blocked - SS reflection unavailable");
+                    return null;
                 }
 
                 if (currentPrimary != null && currentPrimary.def == weapon.def)
@@ -867,30 +978,16 @@ namespace AutoArm.Compatibility
         public static bool IsSidearm(Pawn pawn, ThingWithComps weapon)
         {
             if (!IsLoaded || pawn == null || weapon == null) return false;
-            Initialize();
-            if (_reflectionFailed) return false;
+            var remembered = RememberedPairs(pawn);
+            if (remembered == null)
+                return false;
 
-            var memory = GetMemoryComp(pawn);
-            if (memory == null) return false;
-
-            var rememberedWeapons = _rememberedWeaponsProp?.GetValue(memory) as System.Collections.IEnumerable;
-            if (rememberedWeapons != null)
+            var key = new PairKey(weapon.def, weapon.Stuff);
+            for (int i = 0; i < remembered.Count; i++)
             {
-                foreach (var item in rememberedWeapons)
-                {
-                    if (item != null)
-                    {
-                        if (_pairThingField != null)
-                        {
-                            var thingDef = _pairThingField.GetValue(item) as ThingDef;
-                            var stuffDef = _pairStuffField?.GetValue(item) as ThingDef;
-                            if (thingDef == weapon.def && stuffDef == weapon.Stuff)
-                                return true;
-                        }
-                    }
-                }
+                if (remembered[i].Equals(key))
+                    return true;
             }
-
             return false;
         }
 
@@ -1017,7 +1114,6 @@ namespace AutoArm.Compatibility
         {
             _pawnCaches.Clear();
             _lastUpgradeCheckTick.Clear();
-            idToPawnLookup.Clear();
             hashToPairLookup.Clear();
             _isActiveCacheExpiry = 0;
             AutoArmLogger.Debug(() => "[SimpleSidearms] Caches cleared");
@@ -1190,6 +1286,7 @@ namespace AutoArm.Compatibility
 
                 cache.ValidationCache.Clear();
                 cache.LastCleanupTick = Find.TickManager.TicksGame;
+                cache.RememberedTick = -1;
             }
             _lastUpgradeCheckTick[pawnId] = 0;
         }
@@ -1206,7 +1303,6 @@ namespace AutoArm.Compatibility
                 }
             }
             _lastUpgradeCheckTick.Clear();
-            idToPawnLookup.Clear();
             hashToPairLookup.Clear();
             _isActiveCacheExpiry = 0;
             AutoArmLogger.Debug(() => "[SimpleSidearms] Caches invalidated");
@@ -1353,7 +1449,7 @@ namespace AutoArm.Compatibility
             foreach (Thing thing in pawn.inventory.innerContainer)
             {
                 var weapon = thing as ThingWithComps;
-                if (weapon == null || !Validation.IsWeapon(weapon.def))
+                if (weapon == null || !Validation.IsWeapon(weapon.def) || !IsOwnSidearm(pawn, weapon))
                     continue;
 
                 bool isForced = ForcedWeapons.IsForced(pawn, weapon);
@@ -1502,7 +1598,6 @@ namespace AutoArm.Compatibility
         {
             _pawnCaches.Clear();
             _lastUpgradeCheckTick.Clear();
-            idToPawnLookup.Clear();
             hashToPairLookup.Clear();
             _isActiveCacheExpiry = 0;
         }
@@ -1576,15 +1671,15 @@ namespace AutoArm.Compatibility
                 {
                     Messages.Message("AutoArm_UpgradedSidearm".Translate(
                         pawn.LabelShort.CapitalizeFirst(),
-                        existingSameDef.Label ?? existingSameDef.def?.label ?? "old sidearm",
-                        weaponWithComps.Label ?? weaponWithComps.def?.label ?? "new sidearm"
+                        ForcedWeaponLabelHelper.StripForcedSuffix(existingSameDef.Label),
+                        ForcedWeaponLabelHelper.StripForcedSuffix(weaponWithComps.Label)
                     ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
                 }
                 else
                 {
                     Messages.Message("AutoArm_EquippedSidearm".Translate(
                         pawn.LabelShort.CapitalizeFirst(),
-                        weaponWithComps.Label ?? weaponWithComps.def?.label ?? "sidearm"
+                        ForcedWeaponLabelHelper.StripForcedSuffix(weaponWithComps.Label)
                     ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
                 }
             }

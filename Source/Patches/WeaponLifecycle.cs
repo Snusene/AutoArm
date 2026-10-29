@@ -118,12 +118,6 @@ namespace AutoArm
                 if (AutoArmMod.settings?.modEnabled != true)
                     return;
 
-                if (__instance is Pawn pawn)
-                {
-                    CooldownMetrics.OnPawnRemoved(pawn);
-                    return;
-                }
-
                 if (!__instance.def.IsWeapon)
                     return;
 

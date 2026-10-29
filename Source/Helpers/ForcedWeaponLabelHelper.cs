@@ -16,6 +16,12 @@ namespace AutoArm.Helpers
 
         private static HashSet<int> cachedPawnWeaponIds = new HashSet<int>();
 
+        internal static void ResetFrame()
+        {
+            lastUICheckFrame = -1;
+            lastForcedWeaponCheckFrame = -1;
+        }
+
         public static void ResetFieldChecking()
         {
             cachedPawnWeaponIds.Clear();

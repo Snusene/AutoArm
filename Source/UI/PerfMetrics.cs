@@ -13,7 +13,6 @@ namespace AutoArm
 
         public static long PropertyCacheHits, PropertyCacheMisses;
         public static long ValidationCacheHits, ValidationCacheMisses;
-        public static long SkillCacheHits, SkillCacheMisses;
         public static long EligibilityCacheHits, EligibilityCacheMisses;
 
         public static long WeaponsSearched;
@@ -68,8 +67,6 @@ namespace AutoArm
         public static void ReportPropertyCacheMiss() { if (ShouldCollect()) PropertyCacheMisses++; }
         public static void ReportValidationCacheHit() { if (ShouldCollect()) ValidationCacheHits++; }
         public static void ReportValidationCacheMiss() { if (ShouldCollect()) ValidationCacheMisses++; }
-        public static void ReportSkillCacheHit() { if (ShouldCollect()) SkillCacheHits++; }
-        public static void ReportSkillCacheMiss() { if (ShouldCollect()) SkillCacheMisses++; }
         public static void ReportEligibilityCacheHit() { if (ShouldCollect()) EligibilityCacheHits++; }
         public static void ReportEligibilityCacheMiss() { if (ShouldCollect()) EligibilityCacheMisses++; }
 
@@ -105,16 +102,6 @@ namespace AutoArm
         public static void ReportCacheStats(int size)
         {
             if (ShouldCollect()) CacheSize = size;
-        }
-
-        public static void StartTiming()
-        {
-            if (WindowOpen) UnityEngine.Profiling.Profiler.BeginSample("AutoArm.JobGiver");
-        }
-
-        public static void EndTiming()
-        {
-            if (WindowOpen) UnityEngine.Profiling.Profiler.EndSample();
         }
 
         public static void UpdateTps()
@@ -252,7 +239,6 @@ namespace AutoArm
 
             PropertyCacheHits = PropertyCacheMisses = 0;
             ValidationCacheHits = ValidationCacheMisses = 0;
-            SkillCacheHits = SkillCacheMisses = 0;
             EligibilityCacheHits = EligibilityCacheMisses = 0;
         }
 

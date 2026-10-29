@@ -14,8 +14,6 @@
 			<li>AutoArm.Patches.Pawn_EquipmentTracker_DestroyEquipment_Patch</li>
 			<li>AutoArm.Pawn_InventoryTracker_Notify_ItemRemoved_Patch</li>
 			<li>AutoArm.Pawn_InventoryTracker_TryAddItemNotForSale_Patch</li>
-			<li>AutoArm.Patches.OutfitDatabase_MakeNewOutfit_Patch</li>
-			<li>AutoArm.Patches.OutfitDatabase_TryDelete_Patch</li>
 			<li>AutoArm.Patches.SettingsDialogResize_Patch</li>
 			<li>AutoArm.Patches.Dialog_ModSettings_PreClose_Patch</li>
 			<li>AutoArm.UI.FloatMenuOptionProvider_Equip_Patch</li>
@@ -28,7 +26,6 @@
 			<li>AutoArm.Caching.WeaponCache+AutoArmWeaponMapComponent:MapComponentTick</li>
 			<li>AutoArm.ThinkNode_ConditionalWeaponStatus:GetPriority</li>
 			<li>AutoArm.Jobs.JobGiver_PickUpBetterWeapon:TryGiveJob</li>
-			<li>AutoArm.Thing_LabelPatches:Prefix</li>
 			<li>AutoArm.Thing_LabelPatches:Postfix</li>
 			<li>AutoArm.Patches.PawnValidationCachePatches:SetFaction_Postfix</li>
 			<li>AutoArm.Patches.PawnValidationCachePatches:SetGuestStatus_Postfix</li>

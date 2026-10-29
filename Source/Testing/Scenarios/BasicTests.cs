@@ -59,7 +59,7 @@ namespace AutoArm.Testing.Scenarios
 
                         WeaponCache.AddWeaponToCache(testWeapon);
 
-                        var cachedWeapons = WeaponCache.GetAllWeapons(map).ToList();
+                        var cachedWeapons = TestHelpers.CachedWeapons(map).ToList();
                         if (!cachedWeapons.Contains(testWeapon))
                         {
                             AutoArmLogger.Warn($"[TEST] UnarmedPawnTest: Created weapon not found in cache! Cache size: {cachedWeapons.Count}");
@@ -267,7 +267,7 @@ namespace AutoArm.Testing.Scenarios
                     WeaponCache.EnsureCacheExists(map);
                     WeaponCache.ValidateCacheIntegrity(map);
 
-                    var nearbyWeapons = WeaponCache.GetAllWeapons(map);
+                    var nearbyWeapons = TestHelpers.CachedWeapons(map);
                     var nearbyWeaponsList = nearbyWeapons.ToList();
                     if (nearbyWeaponsList.Count > 1)
                     {
@@ -348,9 +348,9 @@ namespace AutoArm.Testing.Scenarios
             if (job == null)
             {
                 if (betterWeapon.Destroyed || !betterWeapon.Spawned)
-                    return TestResult.Skip("Better weapon was taken by a live colonist during the test");
+                    return TestResult.Failure("Better weapon despawned before a job was given");
                 if (betterWeapon.Map?.reservationManager?.IsReservedByAnyoneOf(betterWeapon, Faction.OfPlayer) == true)
-                    return TestResult.Skip("Better weapon is reserved by a live colonist");
+                    return TestResult.Failure("Better weapon reserved although no tick ran");
 
                 string pawnReason;
                 bool isValidPawn = IsValidPawn(testPawn, out pawnReason);

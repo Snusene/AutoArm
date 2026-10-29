@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
+using Verse.AI;
 
 namespace AutoArm.Testing
 {
@@ -17,8 +18,6 @@ namespace AutoArm.Testing
             public List<TraitDef> Traits = new List<TraitDef>();
             public Dictionary<SkillDef, int> Skills = new Dictionary<SkillDef, int>();
             public PawnKindDef Kind = PawnKindDefOf.Colonist;
-            public bool MakeNoble = false;
-            public bool Conceited = false;
             public int? BiologicalAge = null;
             public bool EnsureViolenceCapable = true;
             public IntVec3? SpawnPosition = null;
@@ -100,11 +99,6 @@ namespace AutoArm.Testing
                             SetSkillLevel(skill, kvp.Value);
                         }
                     }
-                }
-
-                if (config.MakeNoble && ModsConfig.RoyaltyActive)
-                {
-                    ApplyNobility(pawn, config.Conceited);
                 }
 
                 IntVec3 spawnPos = FindSafeSpawnPosition(map, config.SpawnPosition ?? map.Center);
@@ -271,46 +265,6 @@ namespace AutoArm.Testing
             }
         }
 
-        private static void ApplyNobility(Pawn pawn, bool conceited)
-        {
-            if (pawn?.royalty == null) return;
-
-            try
-            {
-                var empireFaction = Find.FactionManager.FirstFactionOfDef(FactionDefOf.Empire);
-                if (empireFaction == null) return;
-
-                RoyalTitleDef titleDef = null;
-
-                if (conceited)
-                {
-                    var royalTitleDefType = typeof(RoyalTitleDef);
-                    var conceitedField = royalTitleDefType.GetField("conceited", BindingFlags.Public | BindingFlags.Instance);
-
-                    if (conceitedField != null)
-                    {
-                        titleDef = DefDatabase<RoyalTitleDef>.AllDefs
-                            .Where(t => t.seniority > 100)
-                            .FirstOrDefault(t => conceitedField.GetValue(t) is bool b && b);
-                    }
-                }
-
-                if (titleDef == null)
-                {
-                    titleDef = DefDatabase<RoyalTitleDef>.GetNamedSilentFail("Count") ??
-                              DefDatabase<RoyalTitleDef>.AllDefs.FirstOrDefault(t => t.seniority > 100);
-                }
-
-                if (titleDef != null)
-                {
-                    pawn.royalty.SetTitle(empireFaction, titleDef, false);
-                }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.Warn($"[TEST] Error applying nobility to {pawn.Name}", e);
-            }
-        }
 
         private static IntVec3 FindSafeSpawnPosition(Map map, IntVec3 preferredPos)
         {
@@ -562,6 +516,13 @@ namespace AutoArm.Testing
             }
         }
 
+        public static List<ThingWithComps> CachedWeapons(Map map)
+        {
+            var weapons = new List<ThingWithComps>();
+            WeaponCache.Collect(map, weapons);
+            return weapons;
+        }
+
         public static void SafeDestroyWeapon(ThingWithComps weapon)
         {
             AutoArm.Testing.Helpers.CleanupHelper.DestroyWeapon(weapon);
@@ -594,6 +555,170 @@ namespace AutoArm.Testing
                 SafeDestroyPawn(pawn);
             }
             pawns.Clear();
+        }
+    }
+
+    internal static class Sim
+    {
+        public static void Tick(int ticks)
+        {
+            var tickManager = Find.TickManager;
+            for (int i = 0; i < ticks; i++)
+                tickManager.DoSingleTick();
+        }
+
+        public static bool TickUntil(Func<bool> done, int maxTicks)
+        {
+            var tickManager = Find.TickManager;
+            for (int i = 0; i < maxTicks; i++)
+            {
+                if (done())
+                    return true;
+                tickManager.DoSingleTick();
+            }
+            return done();
+        }
+
+        public static bool RunJob(Pawn pawn, Job job, int maxTicks = 2500)
+        {
+            int id = job.loadID;
+            pawn.jobs.StartJob(job, JobCondition.InterruptForced);
+            return TickUntil(() => pawn.CurJob == null || pawn.CurJob.loadID != id, maxTicks);
+        }
+
+        public static void Idle(Pawn pawn)
+        {
+            pawn.jobs?.StopAll();
+            if (pawn.workSettings != null && pawn.workSettings.EverWork)
+                pawn.workSettings.DisableAll();
+            if (pawn.timetable != null)
+            {
+                for (int hour = 0; hour < 24; hour++)
+                    pawn.timetable.SetAssignment(hour, TimeAssignmentDefOf.Anything);
+            }
+            var needs = pawn.needs;
+            if (needs?.food != null) needs.food.CurLevelPercentage = 1f;
+            if (needs?.rest != null) needs.rest.CurLevelPercentage = 1f;
+            if (needs?.joy != null) needs.joy.CurLevelPercentage = 1f;
+        }
+    }
+
+    internal sealed class SimScope : IDisposable
+    {
+        private readonly List<Pawn> drafted = new List<Pawn>();
+        private readonly bool wasRunning;
+        private readonly bool wasTestMode;
+
+        public SimScope(Map map, params Pawn[] actors)
+        {
+            foreach (var colonist in map.mapPawns.FreeColonistsSpawned.ToList())
+            {
+                if (actors.Contains(colonist))
+                {
+                    Sim.Idle(colonist);
+                    continue;
+                }
+                if (colonist.drafter != null && !colonist.Drafted && !colonist.Downed)
+                {
+                    colonist.drafter.Drafted = true;
+                    drafted.Add(colonist);
+                }
+            }
+
+            wasRunning = TestRunner.IsRunningTests;
+            wasTestMode = Jobs.JobGiver_PickUpBetterWeapon.TestModeEnabled;
+            Jobs.JobGiver_PickUpBetterWeapon.EnableTestMode(false);
+            TestRunner.IsRunningTests = false;
+        }
+
+        public void Dispose()
+        {
+            TestRunner.IsRunningTests = wasRunning;
+            Jobs.JobGiver_PickUpBetterWeapon.EnableTestMode(wasTestMode);
+            foreach (var colonist in drafted)
+            {
+                if (colonist.Spawned && colonist.drafter != null)
+                    colonist.drafter.Drafted = false;
+            }
+        }
+    }
+}
+
+namespace AutoArm.Testing
+{
+    internal static class IdeoTestHelper
+    {
+        private static readonly HarmonyLib.AccessTools.FieldRef<RimWorld.Precept_Weapon, HashSet<ThingDef>> despisedCache =
+            HarmonyLib.AccessTools.FieldRefAccess<RimWorld.Precept_Weapon, HashSet<ThingDef>>("despisedWeaponsCached");
+
+        private static readonly HarmonyLib.AccessTools.FieldRef<RimWorld.Precept_Weapon, HashSet<ThingDef>> nobleCache =
+            HarmonyLib.AccessTools.FieldRefAccess<RimWorld.Precept_Weapon, HashSet<ThingDef>>("nobleWeaponsCached");
+
+        public static void SetDespised(RimWorld.Precept_Weapon precept, WeaponClassDef weaponClass)
+        {
+            precept.despised = weaponClass;
+            despisedCache(precept) = null;
+        }
+
+        public static void SetNoble(RimWorld.Precept_Weapon precept, WeaponClassDef weaponClass)
+        {
+            precept.noble = weaponClass;
+            nobleCache(precept) = null;
+        }
+    }
+
+    internal static class SidearmLimits
+    {
+        private static object Settings()
+        {
+            if (!AutoArm.Compatibility.SimpleSidearmsCompat.IsLoaded)
+                return null;
+            var mod = HarmonyLib.AccessTools.TypeByName("PeteTimesSix.SimpleSidearms.SimpleSidearms");
+            return mod == null ? null : HarmonyLib.AccessTools.Property(mod, "Settings")?.GetValue(null, null);
+        }
+
+        public static List<(object settings, FieldInfo field, object value)> Set(params (string name, int value)[] values)
+        {
+            var changed = new List<(object, FieldInfo, object)>();
+            var settings = Settings();
+            if (settings == null)
+                return changed;
+            foreach (var (name, value) in values)
+            {
+                var field = settings.GetType().GetField(name, BindingFlags.Public | BindingFlags.Instance);
+                if (field == null)
+                    continue;
+                changed.Add((settings, field, field.GetValue(settings)));
+                field.SetValue(settings, field.FieldType.IsEnum ? Enum.ToObject(field.FieldType, value) : (object)value);
+            }
+            AutoArm.Compatibility.SimpleSidearmsCompat.InvalidateAllCaches();
+            return changed;
+        }
+
+        public static List<(object settings, FieldInfo field, object value)> Lift()
+        {
+            var lifted = new List<(object, FieldInfo, object)>();
+            var settings = Settings();
+            if (settings == null)
+                return lifted;
+            foreach (var field in settings.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!field.FieldType.IsEnum || !field.Name.StartsWith("LimitMode"))
+                    continue;
+                lifted.Add((settings, field, field.GetValue(settings)));
+                field.SetValue(settings, Enum.ToObject(field.FieldType, 0));
+            }
+            AutoArm.Compatibility.SimpleSidearmsCompat.InvalidateAllCaches();
+            return lifted;
+        }
+
+        public static void Restore(List<(object settings, FieldInfo field, object value)> lifted)
+        {
+            if (lifted.Count == 0)
+                return;
+            foreach (var (settings, field, value) in lifted)
+                field.SetValue(settings, value);
+            AutoArm.Compatibility.SimpleSidearmsCompat.InvalidateAllCaches();
         }
     }
 }

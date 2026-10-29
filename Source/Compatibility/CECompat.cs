@@ -28,6 +28,15 @@ namespace AutoArm
         private static FieldInfo _settingsField;
         private static PropertyInfo enableAmmoSystemProperty;
 
+        private static Type projectileCEType;
+        private static FieldInfo pelletCountField;
+        private static FieldInfo sharpPenField;
+        private static FieldInfo reloadOneAtATimeField;
+        private static StatDef sightsStat;
+        private static StatDef magazineStat;
+        private static StatDef reloadStat;
+        private static StatDef burstStat;
+
         private static readonly Dictionary<ThingDef, List<ThingDef>> weaponAmmoCache = new Dictionary<ThingDef, List<ThingDef>>();
 
         private static readonly Dictionary<Type, FieldInfo> ammoTypesFieldCache = new Dictionary<Type, FieldInfo>();
@@ -89,12 +98,28 @@ namespace AutoArm
 
                 AutoArmLogger.Debug(() => $"[CombatExtended] Found {ceTypes.Count} types");
 
+                projectileCEType = ceTypes.FirstOrDefault(t => t.Name == "ProjectilePropertiesCE");
+                if (projectileCEType != null)
+                {
+                    pelletCountField = AccessTools.Field(projectileCEType, "pelletCount");
+                    sharpPenField = AccessTools.Field(projectileCEType, "armorPenetrationSharp");
+                }
+                if (pelletCountField == null || sharpPenField == null)
+                    AutoArmLogger.Warn("[CombatExtended] Could not find ProjectilePropertiesCE fields, scoring uses vanilla damage and penetration");
+
+                sightsStat = DefDatabase<StatDef>.GetNamedSilentFail("SightsEfficiency");
+                magazineStat = DefDatabase<StatDef>.GetNamedSilentFail("MagazineCapacity");
+                reloadStat = DefDatabase<StatDef>.GetNamedSilentFail("ReloadTime");
+                burstStat = DefDatabase<StatDef>.GetNamedSilentFail("BurstShotCount");
+
                 compPropertiesAmmoUserType = ceTypes.FirstOrDefault(t => t.Name == "CompProperties_AmmoUser");
                 if (compPropertiesAmmoUserType == null)
                 {
                     AutoArmLogger.Warn("[CombatExtended] Could not find CompProperties_AmmoUser type");
                     return;
                 }
+
+                reloadOneAtATimeField = AccessTools.Field(compPropertiesAmmoUserType, "reloadOneAtATime");
 
                 ammoLinkType = ceTypes.FirstOrDefault(t => t.Name == "AmmoLink");
                 if (ammoLinkType == null)
@@ -138,6 +163,56 @@ namespace AutoArm
             {
                 AutoArmLogger.ErrorUI(e, "CECompat", "Initialization");
             }
+        }
+
+        public static int Pellets(ProjectileProperties proj)
+        {
+            EnsureInitialized();
+            if (pelletCountField == null || !projectileCEType.IsInstanceOfType(proj))
+                return 1;
+            return Math.Max(1, (int)pelletCountField.GetValue(proj));
+        }
+
+        public static bool TrySharpPen(ProjectileProperties proj, out float pen)
+        {
+            EnsureInitialized();
+            pen = 0f;
+            if (sharpPenField == null || !projectileCEType.IsInstanceOfType(proj))
+                return false;
+            pen = (float)sharpPenField.GetValue(proj);
+            return true;
+        }
+
+        public static float Sights(ThingWithComps weapon)
+        {
+            EnsureInitialized();
+            return sightsStat != null ? weapon.GetStatValue(sightsStat) : 1f;
+        }
+
+        public static int Burst(ThingWithComps weapon, VerbProperties verb)
+        {
+            EnsureInitialized();
+            float burst = burstStat != null ? weapon.GetStatValue(burstStat) : 0f;
+            return burst > 0f ? (int)burst : verb.burstShotCount;
+        }
+
+        public static int Magazine(ThingWithComps weapon, out float reload)
+        {
+            EnsureInitialized();
+            reload = 0f;
+            if (magazineStat == null || reloadStat == null)
+                return 0;
+            int mag = (int)weapon.GetStatValue(magazineStat);
+            if (mag <= 0)
+                return 0;
+            reload = weapon.GetStatValue(reloadStat);
+            if (reloadOneAtATimeField != null)
+            {
+                var props = weapon.def.comps?.FirstOrDefault(c => compPropertiesAmmoUserType.IsInstanceOfType(c));
+                if (props != null && (bool)reloadOneAtATimeField.GetValue(props))
+                    reload *= mag;
+            }
+            return mag;
         }
 
         public static bool ShouldCheckAmmo()

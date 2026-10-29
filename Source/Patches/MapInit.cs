@@ -21,20 +21,7 @@ namespace AutoArm.Patches
 
                 WeaponCache.ForceReinitialize(__instance);
 
-                if (__instance.mapPawns?.FreeColonistsSpawned != null)
-                {
-                    foreach (var pawn in __instance.mapPawns.FreeColonistsSpawned)
-                    {
-                        if (pawn != null && !pawn.Dead && !pawn.Downed
-                            && pawn.health?.capacities != null && pawn.skills != null)
-                        {
-                            WeaponCache.PreWarmColonistScore(pawn, true);
-                            WeaponCache.PreWarmColonistScore(pawn, false);
-                        }
-                    }
-                }
-
-                AutoArmLogger.Debug(() => $"Ensured weapon cache exists and pre-warmed for map {__instance.uniqueID} after save load");
+                AutoArmLogger.Debug(() => $"Ensured weapon cache exists for map {__instance.uniqueID} after save load");
             }
             catch (Exception e) { AutoArmLogger.ErrorPatch(e, "Map_FinalizeLoading_Postfix"); }
         }

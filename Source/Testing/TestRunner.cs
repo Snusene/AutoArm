@@ -32,7 +32,7 @@ namespace AutoArm.Testing
             var tests = GetAllTests();
             var stopwatch = Stopwatch.StartNew();
 
-            RunInSession(map, () =>
+            var problems = RunInSession(map, () =>
             {
                 foreach (var test in tests)
                 {
@@ -44,6 +44,9 @@ namespace AutoArm.Testing
                     results.AddTiming(test.Name, testStopwatch.Elapsed);
                 }
             });
+            results.AddResult("Session hygiene", problems.Count == 0
+                ? TestResult.Pass()
+                : TestResult.Failure(string.Join("  |  ", problems)));
 
             stopwatch.Stop();
             LogSummary(results, stopwatch.Elapsed);
@@ -56,27 +59,138 @@ namespace AutoArm.Testing
                 return TestResult.Failure("Invalid test parameters");
 
             TestResult result = null;
-            RunInSession(map, () =>
+            var problems = RunInSession(map, () =>
             {
                 result = ExecuteScenario(map, test);
             });
-            return result ?? TestResult.Failure("Session did not run");
+            if (result == null)
+                return TestResult.Failure("Session did not run");
+            if (problems.Count > 0 && result.Success)
+                return TestResult.Failure("Passed, but " + string.Join("  |  ", problems));
+            return result;
         }
 
-        private static void RunInSession(Map map, Action body)
+        private static Dictionary<string, string> Snapshot(Map map)
         {
+            var snap = new Dictionary<string, string>();
+            if (map == null)
+                return snap;
+
+            int weapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count;
+            int drafted = 0;
+            foreach (var pawn in map.mapPawns.FreeColonistsSpawned)
+            {
+                if (pawn.Drafted)
+                    drafted++;
+                if (pawn.equipment?.Primary != null)
+                    weapons++;
+                foreach (var thing in pawn.inventory.innerContainer)
+                {
+                    if (Validation.IsWeapon(thing))
+                        weapons++;
+                }
+                snap[$"{pawn.LabelShort} primary"] = pawn.equipment?.Primary?.ThingID ?? "none";
+            }
+
+            foreach (var pawn in map.mapPawns.SpawnedPawnsInFaction(RimWorld.Faction.OfPlayer))
+            {
+                if (pawn.RaceProps.Humanlike)
+                    snap[$"{pawn.LabelShort} ({pawn.ThingID})"] = "present";
+            }
+
+            snap["weapons"] = weapons.ToString();
+            snap["drafted colonists"] = drafted.ToString();
+            snap["forced primaries"] = ForcedWeapons.GetAllForcedWeapons().Count.ToString();
+            snap["forced sidearm pawns"] = ForcedWeapons.GetSidearmSaveData().Count.ToString();
+            snap["apparel policies"] = Current.Game.outfitDatabase.AllOutfits.Count.ToString();
+            snap["zones"] = map.zoneManager.AllZones.Count.ToString();
+            snap["areas"] = map.areaManager.AllAreas.Count.ToString();
+            return snap;
+        }
+
+        private static Dictionary<LogMessage, int> ErrorSnapshot()
+        {
+            var snap = new Dictionary<LogMessage, int>();
+            foreach (var message in Log.Messages)
+            {
+                if (message.type == LogMessageType.Error)
+                    snap[message] = message.repeats;
+            }
+            return snap;
+        }
+
+        private static List<string> SessionProblems(Map map, Dictionary<string, string> before, Dictionary<LogMessage, int> errorsBefore)
+        {
+            var problems = new List<string>();
+
+            int errors = 0;
+            string first = null;
+            foreach (var message in Log.Messages)
+            {
+                if (message.type != LogMessageType.Error)
+                    continue;
+                errorsBefore.TryGetValue(message, out int seen);
+                if (message.repeats <= seen)
+                    continue;
+                errors += message.repeats - seen;
+                if (first == null)
+                    first = message.text.Split('\n')[0];
+            }
+            if (errors > 0)
+                problems.Add($"{errors} error(s) logged during the run, first: {(first.Length > 160 ? first.Substring(0, 160) : first)}");
+
+            var after = Snapshot(map);
+            foreach (var kvp in before)
+            {
+                if (!after.TryGetValue(kvp.Key, out string now))
+                    problems.Add($"{kvp.Key} missing");
+                else if (now != kvp.Value)
+                    problems.Add($"{kvp.Key} changed from {kvp.Value} to {now}");
+            }
+            foreach (var key in after.Keys)
+            {
+                if (!before.ContainsKey(key))
+                    problems.Add($"{key} appeared");
+            }
+            return problems;
+        }
+
+        private static List<string> RunInSession(Map map, Action body)
+        {
+            var errorsBefore = ErrorSnapshot();
+            var before = Snapshot(map);
             var settingsSnapshot = AutoArmMod.settings?.Clone();
             bool originalDevMode = Prefs.DevMode;
+            var despised = new List<(RimWorld.Precept_Weapon precept, WeaponClassDef def)>();
+            var limits = SidearmLimits.Lift();
 
             try
             {
+                if (ModsConfig.IdeologyActive && Find.IdeoManager != null)
+                {
+                    foreach (var ideo in Find.IdeoManager.IdeosListForReading)
+                    {
+                        foreach (var precept in ideo.PreceptsListForReading)
+                        {
+                            if (precept is RimWorld.Precept_Weapon weaponPrecept && weaponPrecept.despised != null)
+                            {
+                                despised.Add((weaponPrecept, weaponPrecept.despised));
+                                IdeoTestHelper.SetDespised(weaponPrecept, null);
+                            }
+                        }
+                    }
+                }
+
                 if (AutoArmMod.settings != null)
                 {
+                    AutoArmMod.settings.ApplyDefaults();
                     AutoArmMod.settings.debugLogging = true;
                     AutoArmMod.settings.modEnabled = true;
                     AutoArmMod.settings.weaponTypePreference = 0f;
                     AutoArmMod.settings.checkCEAmmo = false;
                 }
+                WeaponCache.ClearScoreCache();
+                EquipEligibility.Clear();
                 IsRunningTests = true;
                 Prefs.DevMode = true;
                 Cleanup.DisableAutoCleanup();
@@ -96,9 +210,15 @@ namespace AutoArm.Testing
 
                 IsRunningTests = false;
                 Prefs.DevMode = originalDevMode;
+                foreach (var (precept, def) in despised)
+                    IdeoTestHelper.SetDespised(precept, def);
+                SidearmLimits.Restore(limits);
                 if (AutoArmMod.settings != null && settingsSnapshot != null)
                     AutoArmMod.settings.CopyFrom(settingsSnapshot);
+                WeaponCache.ClearScoreCache();
+                EquipEligibility.Clear();
             }
+            return SessionProblems(map, before, errorsBefore);
         }
 
         internal static TestResult ExecuteScenario(Map map, ITestScenario test)
@@ -282,6 +402,11 @@ namespace AutoArm.Testing
 
             foreach (var kvp in results.GetSkippedTests())
                 AutoArmLogger.InfoFileOnly($"  SKIP {kvp.Key} - {kvp.Value.SkipReason ?? "(no reason)"}");
+
+            foreach (var kvp in results.GetPassedTests())
+                foreach (var part in kvp.Value.Data)
+                    if (part.Value is string s && s.StartsWith("skipped ("))
+                        AutoArmLogger.InfoFileOnly($"  SKIP {kvp.Key} / {part.Key} - {s}");
         }
     }
 
@@ -343,6 +468,15 @@ namespace AutoArm.Testing
             typeof(Scenarios.ForcedSidearmSettingOffTest),
             typeof(Scenarios.ForcedSidearmSameDefUpgradeTest),
             typeof(Scenarios.ForcedSidearmCrossDefBlockedTest),
+            typeof(Scenarios.ForcedSidearmAllowsPrimaryUpgradeTest),
+            typeof(Scenarios.ForcedSidearmUpgradeStaysForcedTest),
+            typeof(Scenarios.ForcedDefPickedByPrimarySearchStaysForcedTest),
+            typeof(Scenarios.SecondForcedSidearmUpgradesTest),
+            typeof(Scenarios.ForcedPrimaryStillGetsSidearmTest),
+            typeof(Scenarios.EqualQualityBetterStuffSidearmSwapTest),
+            typeof(Scenarios.SSForcedUnarmedStaysUnarmedTest),
+            typeof(Scenarios.CargoWeaponKeptByPolicyTest),
+            typeof(Scenarios.RememberedSidearmDroppedByPolicyTest),
             typeof(Scenarios.SameDefLowerQualityBlockedTest),
         };
     }
@@ -375,8 +509,54 @@ namespace AutoArm.Testing
             typeof(Scenarios.ShieldBeltBlocksRangedTest),
             typeof(Scenarios.BrawlerTest),
             typeof(Scenarios.SkillBasedPreferenceTest),
+            typeof(Scenarios.AreaRestrictedPicksAllowedWeaponTest),
+            typeof(Scenarios.UniqueWeaponTraitsScoredTest),
+            typeof(Scenarios.IdeologyDespisedWeaponTest),
             typeof(Scenarios.WeaponBlacklistBasicTest),
             typeof(Scenarios.WeaponBlacklistIntegrationTest),
+        };
+    }
+
+    internal sealed class LiveBehaviorGroup : TestGroup
+    {
+        public override string Name => "Live behavior (ticked)";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.LiveArmsIdleColonistTest),
+            typeof(Scenarios.LivePrimarySwapTest),
+            typeof(Scenarios.LiveForcedPrimaryUpgradeTest),
+            typeof(Scenarios.LiveSidearmSwapTest),
+            typeof(Scenarios.LiveNoFlipFlopTest),
+            typeof(Scenarios.LiveForcedGraceTest),
+            typeof(Scenarios.LivePolicyReplaceTest),
+            typeof(Scenarios.LiveAreaTest),
+            typeof(Scenarios.LiveForcedPrimarySidearmTest),
+            typeof(Scenarios.LiveMinigunUpgradeTest),
+        };
+    }
+
+    internal sealed class SettingsGroup : TestGroup
+    {
+        public override string Name => "Settings";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.BondedWeaponAutoForcedTest),
+            typeof(Scenarios.StorageOnlyTest),
+            typeof(Scenarios.UpgradeEquippedOffTest),
+            typeof(Scenarios.UpgradeThresholdTest),
+            typeof(Scenarios.WeaponTypePreferenceTest),
+            typeof(Scenarios.ForcedLabelTest),
+        };
+    }
+
+    internal sealed class PocketSandGroup : TestGroup
+    {
+        public override string Name => "Pocket Sand compatibility";
+        public override Type[] Parts => new[]
+        {
+            typeof(Scenarios.PocketSandSwapNotForcedTest),
+            typeof(Scenarios.PocketSandUnarmedRespectedTest),
+            typeof(Scenarios.PocketSandBeerNotWeaponTest),
         };
     }
 
@@ -389,8 +569,8 @@ namespace AutoArm.Testing
             typeof(Scenarios.FormerLodgerIsPermanentTest),
             typeof(Scenarios.BorrowedSoldierKeepsLockedWeaponTest),
             typeof(Scenarios.BiocodedPrimaryStillManagedTest),
+            typeof(Scenarios.NearsightedRangeFitTest),
             typeof(Scenarios.ChildColonistTest),
-            typeof(Scenarios.NobilityTest),
             typeof(Scenarios.SlaveTest),
             typeof(Scenarios.RaidDetectionTest),
             typeof(Scenarios.CaravanTest),

@@ -26,6 +26,9 @@ namespace AutoArm.Definitions
 
         public const float DamagedWeaponPenalty = 0.95f;
 
+        public const float CEExtraPelletValue = 0.5f;
+        public const float CESharpPenScale = 20f;
+
 
         public const float HunterRangedBonus = 500f;
 
@@ -54,7 +57,6 @@ namespace AutoArm.Definitions
         public const int DefaultDropIgnoreTicks = 300;
 
         public const int LongDropCooldownTicks = 600;
-        public const int ExtendedDropCooldownTicks = 1200;
         public const int InventoryPurgeCooldownTicks = 1800;
 
         public const int WeaponEquipCooldownTicks = 60;

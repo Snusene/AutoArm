@@ -18,6 +18,7 @@ namespace AutoArm.Jobs
     public class JobGiver_PickUpBetterWeapon : ThinkNode_JobGiver
     {
         private static bool testModeEnabled = false;
+        internal static bool TestModeEnabled => testModeEnabled;
 
         private static int globalLastKnownGameTick = -1;
         private static readonly Dictionary<int, int> mapLastProcessedTick = new Dictionary<int, int>();
@@ -333,7 +334,6 @@ namespace AutoArm.Jobs
 
         public Job TestTryGiveJob(Pawn pawn)
         {
-            bool timingStarted = false;
 
             if (pawn == null)
             {
@@ -446,11 +446,18 @@ namespace AutoArm.Jobs
                 }
             }
 
-
-            PerfMetrics.StartTiming();
-            timingStarted = true;
-
             bool isEmergency = pawn.equipment?.Primary == null;
+
+            if (isEmergency && (SimpleSidearmsCompat.WantsUnarmed(pawn) || PocketSandCompat.WantsUnarmed(pawn)))
+            {
+                if (AutoArmMod.settings?.debugLogging == true)
+                {
+                    string msg = PocketSandCompat.IsLoaded ? "weapon kept in Pocket Sand inventory" : "Simple Sidearms set to unarmed";
+                    if (ShouldLogDebugMessage(pawn, MSG_TYPE_SKIP, msg))
+                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Skipped: {msg}");
+                }
+                return TryPolicyEnforcementJob(pawn);
+            }
 
             if (AutoArmMod.settings?.debugLogging == true && isEmergency && pawn.IsHashIntervalTick(600))
             {
@@ -467,9 +474,7 @@ namespace AutoArm.Jobs
                         if (ShouldLogDebugMessage(pawn, MSG_TYPE_SKIP, msg))
                             AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Skipped: {msg}");
                     }
-                    var enforcement = TryPolicyEnforcementJob(pawn);
-                    if (timingStarted) PerfMetrics.EndTiming();
-                    return enforcement;
+                    return TryPolicyEnforcementJob(pawn);
                 }
 
                 var outfit = pawn.outfits?.CurrentApparelPolicy;
@@ -485,9 +490,7 @@ namespace AutoArm.Jobs
                             if (ShouldLogDebugMessage(pawn, MSG_TYPE_SKIP, msg))
                                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Skipped: {msg}");
                         }
-                        var enforcement = TryPolicyEnforcementJob(pawn);
-                        if (timingStarted) PerfMetrics.EndTiming();
-                        return enforcement;
+                        return TryPolicyEnforcementJob(pawn);
                     }
                 }
             }
@@ -502,7 +505,6 @@ namespace AutoArm.Jobs
 
             if (comp == null)
             {
-                if (timingStarted) PerfMetrics.EndTiming();
                 return null;
             }
             if (!comp.PawnStates.TryGetValue(pawn.thingIDNumber, out var pawnState))
@@ -521,11 +523,9 @@ namespace AutoArm.Jobs
                 int ticksSinceEquip = currentTick - pawnState.LastEquipTick;
                 if (pawnState.LastEquipTick >= 0 && ticksSinceEquip < Constants.WeaponEquipCooldownTicks)
                 {
-                    if (timingStarted) PerfMetrics.EndTiming();
                     return null;
                 }
             }
-
 
             lastKnownGameTick = currentTick;
 
@@ -534,24 +534,25 @@ namespace AutoArm.Jobs
             var currentWeapon = pawn.equipment?.Primary;
             var weaponRestriction = GetWeaponRestriction(pawn, currentWeapon);
 
-            if (weaponRestriction.blockSearch)
-            {
-                if (TestRunner.IsRunningTests)
-                {
-                    AutoArmLogger.Debug(() => $"[TEST] {AutoArmLogger.GetPawnName(pawn)}: Search blocked - restrictToType={weaponRestriction.restrictToType?.defName}, wasForced={weaponRestriction.wasForced}");
-                }
-                if (timingStarted) PerfMetrics.EndTiming();
-                return null;
-            }
-
             float currentScore = currentWeapon != null ? GetWeaponScore(pawn, currentWeapon) : 0f;
 
             string failureReason = null;
             ThingWithComps bestWeapon = null;
-            if (currentWeapon == null || AutoArmMod.settings?.upgradeEquippedWeapons != false)
+            if (weaponRestriction.blockSearch)
+            {
+                failureReason = "primary is forced";
+                if (TestRunner.IsRunningTests)
+                {
+                    AutoArmLogger.Debug(() => $"[TEST] {AutoArmLogger.GetPawnName(pawn)}: Primary search blocked, primary is forced");
+                }
+            }
+            else if (currentWeapon == null || AutoArmMod.settings?.upgradeEquippedWeapons != false)
             {
                 bestWeapon = FindBestWeapon(pawn, currentScore, weaponRestriction.restrictToType,
                     weaponRestriction.wasForced && weaponRestriction.restrictToType != null, out failureReason);
+
+                if (bestWeapon == null && currentWeapon != null)
+                    bestWeapon = FindForcedSidearmUpgrade(pawn, currentWeapon, currentScore);
 
                 if (bestWeapon == null && !string.IsNullOrEmpty(failureReason))
                 {
@@ -564,7 +565,6 @@ namespace AutoArm.Jobs
                 var enforcement = TryPolicyEnforcementJob(pawn);
                 if (enforcement != null)
                 {
-                    if (timingStarted) PerfMetrics.EndTiming();
                     return enforcement;
                 }
             }
@@ -588,6 +588,7 @@ namespace AutoArm.Jobs
                         if (sidearmJob != null)
                         {
                             AutoEquipState.MarkAsAutoEquip(sidearmJob, pawn);
+                            InheritForced(pawn, sidearmJob);
 
                             pawnState.LastEvaluationTick = currentTick - Constants.MaxSkipEvaluationTicks - 1;
 
@@ -604,6 +605,7 @@ namespace AutoArm.Jobs
                     if (upgradeJob != null)
                     {
                         AutoEquipState.MarkAsAutoEquip(upgradeJob, pawn);
+                        InheritForced(pawn, upgradeJob);
                         pawnState.LastEvaluationTick = currentTick - Constants.MaxSkipEvaluationTicks - 1;
                         return upgradeJob;
                     }
@@ -621,7 +623,6 @@ namespace AutoArm.Jobs
                     }
                     else
                     {
-                        if (timingStarted) PerfMetrics.EndTiming();
                         return null;
                     }
                 }
@@ -642,22 +643,12 @@ namespace AutoArm.Jobs
 
                 pawnState.LastEvaluationTick = currentTick;
 
-                if (timingStarted) PerfMetrics.EndTiming();
                 return null;
             }
-
 
             if (!pawn.Map.reservationManager.CanReserve(pawn, bestWeapon, 1))
             {
                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Cannot reserve {bestWeapon.def.defName} - already reserved by another pawn");
-                if (timingStarted) PerfMetrics.EndTiming();
-                return null;
-            }
-
-            if (bestWeapon.IsForbidden(pawn))
-            {
-                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Weapon {bestWeapon.def.defName} is forbidden");
-                if (timingStarted) PerfMetrics.EndTiming();
                 return null;
             }
 
@@ -667,7 +658,6 @@ namespace AutoArm.Jobs
                 {
                     AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Cannot take ordered job (game state prevents it)");
                 }
-                if (timingStarted) PerfMetrics.EndTiming();
                 return null;
             }
 
@@ -682,7 +672,6 @@ namespace AutoArm.Jobs
                 if (isWeaponJob)
                 {
                     AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Already equipping {bestWeapon.def.defName} (job: {curJob.def.defName})");
-                    if (timingStarted) PerfMetrics.EndTiming();
                     return null;
                 }
             }
@@ -692,7 +681,6 @@ namespace AutoArm.Jobs
                 currentTick - pawnState.LastAttemptTick < 180)
             {
                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Recently attempted {bestWeapon.def.defName}, waiting...");
-                if (timingStarted) PerfMetrics.EndTiming();
                 return null;
             }
 
@@ -700,7 +688,6 @@ namespace AutoArm.Jobs
             {
                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Cannot reach {bestWeapon.def.defName} - recording as failed");
                 RecordFailedJob(pawn, bestWeapon);
-                if (timingStarted) PerfMetrics.EndTiming();
                 return null;
             }
 
@@ -710,7 +697,7 @@ namespace AutoArm.Jobs
                 WeaponCache.SetTemporaryReservation(bestWeapon, pawn);
 
                 PerfMetrics.ReportJobCreated();
-                ConfigureAutoEquipJob(job, pawn, currentWeapon, bestWeapon, weaponRestriction.wasForced);
+                ConfigureAutoEquipJob(job, pawn, currentWeapon);
 
                 pawnState.LastAttemptedWeaponId = bestWeapon.thingIDNumber;
                 pawnState.LastAttemptTick = currentTick;
@@ -721,15 +708,8 @@ namespace AutoArm.Jobs
                     job.checkOverrideOnExpire = false;
                 }
 
-
                 pawnState.LastEvaluationTick = currentTick - Constants.MaxSkipEvaluationTicks - 1;
             }
-
-            if (timingStarted)
-            {
-                PerfMetrics.EndTiming();
-            }
-
 
             return job;
         }
@@ -747,8 +727,6 @@ namespace AutoArm.Jobs
             }
 
             state.LastEquipTick = Find.TickManager.TicksGame;
-
-            CooldownMetrics.OnPawnEquippedWeapon(pawn);
         }
 
         private static Job TryPolicyEnforcementJob(Pawn pawn)
@@ -775,6 +753,8 @@ namespace AutoArm.Jobs
                     if (!Scoring.OutfitDisallows(pawn, sidearm))
                         continue;
                     if (!ForcedWeapons.AllowedToAutomaticallyDrop(pawn, sidearm))
+                        continue;
+                    if (!SimpleSidearmsCompat.IsRememberedSidearm(pawn, sidearm))
                         continue;
 
                     if (inv.TryDrop(sidearm, pawn.Position, pawn.Map, ThingPlaceMode.Near, out _))
@@ -804,41 +784,42 @@ namespace AutoArm.Jobs
 
         private (ThingDef restrictToType, bool blockSearch, bool wasForced) GetWeaponRestriction(Pawn pawn, ThingWithComps currentWeapon)
         {
-            if (!ForcedWeapons.SomethingIsForced(pawn))
+            if (currentWeapon == null || !ForcedWeapons.IsForced(pawn, currentWeapon))
                 return (null, false, false);
 
-            if (currentWeapon != null)
+            if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
             {
-                bool isForced = ForcedWeapons.IsForced(pawn, currentWeapon);
-                if (isForced)
-                {
-                    if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
-                    {
-                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Blocking weapon search: primary is force-equipped and upgrades are disabled");
-                        return (null, true, true);
-                    }
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Restricting search to {AutoArmLogger.GetDefLabel(currentWeapon.def)}: primary is force-equipped with upgrades enabled");
-                    return (currentWeapon.def, false, true);
-                }
+                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Blocking primary search: primary is force-equipped and upgrades are disabled");
+                return (null, true, true);
+            }
+            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Restricting search to {AutoArmLogger.GetDefLabel(currentWeapon.def)}: primary is force-equipped with upgrades enabled");
+            return (currentWeapon.def, false, true);
+        }
+
+        private ThingWithComps FindForcedSidearmUpgrade(Pawn pawn, ThingWithComps primary, float currentScore)
+        {
+            if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true || !SimpleSidearmsCompat.IsReady ||
+                !ForcedWeapons.SomethingIsForced(pawn))
+                return null;
+
+            var inv = pawn.inventory?.innerContainer;
+            if (inv == null)
+                return null;
+
+            var list = inv.InnerListForReading;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (!(list[i] is ThingWithComps sidearm) || !sidearm.def.IsWeapon || sidearm.def == primary.def ||
+                    !ForcedWeapons.IsForced(pawn, sidearm))
+                    continue;
+
+                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Searching upgrades for forced sidearm {AutoArmLogger.GetDefLabel(sidearm.def)}");
+                var upgrade = FindBestWeapon(pawn, currentScore, sidearm.def, true, out _);
+                if (upgrade != null)
+                    return upgrade;
             }
 
-            if (pawn.inventory?.innerContainer != null && AutoArmMod.settings?.allowForcedWeaponUpgrades == true)
-            {
-                foreach (Thing thing in pawn.inventory.innerContainer)
-                {
-                    var sidearm = thing as ThingWithComps;
-                    if (sidearm == null || !sidearm.def.IsWeapon)
-                        continue;
-
-                    if (ForcedWeapons.IsForced(pawn, sidearm))
-                    {
-                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Found force-equipped sidearm {AutoArmLogger.GetDefLabel(sidearm.def)}, searching for upgrades");
-                        return (sidearm.def, false, true);
-                    }
-                }
-            }
-
-            return (null, false, false);
+            return null;
         }
 
         private static bool IsPawnTemporaryCached(Pawn pawn, JobGiverMapComponent comp, int currentTick)
@@ -875,7 +856,7 @@ namespace AutoArm.Jobs
             return hasShield;
         }
 
-        public bool ShouldConsiderWeapon(Pawn pawn, ThingWithComps weapon, ThingWithComps currentWeapon, bool isForcedUpgrade = false, List<ThingWithComps> inventoryWeapons = null, JobGiverMapComponent mapComp = null)
+        public bool ShouldConsiderWeapon(Pawn pawn, ThingWithComps weapon, ThingWithComps currentWeapon, bool isForcedUpgrade = false, JobGiverMapComponent mapComp = null)
         {
             if (isForcedUpgrade && AutoArmMod.settings?.debugLogging == true)
             {
@@ -977,16 +958,6 @@ namespace AutoArm.Jobs
                             if (CECompat.IsLoaded && CECompat.ShouldSkipWeaponForCE(weapon, pawn))
                                 return false;
 
-                            var forbiddenHit = pawn.genes?.Xenotype?.forbiddenWeaponClasses;
-                            if (forbiddenHit != null && !weapon.def.weaponClasses.NullOrEmpty())
-                            {
-                                for (int i = 0; i < forbiddenHit.Count; i++)
-                                {
-                                    if (weapon.def.weaponClasses.Contains(forbiddenHit[i]))
-                                        return false;
-                                }
-                            }
-
                             if (EquipmentUtility.AlreadyBondedToWeapon(weapon, pawn))
                                 return false;
 
@@ -1035,19 +1006,6 @@ namespace AutoArm.Jobs
                 return false;
             }
 
-            var forbiddenClasses = pawn.genes?.Xenotype?.forbiddenWeaponClasses;
-            if (forbiddenClasses != null && !weapon.def.weaponClasses.NullOrEmpty())
-            {
-                for (int i = 0; i < forbiddenClasses.Count; i++)
-                {
-                    if (weapon.def.weaponClasses.Contains(forbiddenClasses[i]))
-                    {
-                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: forbidden by xenotype ({pawn.genes.Xenotype.LabelCap})");
-                        return false;
-                    }
-                }
-            }
 
             if (weapon.def.IsRangedWeapon && !Caching.PawnValidation.CanShoot(pawn))
             {
@@ -1087,14 +1045,6 @@ namespace AutoArm.Jobs
                 return false;
             }
 
-            var pawnLastDrop = DroppedItems.GetLastDropped(pawn);
-            if (pawnLastDrop != null && pawnLastDrop == weapon)
-            {
-                if (shouldLogRejection)
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: own recent drop");
-                return false;
-            }
-
             if (comp.PawnStates.TryGetValue(pawn.thingIDNumber, out var blacklistState) &&
                 blacklistState.TemporarilyBlacklistedWeapons.TryGetValue(weapon.thingIDNumber, out var blacklistExpireTick))
             {
@@ -1117,12 +1067,13 @@ namespace AutoArm.Jobs
                 return false;
             }
 
-            if (currentWeapon != null && currentWeapon.def == weapon.def && weapon != currentWeapon)
+            if (currentWeapon != null && currentWeapon.def == weapon.def && weapon != currentWeapon &&
+                !Caching.Components.IsUnique(weapon))
             {
                 QualityCategory curQ = QualityCategory.Normal;
                 QualityCategory newQ = QualityCategory.Normal;
-                Caching.Components.TryGetWeaponQuality(currentWeapon, out curQ);
-                Caching.Components.TryGetWeaponQuality(weapon, out newQ);
+                currentWeapon.TryGetQuality(out curQ);
+                weapon.TryGetQuality(out newQ);
 
                 if (newQ <= curQ)
                 {
@@ -1186,97 +1137,14 @@ namespace AutoArm.Jobs
 
 
 
-            ThingWithComps existingSidearm = null;
-
-            if (inventoryWeapons != null)
+            if (!isForcedUpgrade && currentWeapon?.def != weapon.def &&
+                SimpleSidearmsCompat.SameDefSwap(pawn, weapon, out _) == SimpleSidearmsCompat.SameDef.Blocked)
             {
-                foreach (ThingWithComps invWeapon in inventoryWeapons)
-                {
-                    if (invWeapon.def == weapon.def)
-                    {
-                        existingSidearm = invWeapon;
-                        break;
-                    }
-                }
-            }
-            else if (pawn.inventory?.innerContainer != null)
-            {
-                foreach (Thing item in pawn.inventory.innerContainer)
-                {
-                    if (item is ThingWithComps invWeapon && invWeapon.def == weapon.def)
-                    {
-                        existingSidearm = invWeapon;
-                        break;
-                    }
-                }
-            }
+                if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
+                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: same type already carried, no worthwhile swap");
 
-            if (existingSidearm != null)
-            {
-                if (isForcedUpgrade)
-                {
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: allowing duplicate {weapon.Label} for quality check");
-                }
-                else
-                {
-                    QualityCategory existingQuality = QualityCategory.Normal;
-                    QualityCategory newQuality = QualityCategory.Normal;
-                    Caching.Components.TryGetWeaponQuality(existingSidearm, out existingQuality);
-                    Caching.Components.TryGetWeaponQuality(weapon, out newQuality);
-
-                    bool isForcedWeapon = ForcedWeapons.IsForced(pawn, existingSidearm);
-                    bool allowForcedUpgrades = AutoArmMod.settings?.allowForcedWeaponUpgrades == true;
-
-                    if (isForcedWeapon && !allowForcedUpgrades)
-                    {
-                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: existing sidearm is forced and forced-weapon upgrades are disabled");
-
-                        CacheInvalid(comp, cacheKey, weapon, weaponHolder, currentTick);
-                        return false;
-                    }
-
-                    if (isForcedWeapon)
-                    {
-                        if (newQuality < existingQuality)
-                        {
-                            if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: forced sidearm has better quality");
-
-                            CacheInvalid(comp, cacheKey, weapon, weaponHolder, currentTick);
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        if (newQuality <= existingQuality)
-                        {
-                            if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: already have same or better quality sidearm");
-
-                            CacheInvalid(comp, cacheKey, weapon, weaponHolder, currentTick);
-                            return false;
-                        }
-                    }
-
-                    float existingScore = GetWeaponScore(pawn, existingSidearm);
-                    float newScore = GetWeaponScore(pawn, weapon);
-                    float threshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
-
-                    if (isForcedWeapon && allowForcedUpgrades)
-                    {
-                        threshold = Math.Min(threshold, 1.01f);
-                    }
-
-                    if (newScore <= existingScore * threshold)
-                    {
-                        if (shouldLogRejection && AutoArmMod.settings?.debugLogging == true)
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Can't use {AutoArmLogger.GetWeaponLabelLower(weapon)}: not enough of a sidearm upgrade (need {existingScore * threshold:F1}, got {newScore:F1})");
-
-                        CacheInvalid(comp, cacheKey, weapon, weaponHolder, currentTick);
-                        return false;
-                    }
-                }
+                CacheInvalid(comp, cacheKey, weapon, weaponHolder, currentTick);
+                return false;
             }
 
             if (IsPawnTemporaryCached(pawn, comp, currentTick) && !(AutoArmMod.settings?.allowTemporaryColonists ?? false))
@@ -1297,21 +1165,28 @@ namespace AutoArm.Jobs
         }
 
 
-        private void ConfigureAutoEquipJob(Job job, Pawn pawn, ThingWithComps currentWeapon, ThingWithComps newWeapon, bool wasForced)
+        private void ConfigureAutoEquipJob(Job job, Pawn pawn, ThingWithComps currentWeapon)
         {
             AutoEquipState.MarkAsAutoEquip(job, pawn);
 
             string previousLabel = null;
             if (AutoArmMod.settings?.showNotifications == true && currentWeapon != null)
             {
-                previousLabel = currentWeapon.LabelCap;
+                previousLabel = ForcedWeaponLabelHelper.StripForcedSuffix(currentWeapon.Label);
             }
             AutoEquipState.SetPreviousWeapon(pawn, previousLabel);
 
-            if (wasForced && AutoArmMod.settings?.allowForcedWeaponUpgrades == true)
-            {
-                AutoEquipState.SetWeaponToForce(pawn, newWeapon);
-            }
+            InheritForced(pawn, job);
+        }
+
+        private static void InheritForced(Pawn pawn, Job job)
+        {
+            if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
+                return;
+            if (job.def != AutoArmDefOf.AutoArmSwapPrimary && job.def != AutoArmDefOf.AutoArmSwapSidearm)
+                return;
+            if (job.targetA.Thing is ThingWithComps upgrade && job.targetB.Thing is ThingWithComps old && ForcedWeapons.IsForced(pawn, old))
+                AutoEquipState.SetWeaponToForce(pawn, upgrade);
         }
 
 
@@ -1335,8 +1210,8 @@ namespace AutoArm.Jobs
             }
 
             var roughQueue = ListPool<(ThingWithComps weapon, float roughScore)>.Get(256);
+            var candidates = ListPool<ThingWithComps>.Get();
             List<ThingWithComps> filteredSearchSet = null;
-            List<ThingWithComps> pawnInventoryWeapons = null;
 
             int totalWeaponsAvailable = 0;
             int totalWeaponsSearched = 0;
@@ -1353,12 +1228,12 @@ namespace AutoArm.Jobs
                 if (storageOnly)
                 {
                     WeaponCache.EnsureCacheExists(pawn.Map);
-                    var storageWeapons = WeaponCache.GetAllStorageWeapons(pawn.Map);
+                    WeaponCache.Collect(pawn.Map, candidates, storageOnly: true);
 
                     if (restrictToType != null)
                     {
                         filteredSearchSet = ListPool<ThingWithComps>.Get();
-                        foreach (var weapon in storageWeapons)
+                        foreach (var weapon in candidates)
                         {
                             if (weapon.def == restrictToType)
                                 filteredSearchSet.Add(weapon);
@@ -1368,27 +1243,22 @@ namespace AutoArm.Jobs
                     }
                     else
                     {
-                        totalWeaponsAvailable = storageWeapons.Count;
-                        searchSet = storageWeapons;
+                        totalWeaponsAvailable = candidates.Count;
+                        searchSet = candidates;
                     }
                 }
                 else
                 {
                     WeaponCache.EnsureCacheExists(pawn.Map);
 
-                    List<ThingWithComps> allWeapons;
                     if (isForcedUpgrade && restrictToType != null)
                     {
-                        allWeapons = WeaponCache.GetAllWeapons(pawn.Map);
+                        WeaponCache.Collect(pawn.Map, candidates);
                         AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: skipping outfit filter for {restrictToType.defName}");
-                    }
-                    else if (pawn.outfits?.CurrentApparelPolicy != null)
-                    {
-                        allWeapons = WeaponCache.GetWeaponsForOutfit(pawn.Map, pawn.outfits.CurrentApparelPolicy);
                     }
                     else
                     {
-                        allWeapons = WeaponCache.GetAllWeapons(pawn.Map);
+                        WeaponCache.Collect(pawn.Map, candidates, pawn.outfits?.CurrentApparelPolicy);
                     }
 
                     if (AutoArmMod.settings?.debugLogging == true && isUnarmed)
@@ -1410,7 +1280,7 @@ namespace AutoArm.Jobs
                     {
                         // Type-restricted search
                         filteredSearchSet = ListPool<ThingWithComps>.Get();
-                        foreach (var w in allWeapons)
+                        foreach (var w in candidates)
                         {
                             if (!IsValidSize(pawn, w))
                                 continue;
@@ -1429,7 +1299,7 @@ namespace AutoArm.Jobs
                     else
                     {
                         // No pre-filtering
-                        searchSet = allWeapons;
+                        searchSet = candidates;
                         totalWeaponsAvailable = -1; // Unknown until we iterate
                     }
                 }
@@ -1441,18 +1311,6 @@ namespace AutoArm.Jobs
                 // Cached per-tick
                 var mapComp = JobGiverMapComponent.GetComponent(pawn.Map);
                 var reservedThings = mapComp?.GetReservedThings(currentTick) ?? EmptyReservationSet;
-
-                if (pawn.inventory?.innerContainer != null)
-                {
-                    pawnInventoryWeapons = ListPool<ThingWithComps>.Get(pawn.inventory.innerContainer.Count);
-                    foreach (Thing item in pawn.inventory.innerContainer)
-                    {
-                        if (item is ThingWithComps invWeapon && invWeapon.def.IsWeapon)
-                        {
-                            pawnInventoryWeapons.Add(invWeapon);
-                        }
-                    }
-                }
 
 
                 // Cap rough candidates
@@ -1474,7 +1332,7 @@ namespace AutoArm.Jobs
                         if (!IsValidSize(pawn, weapon))
                             continue;
 
-                        bool shouldConsider = ShouldConsiderWeapon(pawn, weapon, pawn.equipment?.Primary, isForcedUpgrade, pawnInventoryWeapons, mapComp);
+                        bool shouldConsider = ShouldConsiderWeapon(pawn, weapon, pawn.equipment?.Primary, isForcedUpgrade, mapComp);
 
                         if (!shouldConsider)
                         {
@@ -1503,6 +1361,14 @@ namespace AutoArm.Jobs
                                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: rejected {weapon.Label} ({reason})");
                             }
 
+                            rejectionReasons.TryGetValue(reason, out int n);
+                            rejectionReasons[reason] = n + 1;
+                            continue;
+                        }
+
+                        if (weapon.IsForbidden(pawn))
+                        {
+                            string reason = "Forbidden or outside allowed area";
                             rejectionReasons.TryGetValue(reason, out int n);
                             rejectionReasons[reason] = n + 1;
                             continue;
@@ -1603,8 +1469,8 @@ namespace AutoArm.Jobs
                             {
                                 QualityCategory currentQuality = QualityCategory.Normal;
                                 QualityCategory newQuality = QualityCategory.Normal;
-                                Caching.Components.TryGetWeaponQuality(forcedWeaponToCompare, out currentQuality);
-                                Caching.Components.TryGetWeaponQuality(weapon, out newQuality);
+                                forcedWeaponToCompare.TryGetQuality(out currentQuality);
+                                weapon.TryGetQuality(out newQuality);
 
                                 float forcedCurrentScore = GetWeaponScore(pawn, forcedWeaponToCompare);
 
@@ -1726,10 +1592,9 @@ namespace AutoArm.Jobs
                 Blacklist.FlushPendingLogs();
 
                 ListPool<(ThingWithComps weapon, float roughScore)>.Return(roughQueue);
+                ListPool<ThingWithComps>.Return(candidates);
                 if (filteredSearchSet != null)
                     ListPool<ThingWithComps>.Return(filteredSearchSet);
-                if (pawnInventoryWeapons != null)
-                    ListPool<ThingWithComps>.Return(pawnInventoryWeapons);
 
             }
         }
@@ -1770,108 +1635,101 @@ namespace AutoArm.Jobs
             }
 
             var existingDefs = ListPool<ThingDef>.Get(4);
-            var inventoryWeapons = ListPool<ThingWithComps>.Get(4);
+            var candidateWeapons = ListPool<ThingWithComps>.Get();
+            ThingWithComps bestSidearm = null;
 
-            if (!upgradeOnly)
+            try
             {
-                var primaryDef = pawn.equipment.Primary?.def;
-                if (primaryDef != null)
-                    existingDefs.Add(primaryDef);
-            }
-
-            var inv = pawn.inventory?.innerContainer;
-            if (inv != null)
-            {
-                foreach (var item in inv)
+                if (!upgradeOnly)
                 {
-                    if (item is ThingWithComps w && Validation.IsWeapon(w.def))
+                    var primaryDef = pawn.equipment.Primary?.def;
+                    if (primaryDef != null)
+                        existingDefs.Add(primaryDef);
+                }
+
+                var inv = pawn.inventory?.innerContainer;
+                if (inv != null)
+                {
+                    foreach (var item in inv)
                     {
-                        inventoryWeapons.Add(w);
-                        if (!existingDefs.Contains(w.def))
-                            existingDefs.Add(w.def);
+                        if (item is ThingWithComps w && Validation.IsWeapon(w.def))
+                        {
+                            if (!existingDefs.Contains(w.def) && (!upgradeOnly || SimpleSidearmsCompat.IsOwnSidearm(pawn, w)))
+                                existingDefs.Add(w.def);
+                        }
+                    }
+                }
+
+                if (upgradeOnly && existingDefs.Count == 0)
+                    return null;
+
+                WeaponCache.Collect(pawn.Map, candidateWeapons, pawn.outfits?.CurrentApparelPolicy,
+                    AutoArmMod.settings?.onlyAutoEquipFromStorage == true);
+
+                float bestScore = 0f;
+
+                int iterations = 0;
+                const int maxIterations = 150;
+
+                foreach (var weapon in candidateWeapons)
+                {
+                    if (++iterations > maxIterations)
+                        break;
+
+                    if (weapon == null || weapon.Destroyed || weapon.Map != pawn.Map)
+                        continue;
+
+                    if (weapon == pawn.equipment?.Primary)
+                        continue;
+
+                    bool hasDef = existingDefs.Contains(weapon.def);
+                    if (upgradeOnly ? !hasDef : hasDef)
+                        continue;
+
+                    if (inv?.Contains(weapon) == true)
+                        continue;
+
+                    if (!ShouldConsiderWeapon(pawn, weapon, pawn.equipment?.Primary))
+                        continue;
+
+                    if (weapon.IsForbidden(pawn))
+                        continue;
+
+                    if (!upgradeOnly)
+                    {
+                        string reason;
+                        if (!SimpleSidearmsCompat.CanPickupSidearm(weapon, pawn, out reason))
+                            continue;
+                    }
+
+                    if (!pawn.CanReserve(weapon))
+                        continue;
+
+                    float score = GetWeaponScore(pawn, weapon);
+
+                    if (!upgradeOnly)
+                    {
+                        bool primaryIsRanged = pawn.equipment.Primary.def.IsRangedWeapon;
+                        bool sidearmIsRanged = weapon.def.IsRangedWeapon;
+                        if (primaryIsRanged != sidearmIsRanged)
+                            score *= 1.5f;
+                    }
+
+                    if (score > bestScore)
+                    {
+                        if (upgradeOnly && SimpleSidearmsCompat.TryGetWeaponJob(pawn, weapon) == null)
+                            continue;
+
+                        bestScore = score;
+                        bestSidearm = weapon;
                     }
                 }
             }
-
-            if (upgradeOnly && existingDefs.Count == 0)
+            finally
             {
                 ListPool<ThingDef>.Return(existingDefs);
-                ListPool<ThingWithComps>.Return(inventoryWeapons);
-                return null;
+                ListPool<ThingWithComps>.Return(candidateWeapons);
             }
-
-            bool storageOnly = AutoArmMod.settings?.onlyAutoEquipFromStorage == true;
-            var outfit = pawn.outfits?.CurrentApparelPolicy;
-
-            List<ThingWithComps> candidateWeapons;
-            if (storageOnly && outfit != null)
-                candidateWeapons = WeaponCache.GetStorageWeapons(pawn.Map, outfit);
-            else if (storageOnly)
-                candidateWeapons = WeaponCache.GetAllStorageWeapons(pawn.Map);
-            else if (outfit != null)
-                candidateWeapons = WeaponCache.GetWeaponsForOutfit(pawn.Map, outfit);
-            else
-                candidateWeapons = WeaponCache.GetAllWeapons(pawn.Map);
-
-            ThingWithComps bestSidearm = null;
-            float bestScore = 0f;
-
-            int iterations = 0;
-            const int maxIterations = 150;
-
-            foreach (var weapon in candidateWeapons)
-            {
-                if (++iterations > maxIterations)
-                    break;
-
-                if (weapon == null || weapon.Destroyed || weapon.Map != pawn.Map)
-                    continue;
-
-                if (weapon == pawn.equipment?.Primary)
-                    continue;
-
-                bool hasDef = existingDefs.Contains(weapon.def);
-                if (upgradeOnly ? !hasDef : hasDef)
-                    continue;
-
-                if (inv?.Contains(weapon) == true)
-                    continue;
-
-                if (!ShouldConsiderWeapon(pawn, weapon, pawn.equipment?.Primary, false, inventoryWeapons))
-                    continue;
-
-                if (!upgradeOnly)
-                {
-                    string reason;
-                    if (!SimpleSidearmsCompat.CanPickupSidearm(weapon, pawn, out reason))
-                        continue;
-                }
-
-                if (!pawn.CanReserve(weapon))
-                    continue;
-
-                float score = GetWeaponScore(pawn, weapon);
-
-                if (!upgradeOnly)
-                {
-                    bool primaryIsRanged = pawn.equipment.Primary.def.IsRangedWeapon;
-                    bool sidearmIsRanged = weapon.def.IsRangedWeapon;
-                    if (primaryIsRanged != sidearmIsRanged)
-                        score *= 1.5f;
-                }
-
-                if (score > bestScore)
-                {
-                    if (upgradeOnly && SimpleSidearmsCompat.TryGetWeaponJob(pawn, weapon) == null)
-                        continue;
-
-                    bestScore = score;
-                    bestSidearm = weapon;
-                }
-            }
-
-            ListPool<ThingDef>.Return(existingDefs);
-            ListPool<ThingWithComps>.Return(inventoryWeapons);
 
             if (!upgradeOnly)
             {
@@ -2345,7 +2203,7 @@ namespace AutoArm.Jobs
         private static bool ShouldSkipEvaluation(Pawn pawn, int currentTick)
         {
             var primary = pawn.equipment?.Primary as ThingWithComps;
-            if (primary != null && ForcedWeapons.IsForced(pawn, primary) &&
+            if (primary != null && !SimpleSidearmsCompat.IsLoaded && ForcedWeapons.IsForced(pawn, primary) &&
                 AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
             {
                 if (AutoArmMod.settings?.debugLogging == true && pawn.IsHashIntervalTick(600))
@@ -2355,13 +2213,19 @@ namespace AutoArm.Jobs
                 return true;
             }
 
-            if (primary != null && primary.def?.equippedStatOffsets != null && primary.def.equippedStatOffsets.Count > 0)
+            var offsets = primary?.def?.equippedStatOffsets;
+            if (offsets != null)
             {
-                if (AutoArmMod.settings?.debugLogging == true && pawn.IsHashIntervalTick(600))
+                for (int i = 0; i < offsets.Count; i++)
                 {
-                    AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Skipping evaluation - holding tool {primary.def.defName} (has equippedStatOffsets)");
+                    if (offsets[i].value <= 0f)
+                        continue;
+                    if (AutoArmMod.settings?.debugLogging == true && pawn.IsHashIntervalTick(600))
+                    {
+                        AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Skipping evaluation - holding tool {primary.def.defName} (positive equippedStatOffsets)");
+                    }
+                    return true;
                 }
-                return true;
             }
 
             if (pawn?.Map == null) return false;

@@ -14,44 +14,6 @@ using Verse;
 
 namespace AutoArm.UI
 {
-    internal static class PolicyDBHelper
-    {
-        public static IEnumerable<ApparelPolicy> GetAllPolicies()
-        {
-            var game = Current.Game;
-            if (game == null) yield break;
-
-            var field = AccessTools.Field(game.GetType(), "apparelPolicyDatabase")
-                     ?? AccessTools.Field(game.GetType(), "outfitDatabase");
-            var db = field?.GetValue(game);
-            if (db == null) yield break;
-
-            if (db is OutfitDatabase outfitDb)
-            {
-                foreach (var outfit in outfitDb.AllOutfits) yield return outfit;
-            }
-            else
-            {
-                var dbType = db.GetType();
-                if (dbType.Name == "ApparelPolicyDatabase")
-                {
-                    var prop = AccessTools.Property(dbType, "AllApparelPolicies");
-                    if (prop != null)
-                    {
-                        var policies = prop.GetValue(db) as IEnumerable;
-                        if (policies != null)
-                        {
-                            foreach (var policy in policies)
-                            {
-                                if (policy is ApparelPolicy ap) yield return ap;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     [StaticConstructorOnStartup]
     internal static class ApparelWeaponsIntegration
     {
@@ -61,6 +23,8 @@ namespace AutoArm.UI
         private static ThingCategoryDef _apparel;
 
         private static AccessTools.FieldRef<Listing_TreeThingFilter, ThingFilter> _parentFilterRef;
+        private static AccessTools.FieldRef<Listing_TreeThingFilter, List<SpecialThingFilterDef>> _hiddenRef;
+        private static readonly List<SpecialThingFilterDef> _weaponSpecials = new List<SpecialThingFilterDef>();
         private static Action<Listing_TreeThingFilter, TreeNode_ThingCategory, int, int, Map, bool> _doCategory;
 
         static ApparelWeaponsIntegration()
@@ -97,6 +61,27 @@ namespace AutoArm.UI
                 if (parentFilterField != null)
                 {
                     _parentFilterRef = AccessTools.FieldRefAccess<Listing_TreeThingFilter, ThingFilter>(parentFilterField);
+                }
+
+                var hiddenField = AccessTools.Field(typeof(Listing_TreeThingFilter), "hiddenSpecialFilters");
+                if (hiddenField != null && hiddenField.FieldType == typeof(List<SpecialThingFilterDef>))
+                {
+                    _hiddenRef = AccessTools.FieldRefAccess<Listing_TreeThingFilter, List<SpecialThingFilterDef>>(hiddenField);
+                    foreach (var sf in DefDatabase<SpecialThingFilterDef>.AllDefsListForReading)
+                    {
+                        for (var cat = sf.parentCategory; cat != null; cat = cat.parent)
+                        {
+                            if (cat == _weapons)
+                            {
+                                _weaponSpecials.Add(sf);
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    AutoArmLogger.Warn("WeaponTab: hiddenSpecialFilters not resolved. Weapon special filters stay visible in apparel policies.");
                 }
 
                 var listChildren = AccessTools.Method(typeof(Listing_TreeThingFilter), "ListCategoryChildren",
@@ -150,6 +135,12 @@ namespace AutoArm.UI
                 ref ThingFilter parentFilter = ref _parentFilterRef(__instance);
                 var saved = parentFilter;
                 parentFilter = null;
+                List<SpecialThingFilterDef> savedHidden = null;
+                if (_hiddenRef != null)
+                {
+                    savedHidden = _hiddenRef(__instance);
+                    _hiddenRef(__instance) = _weaponSpecials;
+                }
                 try
                 {
                     _doCategory(__instance, _weapons.treeNode, 0, openMask, map, false);
@@ -157,6 +148,8 @@ namespace AutoArm.UI
                 finally
                 {
                     parentFilter = saved;
+                    if (_hiddenRef != null)
+                        _hiddenRef(__instance) = savedHidden;
                 }
             }
             catch (Exception ex)
@@ -295,9 +288,8 @@ namespace AutoArm.UI
 
             try
             {
-                foreach (var policy in PolicyDBHelper.GetAllPolicies())
-                    if (policy != null)
-                        Caching.WeaponCache.OnOutfitFilterChanged(policy);
+                foreach (var policy in Current.Game.outfitDatabase.AllOutfits)
+                    Caching.WeaponCache.OnOutfitFilterChanged(policy);
             }
             catch (Exception ex) { AutoArmLogger.ErrorUI(ex, "WeaponPolicyBatcher", "Apply"); }
 

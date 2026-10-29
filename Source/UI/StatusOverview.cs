@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using Verse;
+using Verse.AI.Group;
 
 namespace AutoArm.UI
 {
@@ -198,7 +199,6 @@ namespace AutoArm.UI
 
             weaponScores.Sort((a, b) => b.pawnScore.CompareTo(a.pawnScore));
 
-            var playerFaction = Find.FactionManager?.OfPlayer;
             int count = weaponScores.Count < limit ? weaponScores.Count : limit;
             var result = new List<TopWeaponInfo>(count);
 
@@ -211,7 +211,7 @@ namespace AutoArm.UI
                     baseScore = w.baseScore,
                     pawnScore = w.pawnScore,
                     isRanged = w.weapon.def.IsRangedWeapon,
-                    isForbidden = playerFaction != null && w.weapon.IsForbidden(playerFaction)
+                    isForbidden = w.weapon.IsForbidden(pawn)
                 });
             }
 
@@ -278,9 +278,15 @@ namespace AutoArm.UI
 
         private static ColonistInfo CreateColonistInfo(Pawn pawn)
         {
-            string reason;
-            bool transientBlock;
-            bool isValid = ValidationHelper.IsValidPawn(pawn, out reason, out transientBlock);
+            bool isValid = PawnValidation.CanConsiderWeapons(pawn, out string reason, out bool transientBlock);
+            if (reason == PawnValidation.LordReason)
+                reason = $"{reason}: {pawn.GetLord()?.LordJob?.GetType().Name}";
+            else if (isValid && pawn.InBed())
+            {
+                isValid = false;
+                transientBlock = true;
+                reason = "In bed";
+            }
 
             var info = new ColonistInfo
             {
@@ -296,7 +302,7 @@ namespace AutoArm.UI
             {
                 info.primaryWeapon = pawn.equipment.Primary;
                 info.weaponScore = Scoring.GetTotalScore(pawn, info.primaryWeapon);
-                info.weaponBonded = ValidationHelper.IsWeaponBondedToPawn(info.primaryWeapon, pawn);
+                info.weaponBonded = EquipmentUtility.IsBondedTo(info.primaryWeapon, pawn);
             }
 
             if (SimpleSidearmsCompat.IsLoaded && pawn.inventory?.innerContainer != null)
@@ -442,13 +448,31 @@ namespace AutoArm.UI
         private static Pawn cameraFollowTarget = null;
         private static int lastUpdateFrame = -1;
 
-        private static System.Reflection.FieldInfo cachedRootPosField = null;
-        private static System.Reflection.FieldInfo cachedVelocityField = null;
+        private static readonly HarmonyLib.AccessTools.FieldRef<CameraDriver, Vector3> cameraVelocityRef = BindCameraVelocity();
+
+        private static HarmonyLib.AccessTools.FieldRef<CameraDriver, Vector3> BindCameraVelocity()
+        {
+            var field = HarmonyLib.AccessTools.Field(typeof(CameraDriver), "velocity");
+            if (field == null)
+            {
+                AutoArmLogger.Warn("CameraDriver.velocity not found, camera follow may drift while edge scrolling");
+                return null;
+            }
+            return HarmonyLib.AccessTools.FieldRefAccess<CameraDriver, Vector3>(field);
+        }
         private enum ViewMode { StatusOverview, WeaponScores, TestResults }
         private static ViewMode currentView = ViewMode.StatusOverview;
         private static AutoArm.Testing.TestResults testResults;
-        private static System.TimeSpan testsDuration;
         private static bool testsRunning;
+        public static string Summary(Map map)
+        {
+            if (cachedData == null || map == null)
+                return string.Empty;
+            var lists = cachedData.colonistLists;
+            int colonists = lists.validActive.Count + lists.validBusy.Count + lists.invalid.Count;
+            return $"{colonists} colonists · {lists.validActive.Count} managed · {WeaponCache.GetCacheWeaponCount(map)} weapons";
+        }
+
 
         private struct ConsolidatedKey : IEquatable<ConsolidatedKey>
         {
@@ -530,8 +554,19 @@ namespace AutoArm.UI
                 currentView = ViewMode.StatusOverview;
             if (Widgets.ButtonTextSubtle(weaponsTab, "AutoArm_WeaponScoresTab".Translate(), currentView == ViewMode.WeaponScores ? 1f : 0f))
                 currentView = ViewMode.WeaponScores;
-            if (Widgets.ButtonTextSubtle(testsTab, "Run all tests", currentView == ViewMode.TestResults ? 1f : 0f))
-                StartTestRun(map);
+            if (Widgets.ButtonTextSubtle(testsTab, "Tests", currentView == ViewMode.TestResults ? 1f : 0f))
+                currentView = ViewMode.TestResults;
+
+            if (currentView == ViewMode.TestResults)
+            {
+                var bar = new Rect(rect.x, rect.y, rect.width, 30f);
+                if (Widgets.ButtonText(new Rect(bar.x, bar.y, 140f, bar.height), "Run all tests", active: !testsRunning))
+                    StartTestRun(map);
+                using (new TextBlock(UIColors.WarningSoft))
+                using (new TextBlock(TextAnchor.MiddleLeft))
+                    Widgets.Label(new Rect(bar.x + 150f, bar.y, bar.width - 150f, bar.height), "AutoArm_SaveBeforeDebug".Translate());
+                rect.yMin += bar.height + 8f;
+            }
 
             if (cameraFollowTarget != null)
             {
@@ -550,29 +585,10 @@ namespace AutoArm.UI
                 {
                     if (Event.current.type == EventType.Repaint)
                     {
-                        var targetPos = cameraFollowTarget.DrawPos;
-
-                        if (cachedRootPosField == null)
-                        {
-                            cachedRootPosField = typeof(CameraDriver).GetField("rootPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            cachedVelocityField = typeof(CameraDriver).GetField("velocity", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        }
-
                         var cameraDriver = Find.CameraDriver;
-                        if (cachedRootPosField != null)
-                        {
-                            var currentPos = (Vector3)cachedRootPosField.GetValue(cameraDriver);
-                            targetPos.y = currentPos.y;
-
-                            cachedRootPosField.SetValue(cameraDriver, targetPos);
-
-                            if (cachedVelocityField != null)
-                                cachedVelocityField.SetValue(cameraDriver, Vector3.zero);
-                        }
-                        else
-                        {
-                            CameraJumper.TryJump(cameraFollowTarget);
-                        }
+                        cameraDriver.JumpToCurrentMapLoc(cameraFollowTarget.DrawPos);
+                        if (cameraVelocityRef != null)
+                            cameraVelocityRef(cameraDriver) = Vector3.zero;
                     }
                 }
                 else
@@ -713,7 +729,7 @@ namespace AutoArm.UI
 
         private static bool RaidPauseActive()
         {
-            return ModInit.IsLargeRaidActive && (AutoArmMod.settings?.disableDuringRaids ?? false);
+            return ModInit.IsLargeRaidActive;
         }
 
         private static void DrawColonistListsSection(Listing_Standard listing, ColonistListsInfo lists, Map map)
@@ -920,8 +936,9 @@ namespace AutoArm.UI
                 }
 
                 int groupKey = unchecked((weaponInfo.weapon.def.shortHash * 397) ^ (int)quality);
+                bool unique = Caching.Components.IsUnique(weaponInfo.weapon);
 
-                if (groupIndex.TryGetValue(groupKey, out int existingIdx))
+                if (!unique && groupIndex.TryGetValue(groupKey, out int existingIdx))
                 {
                     var existing = result[existingIdx];
                     existing.count++;
@@ -943,7 +960,8 @@ namespace AutoArm.UI
                         isRanged = weaponInfo.isRanged,
                         isForbidden = weaponInfo.isForbidden
                     });
-                    groupIndex[groupKey] = result.Count - 1;
+                    if (!unique)
+                        groupIndex[groupKey] = result.Count - 1;
                 }
             }
 
@@ -1174,12 +1192,9 @@ namespace AutoArm.UI
             if (testsRunning || testResults == null)
             {
                 using (new TextBlock(UIColors.Dim))
-                    Widgets.Label(listing.GetRect(LINE_HEIGHT), "Running tests...");
+                    Widgets.Label(listing.GetRect(LINE_HEIGHT), testsRunning ? "Running tests..." : "No results yet.");
                 return;
             }
-
-            DrawStatsLine(listing);
-            listing.Gap(6f);
 
             if (testResults.FailedTests > 0)
             {
@@ -1193,7 +1208,7 @@ namespace AutoArm.UI
             {
                 DrawSectionHeader(listing, "Passed", testResults.PassedTests, UIColors.Pass);
                 foreach (var kvp in testResults.GetPassedTests())
-                    DrawPassRow(listing, kvp.Key);
+                    DrawPassRow(listing, kvp.Key, kvp.Value);
                 listing.Gap(6f);
             }
 
@@ -1204,34 +1219,6 @@ namespace AutoArm.UI
                 foreach (var kvp in testResults.GetSkippedTests())
                     DrawSkipRow(listing, kvp.Key, kvp.Value);
             }
-        }
-
-        private static void DrawStatsLine(Listing_Standard listing)
-        {
-            var r = listing.GetRect(LINE_HEIGHT);
-            float x = r.x;
-
-            x = DrawColoredSegment(r, x, $"{testResults.PassedTests} passed", UIColors.Pass);
-            x = DrawColoredSegment(r, x, "   ", Color.white);
-            x = DrawColoredSegment(r, x, $"{testResults.FailedTests} failed",
-                testResults.FailedTests > 0 ? UIColors.Fail : UIColors.Dim);
-            x = DrawColoredSegment(r, x, "   ", Color.white);
-            x = DrawColoredSegment(r, x, $"{testResults.SkippedTests} skipped",
-                testResults.SkippedTests > 0 ? UIColors.Skip : UIColors.Dim);
-
-            string durationText = $"{testsDuration.TotalMilliseconds:F0}ms";
-            float durationWidth = Text.CalcSize(durationText).x;
-            var durationRect = new Rect(r.xMax - durationWidth, r.y, durationWidth, r.height);
-            using (new TextBlock(UIColors.Dim))
-                Widgets.Label(durationRect, durationText);
-        }
-
-        private static float DrawColoredSegment(Rect lineRect, float x, string text, Color color)
-        {
-            float width = Text.CalcSize(text).x;
-            using (new TextBlock(color))
-                Widgets.Label(new Rect(x, lineRect.y, width, lineRect.height), text);
-            return x + width;
         }
 
         private static void DrawSectionHeader(Listing_Standard listing, string label, int count, Color color, string tooltip = null)
@@ -1248,16 +1235,29 @@ namespace AutoArm.UI
             var nameRect = listing.GetRect(LINE_HEIGHT);
             using (new TextBlock(UIColors.Fail))
                 Widgets.Label(new Rect(nameRect.x + 12f, nameRect.y, nameRect.width - 12f, nameRect.height), name);
-            DrawTimingRightAligned(nameRect, name);
+            DrawTiming(nameRect, name, nameRect.x + 20f + Text.CalcSize(name).x);
 
-            string reason = string.IsNullOrEmpty(result.FailureReason) ? "(no reason given)" : result.FailureReason;
             using (new TextBlock(GameFont.Tiny))
             {
-                float reasonHeight = Text.CalcHeight(reason, listing.ColumnWidth - 36f);
-                var reasonRect = listing.GetRect(reasonHeight);
-                using (new TextBlock(UIColors.Dim))
-                    Widgets.Label(new Rect(reasonRect.x + 36f, reasonRect.y, reasonRect.width - 36f, reasonHeight), reason);
+                foreach (var reason in FailureLines(result))
+                {
+                    float reasonHeight = Text.CalcHeight(reason, listing.ColumnWidth - 36f);
+                    var reasonRect = listing.GetRect(reasonHeight);
+                    using (new TextBlock(UIColors.Dim))
+                        Widgets.Label(new Rect(reasonRect.x + 36f, reasonRect.y, reasonRect.width - 36f, reasonHeight), reason);
+                }
             }
+        }
+
+        private static string[] FailureLines(AutoArm.Testing.TestResult result)
+        {
+            if (string.IsNullOrEmpty(result.FailureReason))
+                return new[] { "(no reason given)" };
+            string reason = result.FailureReason;
+            int colon = reason.IndexOf(" checks failed:  ", StringComparison.Ordinal);
+            if (colon >= 0)
+                reason = reason.Substring(colon + " checks failed:  ".Length);
+            return reason.Split(new[] { "  |  " }, StringSplitOptions.RemoveEmptyEntries);
         }
 
         private static void DrawSkipRow(Listing_Standard listing, string name, AutoArm.Testing.TestResult result)
@@ -1265,27 +1265,41 @@ namespace AutoArm.UI
             var r = listing.GetRect(LINE_HEIGHT);
             using (new TextBlock(UIColors.LabelMuted))
                 Widgets.Label(new Rect(r.x + 12f, r.y, r.width - 12f, r.height), name);
+            if (!string.IsNullOrEmpty(result.SkipReason))
+            {
+                float nameWidth = Text.CalcSize(name).x;
+                using (new TextBlock(GameFont.Tiny))
+                using (new TextBlock(UIColors.Dim))
+                    Widgets.Label(new Rect(r.x + 24f + nameWidth, r.y + 3f, r.width - 24f - nameWidth, r.height), result.SkipReason.Truncate(r.width - 24f - nameWidth));
+            }
         }
 
-        private static void DrawPassRow(Listing_Standard listing, string name)
+        private static void DrawPassRow(Listing_Standard listing, string name, AutoArm.Testing.TestResult result)
         {
             var r = listing.GetRect(LINE_HEIGHT);
             using (new TextBlock(UIColors.LabelMuted))
                 Widgets.Label(new Rect(r.x + 12f, r.y, r.width - 12f, r.height), name);
-            DrawTimingRightAligned(r, name);
+            float x = DrawTiming(r, name, r.x + 20f + Text.CalcSize(name).x);
+            if (result.Data.TryGetValue("Checks", out var checks) && checks is string text && text.Contains("skipped"))
+            {
+                using (new TextBlock(GameFont.Tiny))
+                using (new TextBlock(UIColors.Skip))
+                    Widgets.Label(new Rect(x + 8f, r.y + 3f, r.xMax - x - 8f, r.height), text);
+            }
         }
 
-        private static void DrawTimingRightAligned(Rect lineRect, string testName)
+        private static float DrawTiming(Rect lineRect, string testName, float x)
         {
             var timing = testResults.GetTiming(testName);
-            if (!timing.HasValue) return;
+            if (!timing.HasValue) return x;
 
             string text = $"{timing.Value.TotalMilliseconds:F0}ms";
             using (new TextBlock(GameFont.Tiny))
             {
                 float w = Text.CalcSize(text).x;
                 using (new TextBlock(UIColors.Dim))
-                    Widgets.Label(new Rect(lineRect.xMax - w, lineRect.y + 3f, w, lineRect.height), text);
+                    Widgets.Label(new Rect(x, lineRect.y + 3f, w, lineRect.height), text);
+                return x + w;
             }
         }
 
@@ -1301,11 +1315,7 @@ namespace AutoArm.UI
             {
                 try
                 {
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    var results = AutoArm.Testing.TestRunner.RunAllTests(map);
-                    sw.Stop();
-                    testResults = results;
-                    testsDuration = sw.Elapsed;
+                    testResults = AutoArm.Testing.TestRunner.RunAllTests(map);
                 }
                 finally
                 {
@@ -1335,7 +1345,7 @@ namespace AutoArm.UI
             if (testsRunning || testResults == null)
                 return LINE_HEIGHT * 2f;
 
-            float h = LINE_HEIGHT + 6f;
+            float h = 0f;
 
             if (testResults.FailedTests > 0)
             {
@@ -1345,8 +1355,8 @@ namespace AutoArm.UI
                     foreach (var kvp in testResults.GetFailedTests())
                     {
                         h += LINE_HEIGHT;
-                        string reason = string.IsNullOrEmpty(kvp.Value.FailureReason) ? "(no reason given)" : kvp.Value.FailureReason;
-                        h += Text.CalcHeight(reason, 300f);
+                        foreach (var reason in FailureLines(kvp.Value))
+                            h += Text.CalcHeight(reason, 300f);
                     }
                 }
                 h += 6f;

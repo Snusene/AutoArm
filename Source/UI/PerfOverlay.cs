@@ -35,7 +35,6 @@ namespace AutoArm
 
         private const float HIT_RATE_GREEN_PROPERTY = 95f;
         private const float HIT_RATE_GREEN_VALIDATION = 85f;
-        private const float HIT_RATE_GREEN_SKILL = 90f;
         private const float HIT_RATE_GREEN_ELIGIBILITY = 80f;
 
         private const float AVG_SEARCHED_GREEN = 50f;
@@ -194,7 +193,7 @@ namespace AutoArm
         private void DrawStatusRow(Listing_Standard listing)
         {
             var tm = Find.TickManager;
-            bool raidActive = ModInit.IsLargeRaidActive;
+            bool raidActive = Find.CurrentMap?.dangerWatcher?.DangerRating == RimWorld.StoryDanger.High;
             bool disableDuringRaids = AutoArmMod.settings?.disableDuringRaids == true;
 
             string status;
@@ -282,7 +281,6 @@ namespace AutoArm
 
             DrawHitRateRow(listing, "Property", PerfMetrics.PropertyCacheHits, PerfMetrics.PropertyCacheMisses, HIT_RATE_GREEN_PROPERTY);
             DrawHitRateRow(listing, "Validation", PerfMetrics.ValidationCacheHits, PerfMetrics.ValidationCacheMisses, HIT_RATE_GREEN_VALIDATION);
-            DrawHitRateRow(listing, "Skill", PerfMetrics.SkillCacheHits, PerfMetrics.SkillCacheMisses, HIT_RATE_GREEN_SKILL);
             DrawHitRateRow(listing, "Eligibility", PerfMetrics.EligibilityCacheHits, PerfMetrics.EligibilityCacheMisses, HIT_RATE_GREEN_ELIGIBILITY);
         }
 

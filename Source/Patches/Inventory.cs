@@ -91,7 +91,7 @@ namespace AutoArm
                 }
                 else if (AutoArmMod.settings?.respectWeaponBonds == true &&
                     ModsConfig.RoyaltyActive &&
-                    ValidationHelper.IsWeaponBondedToPawn(weapon, ___pawn))
+                    EquipmentUtility.IsBondedTo(weapon, ___pawn))
                 {
                     ForcedWeapons.AddSidearm(___pawn, weapon);
                     AutoArmLogger.Debug(() => $"{___pawn.LabelShort}: Bonded weapon {weapon.Label} in inventory - auto-forced");

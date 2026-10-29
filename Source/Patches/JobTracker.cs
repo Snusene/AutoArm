@@ -32,7 +32,7 @@ namespace AutoArm.Patches
                 if (!___pawn.IsColonist || ___pawn.Destroyed)
                     return;
 
-                if (job.def != JobDefOf.Equip && job.def != AutoArmDefOf.EquipSecondary)
+                if (job.def != JobDefOf.Equip && job.def != AutoArmDefOf.EquipSecondary && !PocketSandCompat.EquipJob(job.def))
                     return;
 
                 if (!(job.targetA.Thing is ThingWithComps targetWeapon))
@@ -76,7 +76,8 @@ namespace AutoArm.Patches
                 var settings = AutoArmMod.settings;
 
                 bool isEquipJob = ___curJob.def == JobDefOf.Equip ||
-                                 ___curJob.def == AutoArmDefOf.EquipSecondary;
+                                 ___curJob.def == AutoArmDefOf.EquipSecondary ||
+                                 PocketSandCompat.EquipJob(___curJob.def);
                 bool isSwapJob = ___curJob.def == AutoArmDefOf.AutoArmSwapPrimary ||
                                  ___curJob.def == AutoArmDefOf.AutoArmSwapSidearm;
                 bool isWeaponJob = isEquipJob || isSwapJob;
@@ -131,7 +132,11 @@ namespace AutoArm.Patches
                     {
                         AutoEquipState.Clear(___curJob);
                         if (condition != JobCondition.Succeeded && ___curJob.targetA.Thing is ThingWithComps twc)
+                        {
                             WeaponCache.ClearTemporaryReservation(twc);
+                            if (AutoEquipState.ShouldForceWeapon(___pawn, twc))
+                                AutoEquipState.ClearWeaponToForce(___pawn);
+                        }
                     }
                 }
             }

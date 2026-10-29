@@ -26,16 +26,18 @@ namespace AutoArm.Jobs
                 {
                     QualityCategory existingQuality = QualityCategory.Normal;
                     QualityCategory newQuality = QualityCategory.Normal;
-                    Caching.Components.TryGetWeaponQuality(currentPrimary, out existingQuality);
-                    Caching.Components.TryGetWeaponQuality(weapon, out newQuality);
+                    currentPrimary.TryGetQuality(out existingQuality);
+                    weapon.TryGetQuality(out newQuality);
 
-                    if (newQuality > existingQuality)
+                    bool unique = Caching.Components.IsUnique(weapon);
+
+                    if (!unique && newQuality > existingQuality)
                     {
                         AutoArmLogger.Debug(() => $"Quality upgrade for primary: from {currentPrimary.Label} ({existingQuality}) to {weapon.Label} ({newQuality})");
                         return CreateSwapPrimaryJob(weapon, currentPrimary);
                     }
 
-                    if (newQuality < existingQuality)
+                    if (!unique && newQuality < existingQuality)
                     {
                         AutoArmLogger.Debug(() => $"Skipping primary swap - lower quality: {currentPrimary.Label} ({existingQuality}) vs {weapon.Label} ({newQuality})");
                         return null;
@@ -54,62 +56,20 @@ namespace AutoArm.Jobs
                     return null;
                 }
 
-                if (SimpleSidearmsCompat.IsLoaded && !SimpleSidearmsCompat.ReflectionFailed &&
-                    pawn.inventory?.innerContainer != null)
+                switch (SimpleSidearmsCompat.SameDefSwap(pawn, weapon, out var sidearm))
                 {
-                    ThingWithComps existingSidearm = null;
-                    foreach (var thing in pawn.inventory.innerContainer)
-                    {
-                        if (thing is ThingWithComps comp && comp.def == weapon.def && comp.def.IsWeapon)
-                        {
-                            existingSidearm = comp;
-                            break;
-                        }
-                    }
-
-                    if (existingSidearm != null)
-                    {
-                        if (ForcedWeapons.IsForced(pawn, existingSidearm) &&
-                            AutoArmMod.settings?.allowForcedWeaponUpgrades != true)
-                        {
-                            AutoArmLogger.Debug(() => $"Sidearm swap skipped - existing {existingSidearm.Label} is forced and upgrades are disabled");
-                            return null;
-                        }
-
-                        QualityCategory existingQuality = QualityCategory.Normal;
-                        QualityCategory newQuality = QualityCategory.Normal;
-                        Caching.Components.TryGetWeaponQuality(existingSidearm, out existingQuality);
-                        Caching.Components.TryGetWeaponQuality(weapon, out newQuality);
-
-                        if (newQuality < existingQuality)
-                        {
-                            AutoArmLogger.Debug(() => $"Skipping sidearm swap - lower quality: {existingSidearm.Label} ({existingQuality}) vs {weapon.Label} ({newQuality})");
-                            return null;
-                        }
-
-                        bool isQualityUpgrade = newQuality > existingQuality;
-
-                        if (!isQualityUpgrade)
-                        {
-                            float existingScore = Scoring.GetTotalScore(pawn, existingSidearm);
-                            float newScore = Scoring.GetTotalScore(pawn, weapon);
-
-                            if (newScore - existingScore <= Constants.ScoreEpsilon)
-                            {
-                                AutoArmLogger.Debug(() => $"Skipping sidearm swap - no improvement: {existingSidearm.Label} ({existingScore:F1}) vs {weapon.Label} ({newScore:F1})");
-                                return null;
-                            }
-                        }
-
+                    case SimpleSidearmsCompat.SameDef.Blocked:
+                        AutoArmLogger.Debug(() => $"Skipping {weapon.Label} - same type already carried, no worthwhile swap");
+                        return null;
+                    case SimpleSidearmsCompat.SameDef.Swap:
                         string swapReason;
-                        if (!SimpleSidearmsCompat.CanUseSidearmForSwap(weapon, existingSidearm, pawn, out swapReason))
+                        if (!SimpleSidearmsCompat.CanUseSidearmForSwap(weapon, sidearm, pawn, out swapReason))
                         {
                             AutoArmLogger.Debug(() => $"Sidearm swap rejected by SS: {swapReason}");
                             return null;
                         }
-                        AutoArmLogger.Debug(() => $"Sidearm swap: from {existingSidearm.Label} ({existingQuality}) to {weapon.Label} ({newQuality})");
-                        return CreateSwapSidearmJob(weapon, existingSidearm);
-                    }
+                        AutoArmLogger.Debug(() => $"Sidearm swap: from {sidearm.Label} to {weapon.Label}");
+                        return CreateSwapSidearmJob(weapon, sidearm);
                 }
             }
 
@@ -180,6 +140,7 @@ namespace AutoArm.Jobs
             {
                 if (!(thing is ThingWithComps comp) || !comp.def.IsWeapon) continue;
                 if (comp.def.IsMeleeWeapon != weaponIsMelee) continue;
+                if (!SimpleSidearmsCompat.IsOwnSidearm(pawn, comp)) continue;
                 if (ForcedWeapons.IsForced(pawn, comp))
                 {
                     if (AutoArmMod.settings?.allowForcedWeaponUpgrades != true) continue;

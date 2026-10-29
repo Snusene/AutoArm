@@ -92,6 +92,71 @@ namespace AutoArm.Testing.Scenarios
         }
     }
 
+    internal sealed class UniqueWeaponTraitsScoredTest : ITestScenario
+    {
+        public string Name => "Unique weapon traits scored per item";
+        private ThingWithComps plain;
+        private ThingWithComps burst;
+        private ThingDef def;
+        private WeaponTraitDef trait;
+
+        public void Setup(Map map)
+        {
+            if (!ModsConfig.OdysseyActive) return;
+
+            foreach (var d in DefDatabase<ThingDef>.AllDefsListForReading)
+            {
+                var props = d.GetCompProperties<CompProperties_UniqueWeapon>();
+                if (props == null || !d.IsRangedWeapon || d.Verbs.NullOrEmpty() || d.Verbs[0].burstShotCount < 2)
+                    continue;
+                trait = DefDatabase<WeaponTraitDef>.AllDefsListForReading.FirstOrDefault(t =>
+                    t.burstShotCountMultiplier > 1f && t.statFactors.NullOrEmpty() &&
+                    (t.statOffsets.NullOrEmpty() || t.statOffsets.All(m => m.stat == StatDefOf.MarketValue)) &&
+                    props.weaponCategories.Contains(t.weaponCategory));
+                if (trait == null)
+                    continue;
+                def = d;
+                break;
+            }
+            if (def == null) return;
+
+            plain = Make();
+            burst = Make();
+            burst?.GetComp<CompUniqueWeapon>().TraitsListForReading.Add(trait);
+        }
+
+        private ThingWithComps Make()
+        {
+            var weapon = ThingMaker.MakeThing(def, def.MadeFromStuff ? GenStuff.DefaultStuffFor(def) : null) as ThingWithComps;
+            if (weapon == null) return null;
+            weapon.TryGetComp<CompQuality>()?.SetQuality(QualityCategory.Good, ArtGenerationContext.Colony);
+            weapon.GetComp<CompUniqueWeapon>().TraitsListForReading.Clear();
+            return weapon;
+        }
+
+        public TestResult Run()
+        {
+            if (!ModsConfig.OdysseyActive)
+                return TestResult.Skip("Odyssey not active");
+            if (def == null)
+                return TestResult.Skip("No ranged unique weapon with a burst trait");
+            if (plain == null || burst == null)
+                return TestResult.Failure("Setup incomplete");
+
+            float plainScore = Scoring.GetWeaponPropertyScore(null, plain);
+            float burstScore = Scoring.GetWeaponPropertyScore(null, burst);
+            if (burstScore <= plainScore)
+                return TestResult.Failure($"{def.defName} with {trait.defName} scored {burstScore:F2}, plain copy {plainScore:F2}");
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            TestHelpers.SafeDestroyWeapon(plain);
+            TestHelpers.SafeDestroyWeapon(burst);
+        }
+    }
+
     internal sealed class WeaponBlacklistBasicTest : ITestScenario
     {
         public string Name => "Blacklist basics";

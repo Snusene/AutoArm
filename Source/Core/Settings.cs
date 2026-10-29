@@ -80,7 +80,7 @@ namespace AutoArm
             return clone;
         }
 
-        private void ApplyDefaults()
+        internal void ApplyDefaults()
         {
             modEnabled = DEFAULT_MOD_ENABLED;
             debugLogging = DEFAULT_DEBUG_LOGGING;

@@ -1,6 +1,7 @@
 using AutoArm.Definitions;
 using AutoArm.Helpers;
 using AutoArm.Testing.Helpers;
+using HarmonyLib;
 using RimWorld;
 using System;
 using System.IO;
@@ -11,6 +12,14 @@ namespace AutoArm.Testing.Scenarios
     internal sealed class ForcedWeaponSaveLoadTest : ITestScenario
     {
         public string Name => "Forced weapons survive save/load";
+
+        private static readonly string[] legacyBuffers =
+        {
+            "sidearmPawnIdsBuffer", "sidearmDefBuffer", "weaponIdPawnIdsBuffer", "weaponIdBuffer"
+        };
+
+        private static readonly AccessTools.FieldRef<CrossRefHandler, LoadedObjectDirectory> loadedObjects =
+            AccessTools.FieldRefAccess<CrossRefHandler, LoadedObjectDirectory>("loadedObjectDirectory");
 
         private Pawn testPawn;
         private ThingWithComps forcedPrimary;
@@ -63,7 +72,13 @@ namespace AutoArm.Testing.Scenarios
             try
             {
                 Scribe.saver.InitSaving(tempPath, "AutoArmTest");
-                try { component.ExposeData(); }
+                try
+                {
+                    Scribe.saver.loadIDsErrorsChecker.RegisterDeepSaved(testPawn, "pawn");
+                    Scribe.saver.loadIDsErrorsChecker.RegisterDeepSaved(forcedPrimary, "primary");
+                    Scribe.saver.loadIDsErrorsChecker.RegisterDeepSaved(forcedSidearm, "sidearm");
+                    component.ExposeData();
+                }
                 finally { Scribe.saver.FinalizeSaving(); }
 
                 ForcedWeapons.Reset();
@@ -72,7 +87,16 @@ namespace AutoArm.Testing.Scenarios
                     return TestResult.Failure("Reset did not clear forced state");
 
                 Scribe.loader.InitLoading(tempPath);
-                try { component.ExposeData(); }
+                try
+                {
+                    component.ExposeData();
+                    foreach (var field in legacyBuffers)
+                        AccessTools.Field(typeof(AutoArmGameComponent), field).SetValue(component, null);
+                    var directory = loadedObjects(Scribe.loader.crossRefs);
+                    directory.RegisterLoaded(testPawn);
+                    directory.RegisterLoaded(forcedPrimary);
+                    directory.RegisterLoaded(forcedSidearm);
+                }
                 finally
                 {
                     try { Scribe.loader.FinalizeLoading(); }

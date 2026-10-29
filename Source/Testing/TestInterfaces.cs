@@ -188,7 +188,10 @@ namespace AutoArm.Testing
                 }
                 else if (!partResult.Success)
                 {
-                    failures.Add($"{part.Name}: {partResult.FailureReason}");
+                    string reason = partResult.FailureReason;
+                    if (string.IsNullOrEmpty(reason))
+                        reason = string.Join("; ", partResult.Data.Where(kv => kv.Key.Contains("Error")).Select(kv => kv.Value));
+                    failures.Add($"{part.Name}: {(string.IsNullOrEmpty(reason) ? "no reason given" : reason)}");
                 }
                 else
                 {

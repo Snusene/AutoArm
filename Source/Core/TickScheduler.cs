@@ -8,7 +8,6 @@ namespace AutoArm
     {
         internal enum EventType : byte
         {
-            CooldownExpiry,
             DroppedItemExpiry,
             ForcedWeaponGraceCheck,
             SimpleSidearmsValidation,
@@ -36,7 +35,6 @@ namespace AutoArm
         private static readonly Dictionary<(EventType, int), HashSet<int>> reverseIndex =
             new Dictionary<(EventType, int), HashSet<int>>(256);
 
-        public static Action<int> OnCooldownExpired;
         public static Action<int> OnDroppedItemExpired;
         public static Action<int> OnForcedWeaponGraceCheck;
         public static Action<int, int> OnSimpleSidearmsExpired;
@@ -88,9 +86,6 @@ namespace AutoArm
                     var evt = events[i];
                     switch (evt.Type)
                     {
-                        case EventType.CooldownExpiry:
-                            OnCooldownExpired?.Invoke(evt.PrimaryId);
-                            break;
                         case EventType.DroppedItemExpiry:
                             OnDroppedItemExpired?.Invoke(evt.PrimaryId);
                             break;
