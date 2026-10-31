@@ -77,18 +77,8 @@ namespace AutoArm.Jobs
         private static readonly Comparison<KeyValuePair<PawnWeaponKey, int>> ValidationCacheExpiryComparison =
             (a, b) => a.Value.CompareTo(b.Value);
 
-        private class MessageDeduplicationInfo
-        {
-            public string LastContent;
-            public int FirstLoggedTick;
-            public int Count;
-        }
-
         [Unsaved]
-        private static readonly Dictionary<int, MessageDeduplicationInfo> messageCache =
-            new Dictionary<int, MessageDeduplicationInfo>();
-
-        private const int MESSAGE_SUPPRESSION_WINDOW = Constants.ShortCacheDuration;
+        private static readonly Dictionary<int, string> messageCache = new Dictionary<int, string>();
 
         private static int _lastCacheLogMapId = -1;
         private static string _lastCacheLogOutfit;
@@ -111,47 +101,13 @@ namespace AutoArm.Jobs
         private const string MSG_TYPE_SKIP = "Skip";
         private const string MSG_TYPE_EVAL = "Eval";
 
-        // Encode key for TickScheduler
-        private static int EncodeMessageKey(int pawnId, string messageType)
-        {
-            return (pawnId * 397) ^ (messageType?.GetHashCode() ?? 0);
-        }
-
-
         private static bool ShouldLogDebugMessage(Pawn pawn, string messageType, string messageContent)
         {
-            int currentTick = Find.TickManager.TicksGame;
-            int encodedKey = EncodeMessageKey(pawn.thingIDNumber, messageType);
-
-            if (messageCache.TryGetValue(encodedKey, out var cached))
-            {
-                if (cached.LastContent == messageContent &&
-                    (currentTick - cached.FirstLoggedTick) < MESSAGE_SUPPRESSION_WINDOW)
-                {
-                    cached.Count++;
-                    return false;
-                }
-                // Cancel old schedule
-                TickScheduler.Cancel(TickScheduler.EventType.MessageCacheExpiry, encodedKey);
-            }
-
-            messageCache[encodedKey] = new MessageDeduplicationInfo
-            {
-                LastContent = messageContent,
-                FirstLoggedTick = currentTick,
-                Count = 1
-            };
-
-            // Schedule expiry
-            int expireTick = currentTick + MESSAGE_SUPPRESSION_WINDOW;
-            TickScheduler.Schedule(expireTick, TickScheduler.EventType.MessageCacheExpiry, encodedKey);
-
+            int key = (pawn.thingIDNumber * 397) ^ messageType.GetHashCode();
+            if (messageCache.TryGetValue(key, out var last) && last == messageContent)
+                return false;
+            messageCache[key] = messageContent;
             return true;
-        }
-
-        public static void OnMessageCacheExpiredEvent(int encodedKey, int unused)
-        {
-            messageCache.Remove(encodedKey);
         }
 
         internal class PawnWeaponState
@@ -315,7 +271,6 @@ namespace AutoArm.Jobs
 
         public static void CleanupMessageCache()
         {
-            // TickScheduler handles expiry
             if (messageCache.Count > 400)
             {
                 messageCache.Clear();
@@ -500,7 +455,6 @@ namespace AutoArm.Jobs
             {
                 JobGiverMapComponent.ClearAllState();
                 lastKnownGameTick = currentTick;
-                AutoArmLogger.Debug(() => "Detected fresh load - rebuilding pawn states");
             }
 
             if (comp == null)
@@ -614,26 +568,14 @@ namespace AutoArm.Jobs
 
             if (bestWeapon == null)
             {
-                if (isEmergency)
+                if (AutoArmMod.settings?.debugLogging == true)
                 {
-                    string messageContent = $"No weapon found: {failureReason}";
-                    if (ShouldLogDebugMessage(pawn, MSG_TYPE_NO_WEAPON, messageContent))
-                    {
-                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] {messageContent}");
-                    }
-                    else
-                    {
-                        return null;
-                    }
-                }
-                else
-                {
-                    if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        string msg = $"keeping {currentWeapon?.def?.defName} (score={currentScore:F1}): {failureReason}";
-                        if (ShouldLogDebugMessage(pawn, MSG_TYPE_EVAL, msg))
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] {msg}");
-                    }
+                    string why = string.IsNullOrEmpty(failureReason) ? "nothing better" : failureReason;
+                    string msg = isEmergency
+                        ? $"No weapon found: {why}"
+                        : $"No upgrade for {currentWeapon?.def?.label}: {why}";
+                    if (ShouldLogDebugMessage(pawn, isEmergency ? MSG_TYPE_NO_WEAPON : MSG_TYPE_EVAL, msg))
+                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] {msg}");
                 }
 
                 if (TestRunner.IsRunningTests)
@@ -734,7 +676,8 @@ namespace AutoArm.Jobs
             var primary = pawn.equipment?.Primary;
             if (primary != null &&
                 Scoring.OutfitDisallows(pawn, primary) &&
-                ForcedWeapons.AllowedToAutomaticallyDrop(pawn, primary))
+                ForcedWeapons.AllowedToAutomaticallyDrop(pawn, primary) &&
+                (!pawn.IsQuestLodger() || EquipmentUtility.QuestLodgerCanUnequip(primary, pawn)))
             {
                 AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Dropping {AutoArmLogger.GetDefLabel(primary.def)} - disallowed by outfit policy");
                 var dropJob = JobMaker.MakeJob(JobDefOf.DropEquipment, primary);
@@ -858,11 +801,6 @@ namespace AutoArm.Jobs
 
         public bool ShouldConsiderWeapon(Pawn pawn, ThingWithComps weapon, ThingWithComps currentWeapon, bool isForcedUpgrade = false, JobGiverMapComponent mapComp = null)
         {
-            if (isForcedUpgrade && AutoArmMod.settings?.debugLogging == true)
-            {
-                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: validating {weapon.Label}");
-            }
-
 
             bool isUnarmed = pawn.equipment?.Primary == null;
 
@@ -934,11 +872,7 @@ namespace AutoArm.Jobs
             var cacheKey = new PawnWeaponKey(pawn.thingIDNumber, weapon.thingIDNumber);
 
             bool bypassCache = isForcedUpgrade;
-            if (bypassCache)
-            {
-                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: skipping validation cache for {weapon.Label}");
-            }
-            else if (comp.ValidationCache.TryGetValue(cacheKey, out var cached))
+            if (!bypassCache && comp.ValidationCache.TryGetValue(cacheKey, out var cached))
             {
                 if (currentTick < cached.ExpiryTick)
                 {
@@ -1195,15 +1129,10 @@ namespace AutoArm.Jobs
             primaryFailureReason = "No weapons found";
 
 
-            if (isForcedUpgrade && AutoArmMod.settings?.debugLogging == true)
-            {
-                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade search: currentScore={currentScore:F1}, restrictToType={restrictToType?.defName}");
-            }
-
             bool isUnarmed = pawn.equipment?.Primary == null;
             bool storageOnly = AutoArmMod.settings?.onlyAutoEquipFromStorage == true;
             float userThreshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Constants.WeaponUpgradeThreshold;
-            float minAcceptableScore = isUnarmed ? 0.01f : currentScore * userThreshold;
+            float minAcceptableScore = isUnarmed ? 0.01f : Scoring.UpgradeBar(pawn, pawn.equipment.Primary, currentScore, userThreshold);
             if (TestRunner.IsRunningTests)
             {
                 AutoArmLogger.Debug(() => $"[TEST] FindBestWeapon for {AutoArmLogger.GetPawnName(pawn)}: isUnarmed={isUnarmed}, currentScore={currentScore}, restrictToType={restrictToType?.defName ?? "none"}");
@@ -1213,7 +1142,6 @@ namespace AutoArm.Jobs
             var candidates = ListPool<ThingWithComps>.Get();
             List<ThingWithComps> filteredSearchSet = null;
 
-            int totalWeaponsAvailable = 0;
             int totalWeaponsSearched = 0;
             rejectionReasonsPool.Clear();
             var rejectionReasons = rejectionReasonsPool;
@@ -1239,11 +1167,9 @@ namespace AutoArm.Jobs
                                 filteredSearchSet.Add(weapon);
                         }
                         searchSet = filteredSearchSet;
-                        totalWeaponsAvailable = filteredSearchSet.Count;
                     }
                     else
                     {
-                        totalWeaponsAvailable = candidates.Count;
                         searchSet = candidates;
                     }
                 }
@@ -1254,7 +1180,6 @@ namespace AutoArm.Jobs
                     if (isForcedUpgrade && restrictToType != null)
                     {
                         WeaponCache.Collect(pawn.Map, candidates);
-                        AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: skipping outfit filter for {restrictToType.defName}");
                     }
                     else
                     {
@@ -1289,18 +1214,10 @@ namespace AutoArm.Jobs
                                 filteredSearchSet.Add(w);
                         }
                         searchSet = filteredSearchSet;
-                        totalWeaponsAvailable = filteredSearchSet.Count;
-
-                        if (isForcedUpgrade && AutoArmMod.settings?.debugLogging == true)
-                        {
-                            AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Found {totalWeaponsAvailable} {restrictToType.defName} weapons for forced upgrade evaluation");
-                        }
                     }
                     else
                     {
-                        // No pre-filtering
                         searchSet = candidates;
-                        totalWeaponsAvailable = -1; // Unknown until we iterate
                     }
                 }
 
@@ -1487,8 +1404,6 @@ namespace AutoArm.Jobs
                                     AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Rejecting forced upgrade: insufficient score improvement ({newScore:F1} <= {forcedCurrentScore * 1.01f:F1})");
                                     continue;
                                 }
-
-                                AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade passed");
                             }
                             else
                             {
@@ -1527,7 +1442,7 @@ namespace AutoArm.Jobs
 
                 if (TestRunner.IsRunningTests && bestWeapon == null)
                 {
-                    AutoArmLogger.Debug(() => $"[TEST] FindBestWeapon: no result, searched {totalWeaponsSearched}/{totalWeaponsAvailable}, evaluated {evaluatedWeapons}");
+                    AutoArmLogger.Debug(() => $"[TEST] FindBestWeapon: no result, searched {totalWeaponsSearched}, evaluated {evaluatedWeapons}");
                     if (rejectionReasons.Count > 0)
                     {
                         var sb = new System.Text.StringBuilder();
@@ -1560,32 +1475,10 @@ namespace AutoArm.Jobs
 
                 if (bestWeapon != null)
                 {
-                    AutoArmLogger.Debug(() => isUnarmed
-                            ? $"[{AutoArmLogger.GetPawnName(pawn)}] Best weapon found: {AutoArmLogger.GetWeaponLabelLower(bestWeapon)} (score {bestScore:F1})"
-                            : $"[{AutoArmLogger.GetPawnName(pawn)}] Best weapon: {bestWeapon.def.defName} (score {bestScore:F1})");
+                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Best weapon: {AutoArmLogger.GetWeaponLabelLower(bestWeapon)} (score {bestScore:F1})");
                 }
 
-                if (bestWeapon != null)
-                {
-                    return bestWeapon;
-                }
-
-                if (isForcedUpgrade && AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() => $"[{AutoArmLogger.GetPawnName(pawn)}] Forced upgrade: no weapon found");
-                    AutoArmLogger.Debug(() => $"  - Total weapons searched: {totalWeaponsSearched}");
-                    AutoArmLogger.Debug(() => $"  - Total weapons available: {totalWeaponsAvailable}");
-                    if (rejectionReasons.Count > 0)
-                    {
-                        AutoArmLogger.Debug(() => $"  - Rejection reasons:");
-                        foreach (var kvp in rejectionReasons)
-                        {
-                            AutoArmLogger.Debug(() => $"    - {kvp.Key}: {kvp.Value}");
-                        }
-                    }
-                }
-
-                return null;
+                return bestWeapon;
             }
             finally
             {

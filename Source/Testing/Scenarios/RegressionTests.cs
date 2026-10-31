@@ -42,8 +42,6 @@ namespace AutoArm.Testing.Scenarios
             if (rifleDef != null)
             {
                 rangedWeapon = TestHelpers.CreateWeapon(map, rifleDef, testPawn.Position + new IntVec3(2, 0, 0));
-                if (rangedWeapon != null)
-                    WeaponCache.AddWeaponToCache(rangedWeapon);
             }
         }
 
@@ -164,12 +162,10 @@ namespace AutoArm.Testing.Scenarios
             if (pistolDef != null)
             {
                 pistol = TestHelpers.CreateWeapon(map, pistolDef, testPawn.Position + new IntVec3(1, 0, 0));
-                if (pistol != null) WeaponCache.AddWeaponToCache(pistol);
             }
             if (rifleDef != null)
             {
                 rifle = TestHelpers.CreateWeapon(map, rifleDef, testPawn.Position + new IntVec3(-1, 0, 0));
-                if (rifle != null) WeaponCache.AddWeaponToCache(rifle);
             }
         }
 
@@ -226,8 +222,6 @@ namespace AutoArm.Testing.Scenarios
             if (rifleDef != null)
             {
                 weapon = TestHelpers.CreateWeapon(map, rifleDef, testPawn.Position + new IntVec3(2, 0, 0));
-                if (weapon != null)
-                    WeaponCache.AddWeaponToCache(weapon);
             }
         }
 
@@ -302,8 +296,6 @@ namespace AutoArm.Testing.Scenarios
             }
 
             ordered = TestHelpers.CreateWeapon(map, rifleDef, testPawn.Position + new IntVec3(4, 0, 0));
-            if (ordered != null)
-                WeaponCache.AddWeaponToCache(ordered);
         }
 
         public TestResult Run()
@@ -370,8 +362,6 @@ namespace AutoArm.Testing.Scenarios
             }
 
             groundSameDef = TestHelpers.CreateWeapon(map, pistolDef, testPawn.Position + new IntVec3(2, 0, 0));
-            if (groundSameDef != null)
-                WeaponCache.AddWeaponToCache(groundSameDef);
         }
 
         public TestResult Run()
@@ -429,7 +419,6 @@ namespace AutoArm.Testing.Scenarios
             if (groundSameDef != null)
             {
                 groundSameDef.TryGetComp<CompQuality>()?.SetQuality(QualityCategory.Awful, ArtGenerationContext.Colony);
-                WeaponCache.AddWeaponToCache(groundSameDef);
             }
         }
 
@@ -504,7 +493,6 @@ namespace AutoArm.Testing.Scenarios
             if (groundUpgrade != null)
             {
                 groundUpgrade.TryGetComp<CompQuality>()?.SetQuality(QualityCategory.Excellent, ArtGenerationContext.Colony);
-                WeaponCache.AddWeaponToCache(groundUpgrade);
             }
         }
 
@@ -681,7 +669,6 @@ namespace AutoArm.Testing.Scenarios
             if (rifleDef != null)
             {
                 weapon = TestHelpers.CreateWeapon(map, rifleDef, testPawn.Position + new IntVec3(2, 0, 0));
-                if (weapon != null) WeaponCache.AddWeaponToCache(weapon);
             }
         }
 

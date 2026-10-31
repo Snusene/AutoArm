@@ -139,6 +139,10 @@ namespace AutoArm.Testing
                 var brawler = pawn.story.traits.allTraits.FirstOrDefault(t => t.def == TraitDefOf.Brawler);
                 if (brawler != null) pawn.story.traits.allTraits.Remove(brawler);
             }
+
+            var shooting = DefDatabase<TraitDef>.GetNamedSilentFail("ShootingAccuracy");
+            if (shooting != null && (requestedTraits == null || !requestedTraits.Contains(shooting)))
+                pawn.story.traits.allTraits.RemoveAll(t => t.def == shooting);
         }
 
         private static void StripConflictingApparel(Pawn pawn)
@@ -384,24 +388,8 @@ namespace AutoArm.Testing
                     weapon.SetForbidden(false, false);
                 }
 
-                WeaponCache.AddWeaponToCache(weapon);
-
                 if (TestRunner.IsRunningTests)
-                {
                     CleanupTracker.MarkCreated(weapon);
-
-                    if (!WeaponCache.IsWeaponTracked(map, weapon))
-                    {
-                        AutoArmLogger.Warn($"[TEST] CreateWeapon: Weapon {weapon.Label} not found in cache after adding!");
-
-                        WeaponCache.AddWeaponToCache(weapon);
-
-                        if (!WeaponCache.IsWeaponTracked(map, weapon))
-                        {
-                            AutoArmLogger.Warn($"[TEST] CreateWeapon: Weapon {weapon.Label} STILL not in cache after second add attempt!");
-                        }
-                    }
-                }
 
 
                 return weapon;
@@ -600,6 +588,23 @@ namespace AutoArm.Testing
             if (needs?.food != null) needs.food.CurLevelPercentage = 1f;
             if (needs?.rest != null) needs.rest.CurLevelPercentage = 1f;
             if (needs?.joy != null) needs.joy.CurLevelPercentage = 1f;
+            if (pawn.mindState != null) pawn.mindState.nextApparelOptimizeTick = int.MaxValue;
+            if (pawn.drugs != null)
+            {
+                var sober = Current.Game.drugPolicyDatabase.AllPolicies.FirstOrDefault(Sober);
+                if (sober != null)
+                    pawn.drugs.CurrentPolicy = sober;
+            }
+        }
+
+        private static bool Sober(DrugPolicy policy)
+        {
+            for (int i = 0; i < policy.Count; i++)
+            {
+                if (policy[i].allowScheduled || policy[i].takeToInventory > 0)
+                    return false;
+            }
+            return true;
         }
     }
 

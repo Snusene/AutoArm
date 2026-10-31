@@ -150,6 +150,8 @@ namespace AutoArm.Testing
         public abstract string Name { get; }
         public abstract Type[] Parts { get; }
 
+        protected virtual string Unavailable(Map map) => null;
+
         private Map map;
 
         public void Setup(Map map)
@@ -159,6 +161,10 @@ namespace AutoArm.Testing
 
         public TestResult Run()
         {
+            string unavailable = Unavailable(map);
+            if (unavailable != null)
+                return TestResult.Skip(unavailable);
+
             var result = new TestResult { Outcome = TestOutcome.Pass };
             var failures = new List<string>();
             int passed = 0, skipped = 0;

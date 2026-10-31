@@ -9,55 +9,6 @@ using Verse;
 namespace AutoArm
 {
 
-    [HarmonyPatch(typeof(Thing), "SpawnSetup")]
-    [HarmonyPatch(new Type[] { typeof(Map), typeof(bool) })]
-    [HarmonyPatchCategory(Patches.PatchCategories.Performance)]
-    [HarmonyPriority(Priority.Last)]
-    [HarmonyAfter("PeteTimesSix.SimpleSidearms", "CETeam.CombatExtended", "LWM.DeepStorage")]
-    internal static class Thing_SpawnSetup_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Thing __instance)
-        {
-            try
-            {
-                if (__instance == null || __instance.def == null)
-                    return;
-
-                if (AutoArmMod.settings?.modEnabled == false && Current.ProgramState == ProgramState.Playing)
-                    return;
-
-                if (!__instance.def.IsWeapon)
-                    return;
-
-                if (!Validation.IsWeapon(__instance))
-                {
-                    if (AutoArmMod.settings?.debugLogging == true && __instance.def.defName.Contains("Gun_"))
-                    {
-                        AutoArmLogger.Debug(() => $"[SpawnSetup] Weapon {__instance.Label} failed IsProperWeapon check");
-                    }
-                    return;
-                }
-
-                if (__instance is ThingWithComps weapon)
-                {
-                    if (WeaponCache.ShouldTrackWeapon(weapon))
-                    {
-                        WeaponCache.AddWeaponToCache(weapon);
-                    }
-                    else if (AutoArmMod.settings?.debugLogging == true)
-                    {
-                        AutoArmLogger.Debug(() => $"[SpawnSetup] Weapon spawned but not tracked: {weapon.Label} (spawned: {weapon.Spawned}, parent: {weapon.ParentHolder?.GetType().Name ?? "null"})");
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.ErrorPatch(e, "Thing_SpawnSetup_Patch");
-            }
-        }
-    }
-
     [HarmonyPatch(typeof(Thing), nameof(Thing.Destroy))]
     [HarmonyPatchCategory(Patches.PatchCategories.Performance)]
     [HarmonyPriority(Priority.Last)]
@@ -84,16 +35,6 @@ namespace AutoArm
                     return;
 
                 Cleanup.OnWeaponRemoved(__instance);
-
-                if (__instance is ThingWithComps weapon)
-                {
-                    var map = weapon.Map;
-                    if (map == null)
-                        return;
-
-                    var cacheManager = map.GetComponent<WeaponCache.AutoArmWeaponMapComponent>();
-                    cacheManager?.OnWeaponRemoved(weapon);
-                }
             }
             catch (Exception e)
             {
@@ -122,16 +63,6 @@ namespace AutoArm
                     return;
 
                 Cleanup.OnWeaponRemoved(__instance);
-
-                if (__instance is ThingWithComps weapon)
-                {
-                    var map = weapon.Map;
-                    if (map == null)
-                        return;
-
-                    var cacheManager = map.GetComponent<WeaponCache.AutoArmWeaponMapComponent>();
-                    cacheManager?.OnWeaponRemoved(weapon);
-                }
             }
             catch (Exception e)
             {

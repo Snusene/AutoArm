@@ -188,6 +188,9 @@ namespace AutoArm.Testing.Scenarios
 
             WeaponCache.ClearScoreCache();
             float currentScore = WeaponCache.GetCachedScore(pawn, current);
+            float own = currentScore - Scoring.SharedBonus(pawn, current);
+            if (own <= 0f)
+                return TestResult.Failure($"Current rifle has no own value: score {currentScore:F1}");
             ThingWithComps candidate = null;
             float ratio = 0f;
             foreach (var quality in steps)
@@ -195,7 +198,7 @@ namespace AutoArm.Testing.Scenarios
                 var weapon = Ground(AutoArmDefOf.Gun_AssaultRifle, quality);
                 if (weapon == null)
                     return TestResult.Failure("Could not place a rifle");
-                ratio = WeaponCache.GetCachedScore(pawn, weapon) / currentScore;
+                ratio = 1f + (WeaponCache.GetCachedScore(pawn, weapon) - currentScore) / own;
                 if (ratio >= 1.03f && ratio <= 1.48f)
                 {
                     candidate = weapon;
@@ -222,6 +225,37 @@ namespace AutoArm.Testing.Scenarios
             job = GiveJob();
             if (job?.targetA.Thing == candidate)
                 return TestResult.Failure($"Threshold {Settings.weaponUpgradeThreshold:F2} above ratio {ratio:F2}: upgrade still taken");
+            return TestResult.Pass();
+        }
+    }
+
+    internal sealed class SkilledShooterQualityUpgradeTest : ForcedSidearmScenario
+    {
+        public override string Name => "Skilled shooter takes quality upgrade";
+        private ThingWithComps better;
+
+        public override void Setup(Map map)
+        {
+            if (AutoArmDefOf.Gun_AssaultRifle == null) return;
+            if (!MakePawn(map, AutoArmDefOf.Gun_AssaultRifle, QualityCategory.Normal) || pawn.skills == null) return;
+            pawn.skills.GetSkill(SkillDefOf.Shooting).Level = 15;
+            pawn.skills.GetSkill(SkillDefOf.Melee).Level = 3;
+            ForcedWeaponUpgradeTestHelper.AllowWeaponInOutfit(pawn, AutoArmDefOf.Gun_AssaultRifle);
+            better = Ground(AutoArmDefOf.Gun_AssaultRifle, QualityCategory.Excellent);
+        }
+
+        public override TestResult Run()
+        {
+            if (better == null || pawn?.equipment?.Primary == null)
+                return TestResult.Failure("Setup incomplete");
+            string blocked = Blocked(better);
+            if (blocked != null)
+                return TestResult.Skip($"Rifle blocked for this pawn by {blocked}");
+
+            Settings.weaponUpgradeThreshold = Constants.WeaponUpgradeThreshold;
+            var job = GiveJob();
+            if (job?.targetA.Thing != better)
+                return TestResult.Failure($"Shooting 15 pawn skipped the excellent rifle, got {Describe(job)}");
             return TestResult.Pass();
         }
     }

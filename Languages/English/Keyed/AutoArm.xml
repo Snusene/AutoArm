@@ -93,6 +93,7 @@
 	<AutoArm_ClickToJump>Click to jump to weapon</AutoArm_ClickToJump>
 
 	<AutoArm_ScoreBase>Base (DPS × acc × AP): {0}</AutoArm_ScoreBase>
+	<AutoArm_ScoreShooterFit>Shooter fit: {0}</AutoArm_ScoreShooterFit>
 	<AutoArm_ScoreSkillBonus>Skill bonus: {0}</AutoArm_ScoreSkillBonus>
 	<AutoArm_ScoreHunterBonus>Hunter bonus: {0}</AutoArm_ScoreHunterBonus>
 	<AutoArm_ScoreOutfitPolicy>Outfit policy: {0}</AutoArm_ScoreOutfitPolicy>

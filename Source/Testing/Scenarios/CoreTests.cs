@@ -118,8 +118,6 @@ namespace AutoArm.Testing.Scenarios
 
                     if (weapon1 != null && weapon2 != null)
                     {
-                        WeaponCache.AddWeaponToCache(weapon1);
-                        WeaponCache.AddWeaponToCache(weapon2);
 
                         weapon1.DeSpawn();
                         testPawn.equipment.AddEquipment(weapon1);

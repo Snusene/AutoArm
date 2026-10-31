@@ -145,10 +145,7 @@ namespace AutoArm.Patches
                 }
 
                 if (isProperWeapon)
-                {
-                    WeaponCache.RemoveWeaponFromCache(newEq);
                     WeaponCache.ClearTemporaryReservation(newEq);
-                }
             }
             catch (Exception e)
             {

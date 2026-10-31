@@ -20,9 +20,6 @@ namespace AutoArm.Caching
         private static readonly TickExpiringLruCache<int, CachedPawnValidation> _cache =
             new TickExpiringLruCache<int, CachedPawnValidation>(64, RevalidationInterval, MaxCachedPawns);
 
-        private static readonly Dictionary<int, List<string>> _pendingInvalidationLogs = new Dictionary<int, List<string>>();
-        private static int _invalidationBufferTick = -1;
-
 
         private static readonly HashSet<string> restrictedLordJobTypes = new HashSet<string>
         {
@@ -236,7 +233,7 @@ namespace AutoArm.Caching
                 CachedAtTick = Find.TickManager.TicksGame
             };
 
-            entry.CanShoot = !pawn.WorkTagIsDisabled(WorkTags.Shooting);
+            entry.CanShoot = (pawn.CombinedDisabledWorkTags & WorkTags.Shooting) == 0;
             entry.IsBrawler = pawn.story?.traits?.HasTrait(TraitDefOf.Brawler) ?? false;
 
             if (pawn.health?.capacities == null)
@@ -299,7 +296,7 @@ namespace AutoArm.Caching
                 AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Temporary colonist allowed");
             }
 
-            entry.CanDoViolence = !pawn.WorkTagIsDisabled(WorkTags.Violent);
+            entry.CanDoViolence = (pawn.CombinedDisabledWorkTags & WorkTags.Violent) == 0;
             if (!entry.CanDoViolence)
                 return Block(entry, "Incapable of violence");
 
@@ -319,70 +316,15 @@ namespace AutoArm.Caching
         }
 
 
-        private static readonly Dictionary<int, int> _lastInvalidationLogTick = new Dictionary<int, int>();
-
-        private const int InvalidationLogCooldown = Constants.StandardCacheDuration;
-
         public static void InvalidatePawn(Pawn pawn)
         {
             if (pawn == null)
                 return;
 
-            // Skip non-tool users
             if (pawn.RaceProps?.ToolUser != true)
                 return;
 
-            int pawnId = pawn.thingIDNumber;
-            _cache.Remove(pawnId);
-
-            if (AutoArmMod.settings?.debugLogging == true &&
-                Find.TickManager != null &&
-                Find.TickManager.TicksGame > 600 &&
-                Current.ProgramState == ProgramState.Playing)
-            {
-                int currentTick = Find.TickManager.TicksGame;
-                if (!_lastInvalidationLogTick.TryGetValue(pawnId, out int lastLogTick) ||
-                    (currentTick - lastLogTick) > InvalidationLogCooldown)
-                {
-                    if (_invalidationBufferTick < 0)
-                        _invalidationBufferTick = currentTick;
-
-                    if (!_pendingInvalidationLogs.TryGetValue(currentTick, out var names))
-                    {
-                        names = new List<string>();
-                        _pendingInvalidationLogs[currentTick] = names;
-                    }
-
-                    var name = pawn.Name?.ToStringShort ?? pawn.LabelShort;
-                    names.Add(name);
-                    _lastInvalidationLogTick[pawnId] = currentTick;
-                }
-            }
-        }
-
-        public static void FlushPendingInvalidationLogs()
-        {
-            if (_pendingInvalidationLogs.Count == 0)
-                return;
-
-            int currentTick = Find.TickManager?.TicksGame ?? 0;
-
-            if (_invalidationBufferTick >= 0 && currentTick > _invalidationBufferTick)
-            {
-                int totalCount = 0;
-                foreach (var kvp in _pendingInvalidationLogs)
-                {
-                    totalCount += kvp.Value.Count;
-                }
-
-                if (totalCount > 0)
-                {
-                    AutoArmLogger.Debug(() => $"Invalidated pawn validation cache ({totalCount} pawn{(totalCount == 1 ? "" : "s")})");
-                }
-
-                _pendingInvalidationLogs.Clear();
-                _invalidationBufferTick = -1;
-            }
+            _cache.Remove(pawn.thingIDNumber);
         }
 
 
@@ -412,7 +354,7 @@ namespace AutoArm.Caching
 
         public static void CleanupDeadPawns(bool force = false)
         {
-            if (_cache.Count == 0 && _lastInvalidationLogTick.Count == 0)
+            if (_cache.Count == 0)
                 return;
 
             deadPawnSweepCounter++;
@@ -445,21 +387,6 @@ namespace AutoArm.Caching
 
                 int deadCount = _cache.RemoveWhere((id, _) => !liveIds.Contains(id));
 
-                var orphanedLogIds = ListPool<int>.Get();
-                try
-                {
-                    foreach (var id in _lastInvalidationLogTick.Keys)
-                    {
-                        if (!liveIds.Contains(id)) orphanedLogIds.Add(id);
-                    }
-                    foreach (var id in orphanedLogIds)
-                        _lastInvalidationLogTick.Remove(id);
-                }
-                finally
-                {
-                    ListPool<int>.Return(orphanedLogIds);
-                }
-
                 if (AutoArmMod.settings?.debugLogging == true && deadCount > 0)
                 {
                     AutoArmLogger.Debug(() => $"PawnValidation cleaned up {deadCount} dead pawn entries");
@@ -474,7 +401,6 @@ namespace AutoArm.Caching
         public static void ClearCache()
         {
             _cache.Clear();
-            _lastInvalidationLogTick.Clear();
         }
     }
 

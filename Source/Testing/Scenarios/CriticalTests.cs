@@ -69,7 +69,6 @@ namespace AutoArm.Testing.Scenarios
 
                 targetWeapon.SetForbidden(false, false);
 
-                WeaponCache.AddWeaponToCache(targetWeapon);
 
                 WeaponCache.ClearScoreCache();
 
@@ -81,7 +80,6 @@ namespace AutoArm.Testing.Scenarios
                 if (!weaponsInCache.Contains(targetWeapon))
                 {
                     AutoArmLogger.Warn($"[TEST] RaceConditionTest: Target weapon not in cache! Retrying cache rebuild...");
-                    WeaponCache.AddWeaponToCache(targetWeapon);
 
                     weaponsInCache = TestHelpers.CachedWeapons(map)?.ToList() ?? new List<ThingWithComps>();
                     AutoArmLogger.Debug(() => $"[TEST] RaceConditionTest: After retry - {weaponsInCache.Count} weapons in cache, contains target: {weaponsInCache.Contains(targetWeapon)}");
@@ -257,7 +255,6 @@ namespace AutoArm.Testing.Scenarios
                     if (weapon != null)
                     {
                         testWeapons.Add(weapon);
-                        WeaponCache.AddWeaponToCache(weapon);
                     }
                 }
             }
@@ -393,7 +390,6 @@ namespace AutoArm.Testing.Scenarios
                     {
                         weaponA.holdingOwner.Remove(weaponA);
                     }
-                    WeaponCache.AddWeaponToCache(weaponA);
                 }
 
                 if (weaponB != null)
@@ -402,7 +398,6 @@ namespace AutoArm.Testing.Scenarios
                     {
                         weaponB.holdingOwner.Remove(weaponB);
                     }
-                    WeaponCache.AddWeaponToCache(weaponB);
 
                     var weaponsInCache = TestHelpers.CachedWeapons(testPawn.Map).ToList();
                     if (!weaponsInCache.Contains(weaponA) || !weaponsInCache.Contains(weaponB))
@@ -447,7 +442,6 @@ namespace AutoArm.Testing.Scenarios
                     if (!otherWeapon.Spawned && !otherWeapon.Destroyed)
                     {
                         GenSpawn.Spawn(otherWeapon, testPawn.Position + new IntVec3(2, 0, 0), testPawn.Map);
-                        WeaponCache.AddWeaponToCache(otherWeapon);
                     }
                 }
                 else

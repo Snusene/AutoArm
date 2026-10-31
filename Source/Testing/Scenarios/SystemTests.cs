@@ -63,7 +63,6 @@ namespace AutoArm.Testing.Scenarios
                 var weapon = testWeapons[1];
                 var map = weapon.Map;
 
-                WeaponCache.AddWeaponToCache(weapon);
 
                 TestHelpers.SafeDestroyWeapon(weapon);
 

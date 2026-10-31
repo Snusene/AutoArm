@@ -12,8 +12,6 @@ namespace AutoArm.Caching
     {
         public sealed class AutoArmWeaponMapComponent : MapComponent
         {
-            public HashSet<ThingWithComps> weapons = new HashSet<ThingWithComps>();
-
             public int lastChangeDetectedTick = 0;
 
             public int lastNonForbiddenCheckTick = -1;
@@ -21,8 +19,6 @@ namespace AutoArm.Caching
             public bool lastNonForbiddenResult = false;
             public int lastNonForbiddenCount = 0;
             public int lastAllForbiddenLoggedTick = -1;
-
-            private bool initialized = false;
 
             private struct TempReservation
             {
@@ -33,12 +29,14 @@ namespace AutoArm.Caching
             private readonly Dictionary<int, TempReservation> _tempReservations
                 = new Dictionary<int, TempReservation>();
 
-            public void ResetCache()
+            private readonly Action<Thing> added;
+            private readonly Action<Thing> removed;
+            private bool listening;
+
+            public AutoArmWeaponMapComponent(Map map) : base(map)
             {
-                weapons.Clear();
-                initialized = false;
-                _tempReservations.Clear();
-                InvalidateNonForbiddenCache();
+                added = Added;
+                removed = Removed;
             }
 
             internal void InvalidateNonForbiddenCache()
@@ -49,32 +47,63 @@ namespace AutoArm.Caching
                 lastAllForbiddenLoggedTick = -1;
             }
 
-            public void ForceReinitialize()
+            public void Reset()
             {
-                weapons.Clear();
-                initialized = false;
                 _tempReservations.Clear();
                 InvalidateNonForbiddenCache();
-                InitializeCache();
             }
 
-            public int cacheHighWaterMark = 0;
-
-            public int lastCleanupTick = 0;
-
-            public AutoArmWeaponMapComponent(Map map) : base(map)
+            internal void Listen()
             {
+                if (listening)
+                    return;
+                listening = true;
+
+                var callbacks = map.thingListChangedCallbacks;
+                callbacks.onThingAdded = (Action<Thing>)Delegate.Combine(callbacks.onThingAdded, added);
+                callbacks.onThingRemoved = (Action<Thing>)Delegate.Combine(callbacks.onThingRemoved, removed);
+            }
+
+            private void Unlisten()
+            {
+                if (!listening)
+                    return;
+                listening = false;
+
+                var callbacks = map.thingListChangedCallbacks;
+                callbacks.onThingAdded = (Action<Thing>)Delegate.Remove(callbacks.onThingAdded, added);
+                callbacks.onThingRemoved = (Action<Thing>)Delegate.Remove(callbacks.onThingRemoved, removed);
+            }
+
+            private void Added(Thing thing)
+            {
+                if (!(thing is ThingWithComps) || !Validation.IsWeapon(thing.def))
+                    return;
+
+                if (Testing.TestRunner.IsRunningTests)
+                    testWeapons.Add(thing.thingIDNumber);
+                Changed();
+            }
+
+            private void Removed(Thing thing)
+            {
+                if (!(thing is ThingWithComps) || !Validation.IsWeapon(thing.def))
+                    return;
+
+                _tempReservations.Remove(thing.thingIDNumber);
+                Changed();
+            }
+
+            private void Changed()
+            {
+                lastChangeDetectedTick = Find.TickManager.TicksGame;
+                InvalidateNonForbiddenCache();
             }
 
             public override void FinalizeInit()
             {
                 base.FinalizeInit();
-                if (!initialized)
-                {
-                    InitializeCache();
-                }
-
-                AutoArmLogger.Debug(() => $"Initialized weapon cache for map {map.uniqueID} on map creation/load");
+                Listen();
             }
 
             public override void MapRemoved()
@@ -83,7 +112,8 @@ namespace AutoArm.Caching
 
                 try
                 {
-                    ResetCache();
+                    Unlisten();
+                    Reset();
 
                     if (map?.mapPawns != null)
                     {
@@ -114,16 +144,6 @@ namespace AutoArm.Caching
             {
                 base.MapComponentTick();
 
-                if (!initialized && Find.TickManager.TicksGame > 10)
-                {
-                    InitializeCache();
-                }
-
-                if ((Find.TickManager.TicksGame % 10000) == 0)
-                {
-                    PerformCleanup();
-                }
-
                 var now = Find.TickManager.TicksGame;
                 if (now % TempReservationTicks == 0 && _tempReservations.Count > 0)
                 {
@@ -144,134 +164,6 @@ namespace AutoArm.Caching
                     ListPool<int>.Return(toRemove);
                 }
             }
-
-            public void InitializeCache()
-            {
-                if (initialized) return;
-
-                initialized = true;
-
-                if (weapons.Count > 0)
-                {
-                    AutoArmLogger.Debug(() => $"Clearing {weapons.Count} stale weapons from cache for map {map.uniqueID}");
-                    weapons.Clear();
-                }
-
-                AutoArmLogger.Debug(() => $"Initializing weapon cache for map {map.uniqueID}");
-
-                var allWeapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
-
-                foreach (Thing thing in allWeapons)
-                {
-                    if (thing is ThingWithComps weapon && Validation.IsWeapon(weapon))
-                    {
-                        if (weapon.ParentHolder is Pawn_EquipmentTracker ||
-                            weapon.ParentHolder is Pawn_InventoryTracker)
-                        {
-                            continue;
-                        }
-
-                        weapons.Add(weapon);
-                    }
-                }
-
-                cacheHighWaterMark = weapons.Count;
-                lastChangeDetectedTick = Find.TickManager.TicksGame;
-
-                AutoArmLogger.Debug(() => $"Initialized cache with {weapons.Count} weapons");
-
-                InvalidateNonForbiddenCache();
-            }
-
-
-            private void PerformCleanup()
-            {
-                int removed = 0;
-                var toRemove = ListPool<ThingWithComps>.Get();
-
-                foreach (var weapon in weapons)
-                {
-                    if (weapon == null || weapon.Destroyed || !weapon.Spawned || weapon.Map != map)
-                    {
-                        toRemove.Add(weapon);
-                    }
-                }
-
-                foreach (var weapon in toRemove)
-                {
-                    OnWeaponRemoved(weapon);
-                    removed++;
-                }
-
-                ListPool<ThingWithComps>.Return(toRemove);
-
-                if (weapons.Count > cacheHighWaterMark)
-                {
-                    cacheHighWaterMark = weapons.Count;
-                }
-
-                lastCleanupTick = Find.TickManager.TicksGame;
-
-                if (removed > 0 && AutoArmMod.settings?.debugLogging == true)
-                {
-                    AutoArmLogger.Debug(() =>
-                        $"[WeaponCache] Legacy cleanup removed {removed} missed weapons (event-based system should handle most)");
-                }
-            }
-
-            public void AddWeapon(ThingWithComps weapon)
-            {
-                if (weapon == null || !weapons.Add(weapon))
-                    return;
-
-                lastChangeDetectedTick = Find.TickManager.TicksGame;
-                InvalidateNonForbiddenCache();
-            }
-
-            public void RemoveWeapon(ThingWithComps weapon)
-            {
-                if (weapon == null || !weapons.Remove(weapon))
-                    return;
-
-                _tempReservations.Remove(weapon.thingIDNumber);
-                lastChangeDetectedTick = Find.TickManager.TicksGame;
-                InvalidateNonForbiddenCache();
-            }
-
-            public void OnWeaponRemoved(ThingWithComps weapon)
-            {
-                if (weapon == null || !weapons.Remove(weapon))
-                    return;
-
-                _tempReservations.Remove(weapon.thingIDNumber);
-                lastChangeDetectedTick = Find.TickManager.TicksGame;
-                InvalidateNonForbiddenCache();
-            }
-
-            public void RebuildCachedWeaponSet()
-            {
-                var toRemove = ListPool<ThingWithComps>.Get();
-                foreach (var weapon in weapons)
-                {
-                    if (weapon == null || weapon.Destroyed || !weapon.Spawned)
-                        toRemove.Add(weapon);
-                }
-                for (int i = 0; i < toRemove.Count; i++)
-                    weapons.Remove(toRemove[i]);
-                ListPool<ThingWithComps>.Return(toRemove);
-
-                AutoArmLogger.Debug(() => $"WeaponCache rebuilt for map {map?.uniqueID ?? -1}: {weapons.Count} weapons tracked");
-            }
-
-            public void Reset()
-            {
-                weapons.Clear();
-                _tempReservations.Clear();
-                initialized = false;
-                InvalidateNonForbiddenCache();
-                AutoArmLogger.Debug(() => $"WeaponCache reset for map {map?.uniqueID ?? -1}");
-            }
-
 
             public bool HasTempReservation(ThingWithComps weapon, int askingPawnId, int now)
             {
@@ -315,6 +207,7 @@ namespace AutoArm.Caching
                 {
                     component = new AutoArmWeaponMapComponent(map);
                     map.components.Add(component);
+                    component.Listen();
                     trackedMapIds.Add(map.uniqueID);
 
                     AutoArmLogger.Debug(() => $"[Cache] Created new weapon cache component for map {map.uniqueID}");
@@ -373,39 +266,11 @@ namespace AutoArm.Caching
             GetMapComponent(map);
         }
 
-        public static void Initialize(Map map)
-        {
-            var component = GetMapComponent(map);
-            component?.InitializeCache();
-        }
+        private static readonly HashSet<int> testWeapons = new HashSet<int>();
 
-        public static void ForceReinitialize(Map map)
-        {
-            var component = GetMapComponent(map);
-            component?.ForceReinitialize();
-        }
+        private static List<Thing> Weapons(Map map) => map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
 
-        public static void AddWeaponToCache(ThingWithComps weapon)
-        {
-            if (weapon?.Map == null || !Validation.IsWeapon(weapon))
-                return;
-
-            if (!ShouldTrackWeapon(weapon))
-                return;
-
-            var component = GetMapComponent(weapon.Map);
-            component?.AddWeapon(weapon);
-        }
-
-        public static void RemoveWeaponFromCache(ThingWithComps weapon)
-        {
-            if (weapon?.Map == null)
-                return;
-
-            var component = GetMapComponent(weapon.Map);
-            component?.RemoveWeapon(weapon);
-        }
-
+        private static bool Visible(Thing thing) => !Testing.TestRunner.IsRunningTests || testWeapons.Contains(thing.thingIDNumber);
 
         public static bool HasAnyNonForbiddenWeapons(Map map)
         {
@@ -430,14 +295,15 @@ namespace AutoArm.Caching
             int count = 0;
             int totalWeapons = 0;
 
-            foreach (var weapon in component.weapons)
+            var things = Weapons(component.map);
+            for (int i = 0; i < things.Count; i++)
             {
-                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
+                if (!(things[i] is ThingWithComps weapon) || !Validation.IsWeapon(weapon.def) || !Visible(weapon))
                     continue;
 
                 totalWeapons++;
 
-                if (playerFaction != null && weapon.IsForbidden(playerFaction))
+                if (weapon.Position.Fogged(component.map) || (playerFaction != null && weapon.IsForbidden(playerFaction)))
                     continue;
 
                 count++;
@@ -457,24 +323,17 @@ namespace AutoArm.Caching
             }
         }
 
-        public static bool IsWeaponTracked(Map map, ThingWithComps weapon)
-        {
-            if (map == null || weapon == null)
-                return false;
-
-            var component = GetMapComponent(map);
-            if (component == null)
-                return false;
-
-            return component.weapons.Contains(weapon);
-        }
-
         public static int GetCacheWeaponCount(Map map)
         {
-            var component = GetMapComponent(map);
-            if (component == null) return 0;
+            if (map == null) return 0;
 
-            int count = component.weapons.Count;
+            int count = 0;
+            var things = Weapons(map);
+            for (int i = 0; i < things.Count; i++)
+            {
+                if (things[i] is ThingWithComps && Validation.IsWeapon(things[i].def) && Visible(things[i]))
+                    count++;
+            }
             PerfMetrics.ReportCacheStats(count);
             return count;
         }
@@ -498,19 +357,19 @@ namespace AutoArm.Caching
 
         public static void Collect(Map map, List<ThingWithComps> into, ApparelPolicy outfit = null, bool storageOnly = false)
         {
-            var component = GetMapComponent(map);
-            if (component == null)
+            if (map == null)
                 return;
 
             var playerFaction = Find.FactionManager?.OfPlayer;
             if (outfit?.filter == null)
                 outfit = null;
 
-            foreach (var weapon in component.weapons)
+            var things = Weapons(map);
+            for (int i = 0; i < things.Count; i++)
             {
-                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
+                if (!(things[i] is ThingWithComps weapon) || !Validation.IsWeapon(weapon.def) || !Visible(weapon))
                     continue;
-                if (playerFaction != null && weapon.IsForbidden(playerFaction))
+                if (weapon.Position.Fogged(map) || (playerFaction != null && weapon.IsForbidden(playerFaction)))
                     continue;
                 if (storageOnly && !IsInStorageZone(weapon))
                     continue;
@@ -522,17 +381,17 @@ namespace AutoArm.Caching
 
         public static bool AnyWeaponForOutfit(Map map, ApparelPolicy outfit)
         {
-            var component = GetMapComponent(map);
-            if (component == null)
+            if (map == null)
                 return false;
 
             var playerFaction = Find.FactionManager?.OfPlayer;
 
-            foreach (var weapon in component.weapons)
+            var things = Weapons(map);
+            for (int i = 0; i < things.Count; i++)
             {
-                if (weapon == null || weapon.Destroyed || !weapon.Spawned)
+                if (!(things[i] is ThingWithComps weapon) || !Validation.IsWeapon(weapon.def) || !Visible(weapon))
                     continue;
-                if (playerFaction != null && weapon.IsForbidden(playerFaction))
+                if (weapon.Position.Fogged(map) || (playerFaction != null && weapon.IsForbidden(playerFaction)))
                     continue;
                 if (AllowedByOutfit(weapon, outfit))
                     return true;
@@ -905,20 +764,6 @@ namespace AutoArm.Caching
             component.lastChangeDetectedTick = Find.TickManager.TicksGame;
         }
 
-        public static bool ShouldTrackWeapon(ThingWithComps weapon)
-        {
-            if (weapon == null || !weapon.Spawned)
-                return false;
-
-            if (weapon.ParentHolder is Pawn_EquipmentTracker ||
-                weapon.ParentHolder is Pawn_InventoryTracker)
-            {
-                return false;
-            }
-
-            return true;
-        }
-
         private static bool IsInStorageZone(ThingWithComps weapon)
         {
             if (weapon == null || !weapon.Spawned)
@@ -1051,6 +896,7 @@ namespace AutoArm.Caching
             scoreCache.Clear();
             trackedMapIds.Clear();
             outfitFilterCache.Clear();
+            testWeapons.Clear();
             lastScoreAddedTick = -1;
             deadPawnCleanupCounter = 0;
 
@@ -1071,36 +917,6 @@ namespace AutoArm.Caching
             deadPawnCleanupCounter = 0;
         }
 
-        internal static void ValidateCacheIntegrity(Map map)
-        {
-            var component = GetMapComponent(map);
-            if (component == null) return;
-
-            var toRemove = ListPool<ThingWithComps>.Get();
-            foreach (var weapon in component.weapons)
-            {
-                if (weapon == null || weapon.Destroyed)
-                    toRemove.Add(weapon);
-            }
-
-            for (int i = 0; i < toRemove.Count; i++)
-                component.OnWeaponRemoved(toRemove[i]);
-
-            ListPool<ThingWithComps>.Return(toRemove);
-        }
-
-        public static void RebuildCache(Map map)
-        {
-            if (map == null)
-                return;
-
-            var component = GetMapComponent(map);
-            if (component != null)
-            {
-                component.ResetCache();
-                component.InitializeCache();
-            }
-        }
     }
 
     [Obsolete("Feature removed - stub exists only for save compatibility")]

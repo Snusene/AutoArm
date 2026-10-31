@@ -74,9 +74,27 @@ namespace AutoArm
             public float ComputedBaseScore;
             public float AbilityMultiplier;
             public float[] RangeWeights;
+            public float BaselineHitSum;
+            public float Warmup;
+            public float BurstGaps;
+            public float Cooldown;
+            public bool Scatters;
         }
 
         private static readonly float[] RangeSamples = { 3f, 8f, 12f, 18f, 25f, 32f, 40f };
+        private static readonly float[] ReferenceWeights = { 3f, 8f, 12f, 18f, 25f, 0f, 0f };
+        private static readonly float[] BaselineHit = BuildBaselineHit();
+        private static readonly float ReferenceBaselineSum = WeightedSum(ReferenceWeights, BaselineHit);
+
+        private static readonly float[] shooterHit = new float[RangeSamples.Length];
+        private static int shooterPawnId = -1;
+        private static int shooterTick = -1;
+        private static float shooterAim = 1f;
+        private static float shooterCooldown = 1f;
+        private static float shooterReference = 1f;
+        private static int genePawnId = -1;
+        private static int geneTick = -1;
+        private static float geneLevels;
 
         private static readonly Dictionary<ThingDef, bool> situationalWeapons = new Dictionary<ThingDef, bool>(512);
 
@@ -88,7 +106,11 @@ namespace AutoArm
         }
 
         public static float GetWeaponPropertyScore(Pawn pawn, ThingWithComps weapon)
+            => GetWeaponPropertyScore(pawn, weapon, out _);
+
+        public static float GetWeaponPropertyScore(Pawn pawn, ThingWithComps weapon, out float shooterFit)
         {
+            shooterFit = 1f;
             if (weapon?.def == null)
                 return 0f;
 
@@ -136,7 +158,10 @@ namespace AutoArm
                 baseScore *= baseProps.RangePreference;
 
             if (pawn != null && baseProps.RangeWeights != null && !CECompat.IsLoaded)
-                baseScore *= RangeFit(pawn, baseProps.RangeWeights);
+            {
+                shooterFit = ShooterFit(pawn, baseProps);
+                baseScore *= shooterFit;
+            }
 
             if (weapon.MaxHitPoints > 0 && weapon.HitPoints * 2 < weapon.MaxHitPoints)
                 baseScore *= Constants.DamagedWeaponPenalty;
@@ -411,12 +436,13 @@ namespace AutoArm
             return p;
         }
 
-        private static float ComputeRangedBaseScore(ThingWithComps weapon, StatRequest req, VerbProperties verb)
+        private static float ComputeRangedBaseScore(ThingWithComps weapon, StatRequest req, VerbProperties verb, out RangedParts p)
         {
+            p = default(RangedParts);
             if (verb == null || verb.defaultProjectile?.projectile == null)
                 return 0f;
 
-            var p = ComputeRangedParts(weapon, req, verb);
+            p = ComputeRangedParts(weapon, req, verb);
             float score = p.dps * p.sustain * p.accuracy * p.apBonus;
             if (float.IsNaN(score) || float.IsInfinity(score))
                 return 0f;
@@ -458,6 +484,8 @@ namespace AutoArm
             float rangePref = 1f;
             float computedBaseScore = 0f;
             float[] rangeWeights = null;
+            bool scatters = false;
+            RangedParts parts = default(RangedParts);
 
             if (isRanged)
             {
@@ -468,8 +496,9 @@ namespace AutoArm
                     if (rangePref < 0.7f) rangePref = 0.7f;
                     else if (rangePref > 1.2f) rangePref = 1.2f;
                     rangeWeights = ComputeRangeWeights(verb, weapon);
+                    scatters = verb.ForcedMissRadius > 0.5f;
                 }
-                computedBaseScore = ComputeRangedBaseScore(weapon, statReq, verb);
+                computedBaseScore = ComputeRangedBaseScore(weapon, statReq, verb, out parts);
             }
             else if (isMelee)
             {
@@ -485,6 +514,11 @@ namespace AutoArm
                 ComputedBaseScore = computedBaseScore,
                 AbilityMultiplier = ComputeAbilityMultiplier(weapon),
                 RangeWeights = rangeWeights,
+                BaselineHitSum = rangeWeights != null ? WeightedSum(rangeWeights, BaselineHit) : 0f,
+                Warmup = parts.warmup,
+                BurstGaps = parts.cycle - parts.warmup - parts.cooldown,
+                Cooldown = parts.cooldown,
+                Scatters = scatters,
             };
         }
 
@@ -503,33 +537,118 @@ namespace AutoArm
             return any ? weights : null;
         }
 
-        internal static float RangeFit(Pawn pawn, float[] weights)
+        private static float ShooterFit(Pawn pawn, WeaponBaseProperties props)
         {
+            if (props.BaselineHitSum <= 0f)
+                return 1f;
+
+            PrepareShooter(pawn);
+
+            float fit = CycleFit(props.Warmup, props.BurstGaps, props.Cooldown);
+            if (!props.Scatters)
+                fit *= WeightedSum(props.RangeWeights, shooterHit) / props.BaselineHitSum;
+            return fit / shooterReference;
+        }
+
+        private static void PrepareShooter(Pawn pawn)
+        {
+            int tick = Find.TickManager.TicksGame;
+            if (pawn.thingIDNumber == shooterPawnId && tick == shooterTick)
+                return;
+            shooterPawnId = pawn.thingIDNumber;
+            shooterTick = tick;
+
+            float accuracy = pawn.GetStatValue(StatDefOf.ShootingAccuracyPawn, true, 2500);
             float touch = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Touch, true, 2500);
             float shrt = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Short, true, 2500);
             float medium = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Medium, true, 2500);
             float lng = pawn.GetStatValue(StatDefOf.ShootingAccuracyFactor_Long, true, 2500);
-            if (touch == 1f && shrt == 1f && medium == 1f && lng == 1f)
-                return 1f;
+            shooterAim = pawn.GetStatValue(StatDefOf.AimingDelayFactor, true, 2500);
+            shooterCooldown = pawn.GetStatValue(StatDefOf.RangedCooldownFactor, true, 2500);
 
-            float sum = 0f;
-            float fit = 0f;
-            for (int i = 0; i < weights.Length; i++)
+            for (int i = 0; i < RangeSamples.Length; i++)
             {
-                float w = weights[i];
-                if (w <= 0f)
-                    continue;
                 float d = RangeSamples[i];
-                float f;
-                if (d <= 3f) f = touch;
-                else if (d <= 12f) f = UnityEngine.Mathf.Lerp(touch, shrt, (d - 3f) / 9f);
-                else if (d <= 25f) f = UnityEngine.Mathf.Lerp(shrt, medium, (d - 12f) / 13f);
-                else if (d <= 40f) f = UnityEngine.Mathf.Lerp(medium, lng, (d - 25f) / 15f);
-                else f = lng;
-                sum += w;
-                fit += w * f;
+                float factor;
+                if (d <= 3f) factor = touch;
+                else if (d <= 12f) factor = UnityEngine.Mathf.Lerp(touch, shrt, (d - 3f) / 9f);
+                else if (d <= 25f) factor = UnityEngine.Mathf.Lerp(shrt, medium, (d - 12f) / 13f);
+                else if (d <= 40f) factor = UnityEngine.Mathf.Lerp(medium, lng, (d - 25f) / 15f);
+                else factor = lng;
+                shooterHit[i] = Math.Max((float)Math.Pow(accuracy, d) * factor, Constants.MinShooterHitFactor);
             }
-            return sum > 0f ? fit / sum : 1f;
+
+            shooterReference = CycleFit(Constants.ReferenceWarmup, Constants.ReferenceBurstGaps, Constants.ReferenceCooldown)
+                * WeightedSum(ReferenceWeights, shooterHit) / ReferenceBaselineSum;
+        }
+
+        private static float MeleeGeneLevels(Pawn pawn)
+        {
+            var genes = pawn.genes?.GenesListForReading;
+            if (genes == null || genes.Count == 0)
+                return 0f;
+
+            int tick = Find.TickManager.TicksGame;
+            if (pawn.thingIDNumber == genePawnId && tick == geneTick)
+                return geneLevels;
+            genePawnId = pawn.thingIDNumber;
+            geneTick = tick;
+
+            float offset = 0f;
+            float factor = 1f;
+            for (int i = 0; i < genes.Count; i++)
+            {
+                if (!genes[i].Active)
+                    continue;
+                var def = genes[i].def;
+                if (def.statOffsets != null)
+                {
+                    for (int j = 0; j < def.statOffsets.Count; j++)
+                    {
+                        if (def.statOffsets[j].stat == StatDefOf.MeleeDamageFactor)
+                            offset += def.statOffsets[j].value;
+                    }
+                }
+                if (def.statFactors != null)
+                {
+                    for (int j = 0; j < def.statFactors.Count; j++)
+                    {
+                        if (def.statFactors[j].stat == StatDefOf.MeleeDamageFactor)
+                            factor *= def.statFactors[j].value;
+                    }
+                }
+            }
+
+            float total = (1f + offset) * factor;
+            if (total == 1f)
+                geneLevels = 0f;
+            else if (total <= 0f)
+                geneLevels = -20f;
+            else
+                geneLevels = (float)Math.Round(Constants.MeleeGeneLevels * Math.Log(total) / Math.Log(1.5));
+            return geneLevels;
+        }
+
+        private static float CycleFit(float warmup, float gaps, float cooldown)
+        {
+            float own = warmup * shooterAim + gaps + cooldown * shooterCooldown;
+            return own > 0f ? (warmup + gaps + cooldown) / own : 1f;
+        }
+
+        private static float WeightedSum(float[] weights, float[] values)
+        {
+            float sum = 0f;
+            for (int i = 0; i < weights.Length; i++)
+                sum += weights[i] * values[i];
+            return sum;
+        }
+
+        private static float[] BuildBaselineHit()
+        {
+            var hit = new float[RangeSamples.Length];
+            for (int i = 0; i < hit.Length; i++)
+                hit[i] = Math.Max((float)Math.Pow(Constants.BaselineShootingAccuracy, RangeSamples[i]), Constants.MinShooterHitFactor);
+            return hit;
         }
 
         private static CompProperties_EquippableAbility ResolveAbilityProps(ThingWithComps weapon)
@@ -703,6 +822,8 @@ namespace AutoArm
         public static void ClearWeaponScoreCache()
         {
             propertiesCache.Clear();
+            shooterPawnId = -1;
+            genePawnId = -1;
 
             situationalCacheInitialized = false;
             situationalWeapons.Clear();
@@ -746,6 +867,21 @@ namespace AutoArm
 
             return 1.0f;
         }
+
+        public static float SharedBonus(Pawn pawn, ThingWithComps weapon)
+        {
+            if (pawn == null || weapon?.def == null)
+                return 0f;
+
+            float skill = GetSkillScore(pawn, weapon, out float mismatch);
+            float bonus = (GetHunterScore(pawn, weapon) * mismatch + skill) * GetPersonaMultiplier(pawn, weapon);
+            if (CECompat.IsLoaded && CECompat.ShouldCheckAmmo())
+                bonus *= CECompat.GetAmmoScoreModifier(weapon, pawn);
+            return bonus;
+        }
+
+        public static float UpgradeBar(Pawn pawn, ThingWithComps current, float currentScore, float threshold)
+            => currentScore + Math.Max(currentScore - SharedBonus(pawn, current), 0f) * (threshold - 1f);
 
         public static float GetHunterScore(Pawn pawn, ThingWithComps weapon)
         {
@@ -809,7 +945,7 @@ namespace AutoArm
 
             var skills = pawn.skills;
             float shootingSkill = skills != null ? skills.GetSkill(SkillDefOf.Shooting).Level : 0f;
-            float meleeSkill = skills != null ? skills.GetSkill(SkillDefOf.Melee).Level : 0f;
+            float meleeSkill = (skills != null ? skills.GetSkill(SkillDefOf.Melee).Level : 0f) + MeleeGeneLevels(pawn);
 
             float score = 0f;
 
@@ -940,6 +1076,7 @@ namespace AutoArm
             public float hunterScore;
             public float skillScore;
             public float skillMismatchMultiplier;
+            public float shooterFit;
             public float ceAmmoModifier;
             public float totalScore;
 
@@ -981,7 +1118,7 @@ namespace AutoArm
             breakdown.skillScore = GetSkillScore(pawn, weapon, out mismatchMultiplier);
             breakdown.skillMismatchMultiplier = mismatchMultiplier;
 
-            breakdown.baseWeaponScore = GetWeaponPropertyScore(pawn, weapon);
+            breakdown.baseWeaponScore = GetWeaponPropertyScore(pawn, weapon, out breakdown.shooterFit);
 
             float total = 0f;
             total += breakdown.outfitPolicyScore;

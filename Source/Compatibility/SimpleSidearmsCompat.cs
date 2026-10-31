@@ -555,7 +555,7 @@ namespace AutoArm.Compatibility
             if (ForcedWeapons.IsForced(pawn, target))
                 threshold = Math.Min(threshold, 1.01f);
 
-            if (CalculateWeaponScore(pawn, weapon) <= targetScore * threshold)
+            if (CalculateWeaponScore(pawn, weapon) <= Scoring.UpgradeBar(pawn, target, targetScore, threshold))
             {
                 target = null;
                 return SameDef.Blocked;
@@ -1396,7 +1396,7 @@ namespace AutoArm.Compatibility
 
             float threshold = AutoArmMod.settings?.weaponUpgradeThreshold ?? Definitions.Constants.WeaponUpgradeThreshold;
 
-            return newScore > currentScore * threshold;
+            return newScore > Scoring.UpgradeBar(pawn, currentPrimary, currentScore, threshold);
         }
 
         private static bool ShouldUpgradePrimary(Pawn pawn, ThingWithComps newWeapon, ThingWithComps currentPrimary)
@@ -1504,7 +1504,7 @@ namespace AutoArm.Compatibility
 
                 if (score < worstScore)
                 {
-                    if (newScore > score * effectiveThreshold)
+                    if (newScore > Scoring.UpgradeBar(pawn, weapon, score, effectiveThreshold))
                     {
                         worstScore = score;
                         worstSidearm = weapon;
@@ -1536,7 +1536,7 @@ namespace AutoArm.Compatibility
                     }
                 }
 
-                if (newScore > worstScore * finalThreshold)
+                if (newScore > Scoring.UpgradeBar(pawn, worstSidearm, worstScore, finalThreshold))
                 {
                     if (AutoArmMod.settings?.debugLogging == true)
                     {

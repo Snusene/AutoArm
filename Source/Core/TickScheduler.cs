@@ -10,8 +10,7 @@ namespace AutoArm
         {
             DroppedItemExpiry,
             ForcedWeaponGraceCheck,
-            SimpleSidearmsValidation,
-            MessageCacheExpiry
+            SimpleSidearmsValidation
         }
 
         public readonly struct ScheduledEvent
@@ -38,7 +37,6 @@ namespace AutoArm
         public static Action<int> OnDroppedItemExpired;
         public static Action<int> OnForcedWeaponGraceCheck;
         public static Action<int, int> OnSimpleSidearmsExpired;
-        public static Action<int, int> OnMessageCacheExpired;
 
         public const int NoSecondary = int.MinValue;
 
@@ -94,9 +92,6 @@ namespace AutoArm
                             break;
                         case EventType.SimpleSidearmsValidation:
                             OnSimpleSidearmsExpired?.Invoke(evt.PrimaryId, evt.SecondaryId);
-                            break;
-                        case EventType.MessageCacheExpiry:
-                            OnMessageCacheExpired?.Invoke(evt.PrimaryId, evt.SecondaryId);
                             break;
                     }
                 }

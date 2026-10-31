@@ -48,6 +48,22 @@ namespace AutoArm
 
         public AutoArmGameComponent(Game game) : base()
         {
+            ResetState();
+        }
+
+        private static void ResetState()
+        {
+            TickScheduler.Reset();
+            DroppedItems.Reset();
+            Blacklist.Reset();
+            ForcedWeapons.Reset();
+            ForcedWeaponState.Reset();
+            AutoArm.Jobs.AutoEquipState.Reset();
+            PawnValidation.ClearCache();
+            EquipEligibility.Clear();
+
+            if (Compatibility.SimpleSidearmsCompat.IsLoaded)
+                Compatibility.SimpleSidearmsCompat.Reset();
         }
 
         public override void ExposeData()
@@ -268,12 +284,23 @@ namespace AutoArm
         private List<ForcedRecord> BuildForcedRecords()
         {
             var byPawn = new Dictionary<Pawn, ForcedRecord>();
+            var known = new HashSet<Pawn>();
+            var knownList = Helpers.ListPool<Pawn>.Get(256);
+            try
+            {
+                ForcedWeapons.CollectKnownPawns(knownList);
+                known.UnionWith(knownList);
+            }
+            finally
+            {
+                Helpers.ListPool<Pawn>.Return(knownList);
+            }
 
             var weaponIdData = ForcedWeapons.GetForcedWeaponIds();
             foreach (var kvp in weaponIdData)
             {
                 var pawn = kvp.Key;
-                if (!IsPawnValidForPersistence(pawn) || kvp.Value == null)
+                if (!IsPawnValidForPersistence(pawn) || !known.Contains(pawn) || kvp.Value == null)
                     continue;
 
                 List<ThingWithComps> weapons = null;
@@ -297,7 +324,7 @@ namespace AutoArm
             foreach (var kvp in sidearmData)
             {
                 var pawn = kvp.Key;
-                if (!IsPawnValidForPersistence(pawn) || kvp.Value == null || kvp.Value.Count == 0)
+                if (!IsPawnValidForPersistence(pawn) || !known.Contains(pawn) || kvp.Value == null || kvp.Value.Count == 0)
                     continue;
 
                 if (!byPawn.TryGetValue(pawn, out var record))
@@ -658,35 +685,7 @@ namespace AutoArm
         {
             base.StartedNewGame();
 
-            // Clear scheduler
-            TickScheduler.Reset();
-
-            DroppedItems.Reset();
-            AutoArm.Blacklist.Reset();
-            ForcedWeapons.Reset();
-            ForcedWeaponState.Reset();
-            AutoArm.Jobs.AutoEquipState.Reset();
-
-            // Built in FinalizeInit
-            foreach (var map in Find.Maps)
-            {
-                var cacheManager = map?.GetComponent<Caching.WeaponCache.AutoArmWeaponMapComponent>();
-                cacheManager?.Reset();
-            }
-
-            if (Compatibility.SimpleSidearmsCompat.IsLoaded)
-            {
-                Compatibility.SimpleSidearmsCompat.Reset();
-            }
-
-            try
-            {
-                EquipEligibility.Clear();
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.ErrorPatch(e, "StartedNewGame.UIAndCaches");
-            }
+            ResetState();
 
             AutoArmLogger.Debug(() => "GameComponent initialized for new game (all event trackers reset)");
 
@@ -700,6 +699,8 @@ namespace AutoArm
             AutoArmLogger.ReinitializeIfNeeded();
 
             AutoArmLogger.Debug(() => "GameComponent loaded from save");
+
+            ResetState();
 
             if (pendingRestoreAfterLoad)
             {
@@ -732,24 +733,9 @@ namespace AutoArm
                 catch (Exception e) { AutoArmLogger.Error("RestoreDataAfterLoading failed", e); }
             }
 
-            TickScheduler.Reset();
-
-            DroppedItems.Reset();
-            Blacklist.Reset();
-            ForcedWeaponState.Reset();
-            AutoArm.Jobs.AutoEquipState.Reset();
-
-            foreach (var map in Find.Maps)
-            {
-                var cacheManager = map?.GetComponent<Caching.WeaponCache.AutoArmWeaponMapComponent>();
-                cacheManager?.RebuildCachedWeaponSet();
-            }
-
             try
             {
-                Game_LoadGame_InjectThinkTree_Patch.Postfix();
-                PawnValidation.ClearCache();
-                EquipEligibility.Clear();
+                AfterLoad.Run();
             }
             catch (Exception e)
             {

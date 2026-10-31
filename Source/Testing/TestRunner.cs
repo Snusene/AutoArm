@@ -76,7 +76,12 @@ namespace AutoArm.Testing
             if (map == null)
                 return snap;
 
-            int weapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon).Count;
+            int weapons = 0;
+            foreach (var thing in map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon))
+            {
+                if (Validation.IsWeapon(thing))
+                    weapons++;
+            }
             int drafted = 0;
             foreach (var pawn in map.mapPawns.FreeColonistsSpawned)
             {
@@ -196,9 +201,6 @@ namespace AutoArm.Testing
                 Cleanup.DisableAutoCleanup();
                 CleanupTracker.Reset();
 
-                if (map != null)
-                    WeaponCache.Initialize(map);
-
                 body();
             }
             finally
@@ -272,30 +274,7 @@ namespace AutoArm.Testing
 
         private static void PostTestSetupCacheRebuild(Map map, ITestScenario test)
         {
-            if (map == null) return;
-
-            try
-            {
-                int cachedCount = WeaponCache.GetCacheWeaponCount(map);
-                var onMapList = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon)?.OfType<ThingWithComps>().ToList()
-                                 ?? new List<ThingWithComps>();
-
-                if (onMapList.Count > 0 && cachedCount == 0)
-                {
-                    foreach (var w in onMapList)
-                    {
-                        if (w != null && !w.Destroyed && w.Spawned)
-                            WeaponCache.AddWeaponToCache(w);
-                    }
-                }
-
-                WeaponCache.ClearScoreCache();
-                WeaponCache.ValidateCacheIntegrity(map);
-            }
-            catch (Exception e)
-            {
-                AutoArmLogger.Warn($"Error in post-test setup cache rebuild for {test.Name}", e);
-            }
+            WeaponCache.ClearScoreCache();
         }
 
         private static void FinalCleanup(Map map)
@@ -509,6 +488,8 @@ namespace AutoArm.Testing
             typeof(Scenarios.ShieldBeltBlocksRangedTest),
             typeof(Scenarios.BrawlerTest),
             typeof(Scenarios.SkillBasedPreferenceTest),
+            typeof(Scenarios.ShooterTraitFitTest),
+            typeof(Scenarios.MeleeGeneRoleTest),
             typeof(Scenarios.AreaRestrictedPicksAllowedWeaponTest),
             typeof(Scenarios.UniqueWeaponTraitsScoredTest),
             typeof(Scenarios.IdeologyDespisedWeaponTest),
@@ -520,6 +501,8 @@ namespace AutoArm.Testing
     internal sealed class LiveBehaviorGroup : TestGroup
     {
         public override string Name => "Live behavior (ticked)";
+        protected override string Unavailable(Map map)
+            => map != null && RimWorld.GenHostility.AnyHostileActiveThreatToPlayer(map) ? "Hostiles on the map" : null;
         public override Type[] Parts => new[]
         {
             typeof(Scenarios.LiveArmsIdleColonistTest),
@@ -544,6 +527,7 @@ namespace AutoArm.Testing
             typeof(Scenarios.StorageOnlyTest),
             typeof(Scenarios.UpgradeEquippedOffTest),
             typeof(Scenarios.UpgradeThresholdTest),
+            typeof(Scenarios.SkilledShooterQualityUpgradeTest),
             typeof(Scenarios.WeaponTypePreferenceTest),
             typeof(Scenarios.ForcedLabelTest),
         };

@@ -93,6 +93,7 @@
 	<AutoArm_ClickToJump>Clic para saltar al arma</AutoArm_ClickToJump>
 
 	<AutoArm_ScoreBase>Base (DPS × prec × PA): {0}</AutoArm_ScoreBase>
+	<AutoArm_ScoreShooterFit>Ajuste al tirador: {0}</AutoArm_ScoreShooterFit>
 	<AutoArm_ScoreSkillBonus>Bonus de habilidad: {0}</AutoArm_ScoreSkillBonus>
 	<AutoArm_ScoreHunterBonus>Bonus de cazador: {0}</AutoArm_ScoreHunterBonus>
 	<AutoArm_ScoreOutfitPolicy>Política de vestimenta: {0}</AutoArm_ScoreOutfitPolicy>

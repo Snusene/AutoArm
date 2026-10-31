@@ -88,13 +88,6 @@ namespace AutoArm
             ThingWithComps oldWeaponToPlace = oldWeapon;
             IntVec3 dropPosition = pawn.Position;
 
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                int invCount = pawn.inventory.innerContainer.Count;
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Atomic swap: dropping {oldWeapon.Label} (slot {oldWeaponIndex}), picking up {newWeapon.Label}");
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Current inventory count: {invCount} items");
-            }
-
             if (oldWeaponToPlace.stackCount > 1)
             {
                 oldWeaponToPlace = (ThingWithComps)oldWeapon.SplitOff(1);
@@ -156,11 +149,7 @@ namespace AutoArm
             if (placed)
                 DroppedItems.MarkAsDropped(oldWeaponToPlace, Constants.LongDropCooldownTicks);
 
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Atomic swap done: {oldWeapon.Label} replaced with {newWeapon.Label}");
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Dropped {oldWeaponToPlace.Label} at {dropPosition}");
-            }
+            AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Swapped sidearm {AutoArmLogger.GetWeaponLabelLower(oldWeapon)} for {AutoArmLogger.GetWeaponLabelLower(newWeapon)}");
 
             if (AutoArmMod.settings?.showNotifications == true &&
                 PawnUtility.ShouldSendNotificationAbout(pawn))
@@ -171,8 +160,6 @@ namespace AutoArm
                     ForcedWeaponLabelHelper.StripForcedSuffix(newWeapon.Label)
                 ), new LookTargets(pawn), MessageTypeDefOf.SilentInput, false);
             }
-
-            AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Sidearm swap done");
         }
     }
 
@@ -227,8 +214,6 @@ namespace AutoArm
             }
 
             IntVec3 dropPosition = pawn.Position;
-
-            AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Swapping primary from {oldWeapon.Label} to {newWeapon.Label}");
 
 
             ThingWithComps droppedWeapon;
@@ -286,11 +271,7 @@ namespace AutoArm
 
             DroppedItems.MarkAsDropped(droppedWeapon, Constants.LongDropCooldownTicks);
 
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Swapped primary from {oldWeapon.Label} to {newWeapon.Label}");
-                AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Dropped weapon spawned={droppedWeapon?.Spawned}, pos={droppedWeapon?.Position}");
-            }
+            AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Swapped primary {AutoArmLogger.GetWeaponLabelLower(oldWeapon)} for {AutoArmLogger.GetWeaponLabelLower(newWeapon)}");
         }
     }
 }

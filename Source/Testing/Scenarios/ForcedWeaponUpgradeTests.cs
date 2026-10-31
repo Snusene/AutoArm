@@ -598,7 +598,7 @@ namespace AutoArm.Testing.Scenarios
             sidearm.TryGetComp<CompQuality>()?.SetQuality(quality, ArtGenerationContext.Colony);
             if (pawn.inventory?.innerContainer?.TryAdd(sidearm) != true) return null;
             ForcedWeapons.AddSidearm(pawn, sidearm);
-            return sidearm;
+            return Track(sidearm);
         }
 
         protected ThingWithComps AddCarried(ThingDef def, bool remembered)
@@ -959,7 +959,6 @@ namespace AutoArm.Testing.Scenarios
             better = Make(club, ThingDefOf.Uranium);
             if (better == null) return;
             GenSpawn.Spawn(better, TestPositions.GetNearbyPosition(pawn.Position, 1.5f, 3f, map), map);
-            WeaponCache.AddWeaponToCache(better);
         }
 
         private static ThingWithComps Make(ThingDef def, ThingDef stuff)

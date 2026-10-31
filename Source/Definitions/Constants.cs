@@ -39,6 +39,13 @@ namespace AutoArm.Definitions
         public const float SkillBonusGrowthRate = 1.50f;
         public const float SkillBonusMax = 500f;
         public const float SkillMismatchMultiplier = 0.70f;
+
+        public const float MeleeGeneLevels = 7f;
+        public const float BaselineShootingAccuracy = 0.96f;
+        public const float MinShooterHitFactor = 0.0201f;
+        public const float ReferenceWarmup = 1f;
+        public const float ReferenceBurstGaps = 0.33f;
+        public const float ReferenceCooldown = 1.5f;
         public const float OutfitFilterDisallowedPenalty = -1000f;
 
         public const int MaxWeaponCacheSize = 10000;
@@ -74,12 +81,6 @@ namespace AutoArm.Definitions
 
         public const float ChildMaxAgeLimit = 18f;
         public const int ChildDefaultMinAge = 13;
-
-
-        public const int MaxThinkTreeSearchDepth = 20;
-
-        public const int MinPrioritySorterNodes = 10;
-        public const int MaxThinkTreeRetryAttempts = 3;
 
 
         public const int StandardCacheDuration = 2500;

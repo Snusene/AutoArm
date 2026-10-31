@@ -401,14 +401,9 @@ namespace AutoArm
 
                         Cleanup.ClearAllCaches();
 
-                        foreach (var map in Find.Maps)
-                        {
-                            WeaponCache.RebuildCache(map);
-                        }
-
                         if (settings.debugLogging)
                         {
-                            AutoArmLogger.Debug(() => "Mod re-enabled - cleared all caches and cooldowns, rebuilding weapon cache");
+                            AutoArmLogger.Debug(() => "Mod re-enabled, cleared all caches and cooldowns");
                         }
                     }
                     else

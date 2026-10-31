@@ -201,7 +201,7 @@ namespace AutoArm.Testing.Scenarios
             using (Live())
             {
                 if (!Sim.TickUntil(() => pawn.equipment.Primary == better, 2500))
-                    return TestResult.Failure($"Never upgraded, still {pawn.equipment.Primary?.LabelShort ?? "unarmed"}");
+                    return TestResult.Failure($"Never upgraded, still {pawn.equipment.Primary?.LabelShort ?? "unarmed"}, current job {pawn.CurJob?.def?.defName ?? "none"}");
 
                 Sim.TickUntil(() =>
                 {
@@ -288,7 +288,7 @@ namespace AutoArm.Testing.Scenarios
             using (Live())
             {
                 if (!Sim.TickUntil(() => pawn.equipment.Primary == pistol, 2500))
-                    return TestResult.Failure($"Not switched to the allowed autopistol, holding {pawn.equipment.Primary?.LabelShort ?? "nothing"}");
+                    return TestResult.Failure($"Not switched to the allowed autopistol, holding {pawn.equipment.Primary?.LabelShort ?? "nothing"}, current job {pawn.CurJob?.def?.defName ?? "none"}");
                 Sim.Tick(1500);
             }
 
@@ -303,7 +303,7 @@ namespace AutoArm.Testing.Scenarios
         {
             base.Cleanup();
             if (policy != null)
-                Current.Game?.outfitDatabase?.AllOutfits?.Remove(policy);
+                Current.Game?.outfitDatabase?.TryDelete(policy);
         }
     }
 
@@ -437,7 +437,7 @@ namespace AutoArm.Testing.Scenarios
             using (Live())
             {
                 if (!Sim.TickUntil(() => pawn.equipment.Primary == better, 2500))
-                    return TestResult.Failure($"Still holding {pawn.equipment.Primary?.LabelShort ?? "nothing"} after 2500 ticks");
+                    return TestResult.Failure($"Still holding {pawn.equipment.Primary?.LabelShort ?? "nothing"} after 2500 ticks, current job {pawn.CurJob?.def?.defName ?? "none"}");
             }
             return TestResult.Pass();
         }

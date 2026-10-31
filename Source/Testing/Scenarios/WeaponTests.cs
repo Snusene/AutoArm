@@ -226,14 +226,9 @@ namespace AutoArm.Testing.Scenarios
 
                 if (blacklistedWeapon != null)
                 {
-                    WeaponCache.AddWeaponToCache(blacklistedWeapon);
                     Blacklist.AddToBlacklist(blacklistedWeapon.def, testPawn, "Integration test");
                 }
 
-                if (normalWeapon != null)
-                {
-                    WeaponCache.AddWeaponToCache(normalWeapon);
-                }
             }
         }
 
@@ -441,7 +436,6 @@ namespace AutoArm.Testing.Scenarios
                 if (forbiddenWeapon != null)
                 {
                     forbiddenWeapon.SetForbidden(true);
-                    WeaponCache.AddWeaponToCache(forbiddenWeapon);
                 }
 
                 outfitBlockedWeapon = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_ChainShotgun,
@@ -454,13 +448,10 @@ namespace AutoArm.Testing.Scenarios
                         WeaponCache.OnOutfitFilterChanged(testPawn.outfits.CurrentApparelPolicy);
                         WeaponCache.ClearScoreCache();
                     }
-                    WeaponCache.AddWeaponToCache(outfitBlockedWeapon);
                 }
 
                 allowedWeapon = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_Autopistol,
                     testPawn.Position + new IntVec3(0, 0, 2), QualityCategory.Poor);
-                if (allowedWeapon != null)
-                    WeaponCache.AddWeaponToCache(allowedWeapon);
             }
         }
 
@@ -516,7 +507,6 @@ namespace AutoArm.Testing.Scenarios
             if (forbiddenWeapon != null)
             {
                 forbiddenWeapon.SetForbidden(true);
-                WeaponCache.AddWeaponToCache(forbiddenWeapon);
             }
 
             allowedWeapon = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_Autopistol,
@@ -524,14 +514,12 @@ namespace AutoArm.Testing.Scenarios
             if (allowedWeapon != null)
             {
                 allowedWeapon.SetForbidden(false);
-                WeaponCache.AddWeaponToCache(allowedWeapon);
             }
 
             claimedWeapon = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_ChainShotgun,
                 testPawn.Position + new IntVec3(0, 0, 2), QualityCategory.Masterwork);
             if (claimedWeapon != null)
             {
-                WeaponCache.AddWeaponToCache(claimedWeapon);
                 otherPawn = TestHelpers.CreateTestPawn(map, new TestHelpers.TestPawnConfig
                 {
                     Name = "ClaimerPawn",

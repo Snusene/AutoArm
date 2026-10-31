@@ -45,8 +45,6 @@ namespace AutoArm.Testing.Helpers
                     weapon.holdingOwner.Remove(weapon);
                 }
 
-                WeaponCache.RemoveWeaponFromCache(weapon);
-
                 if (weapon.Spawned)
                 {
                     weapon.DeSpawn(DestroyMode.Vanish);

@@ -173,23 +173,17 @@ namespace AutoArm
 
             int pawnId = pawn.thingIDNumber;
 
-            int count = 0;
-            if (forcedWeaponIds.ContainsKey(pawnId))
-            {
-                count = forcedWeaponIds[pawnId].Count;
-                forcedWeaponIds.Remove(pawnId);
-            }
-
-            if (forcedWeaponDefs.ContainsKey(pawnId))
-            {
-                forcedWeaponDefs.Remove(pawnId);
-            }
-
+            forcedWeaponIds.Remove(pawnId);
             forcedPrimaryWeapon.Remove(pawnId);
 
-            if (count > 0)
+            if (forcedWeaponDefs.TryGetValue(pawnId, out var defs))
             {
-                AutoArmLogger.Debug(() => $"[{pawn.Name?.ToStringShort ?? "Unknown"}] Cleared {count} forced weapon{(count == 1 ? "" : "s")}");
+                forcedWeaponDefs.Remove(pawnId);
+                if (defs.Count > 0 && AutoArmMod.settings?.debugLogging == true)
+                {
+                    string names = string.Join(", ", defs.Select(d => d.label));
+                    AutoArmLogger.Debug(() => $"[{pawn.LabelShort}] Cleared forced: {names}");
+                }
             }
         }
 

@@ -101,7 +101,6 @@ namespace AutoArm.Testing.Scenarios
                     if (weapon1 != null)
                     {
                         weapons.Add(weapon1);
-                        WeaponCache.AddWeaponToCache(weapon1);
                         weapon1.SetForbidden(false, false);
                     }
 
@@ -128,7 +127,6 @@ namespace AutoArm.Testing.Scenarios
                         if (weapon2 != null)
                         {
                             weapons.Add(weapon2);
-                            WeaponCache.AddWeaponToCache(weapon2);
                             weapon2.SetForbidden(false, false);
                         }
                     }
@@ -399,8 +397,8 @@ namespace AutoArm.Testing.Scenarios
             sniperDef = DefDatabase<ThingDef>.GetNamedSilentFail("Gun_SniperRifle");
             if (gene == null || sniperDef == null || AutoArmDefOf.Gun_Autopistol == null) return;
 
-            normal = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "SharpEyes" });
-            nearsighted = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "Squinter" });
+            normal = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "SharpEyes", Skills = new Dictionary<SkillDef, int> { { SkillDefOf.Shooting, 8 } } });
+            nearsighted = TestHelpers.CreateTestPawn(map, new TestPawnConfig { Name = "Squinter", Skills = new Dictionary<SkillDef, int> { { SkillDefOf.Shooting, 8 } } });
             if (nearsighted?.genes == null) return;
             nearsighted.genes.AddGene(gene, true);
 
@@ -424,12 +422,9 @@ namespace AutoArm.Testing.Scenarios
             float nearSniper = Scoring.GetWeaponPropertyScore(nearsighted, sniper);
             float nearPistol = Scoring.GetWeaponPropertyScore(nearsighted, pistol);
 
-            if (normalSniper != Scoring.GetWeaponPropertyScore(null, sniper))
-                return TestResult.Failure($"Normal pawn sniper score changed: {normalSniper:F1}");
-            if (nearSniper >= normalSniper * 0.6f)
-                return TestResult.Failure($"Sniper barely penalized: {nearSniper:F1} vs {normalSniper:F1}");
-            if (nearSniper / nearPistol >= normalSniper / normalPistol)
-                return TestResult.Failure("Sniper not penalized more than autopistol");
+            float relative = (nearSniper / nearPistol) / (normalSniper / normalPistol);
+            if (relative >= 0.85f)
+                return TestResult.Failure($"Sniper barely penalized against the autopistol: relative {relative:F2}");
 
             return TestResult.Pass();
         }
@@ -440,6 +435,127 @@ namespace AutoArm.Testing.Scenarios
             TestHelpers.SafeDestroyPawn(nearsighted);
             if (sniper != null && !sniper.Destroyed) sniper.Destroy();
             if (pistol != null && !pistol.Destroyed) pistol.Destroy();
+        }
+    }
+
+    internal sealed class MeleeGeneRoleTest : ITestScenario
+    {
+        public string Name => "Melee damage genes shift the role";
+        private Pawn strong;
+        private Pawn weak;
+        private ThingWithComps rifle;
+        private ThingWithComps sword;
+        private GeneDef strongGene;
+        private GeneDef weakGene;
+
+        public void Setup(Map map)
+        {
+            if (map == null) return;
+            strongGene = DefDatabase<GeneDef>.GetNamedSilentFail("MeleeDamage_Strong");
+            weakGene = DefDatabase<GeneDef>.GetNamedSilentFail("MeleeDamage_Weak");
+            if (strongGene == null || weakGene == null || AutoArmDefOf.Gun_AssaultRifle == null || AutoArmDefOf.MeleeWeapon_LongSword == null) return;
+            strong = Fighter(map, "Strongarm", 8, 5, strongGene);
+            weak = Fighter(map, "Weakarm", 6, 7, weakGene);
+            rifle = ThingMaker.MakeThing(AutoArmDefOf.Gun_AssaultRifle) as ThingWithComps;
+            sword = ThingMaker.MakeThing(AutoArmDefOf.MeleeWeapon_LongSword, GenStuff.DefaultStuffFor(AutoArmDefOf.MeleeWeapon_LongSword)) as ThingWithComps;
+        }
+
+        private static Pawn Fighter(Map map, string name, int shooting, int melee, GeneDef gene)
+        {
+            var pawn = TestHelpers.CreateTestPawn(map, new TestPawnConfig
+            {
+                Name = name,
+                Skills = new Dictionary<SkillDef, int> { { SkillDefOf.Shooting, shooting }, { SkillDefOf.Melee, melee } }
+            });
+            pawn?.genes?.AddGene(gene, true);
+            return pawn;
+        }
+
+        public TestResult Run()
+        {
+            if (strongGene == null || weakGene == null)
+                return TestResult.Skip("Biotech not active");
+            if (strong == null || weak == null || rifle == null || sword == null)
+                return TestResult.Failure("Setup incomplete");
+            if (!strong.genes.HasActiveGene(strongGene) || !weak.genes.HasActiveGene(weakGene))
+                return TestResult.Failure("Melee genes not active");
+
+            float strongSword = Scoring.GetSkillScore(strong, sword, out _);
+            Scoring.GetSkillScore(strong, rifle, out float strongRifleMismatch);
+            if (strongSword <= 0f || strongRifleMismatch >= 1f)
+                return TestResult.Failure($"Strong melee pawn with shooting 8 and melee 5 not pushed to melee: sword bonus {strongSword:F0}, rifle factor {strongRifleMismatch:F2}");
+
+            float weakRifle = Scoring.GetSkillScore(weak, rifle, out _);
+            Scoring.GetSkillScore(weak, sword, out float weakSwordMismatch);
+            if (weakRifle <= 0f || weakSwordMismatch >= 1f)
+                return TestResult.Failure($"Weak melee pawn with shooting 6 and melee 7 not pushed to guns: rifle bonus {weakRifle:F0}, sword factor {weakSwordMismatch:F2}");
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            TestHelpers.SafeDestroyPawn(strong);
+            TestHelpers.SafeDestroyPawn(weak);
+            if (rifle != null && !rifle.Destroyed) rifle.Destroy();
+            if (sword != null && !sword.Destroyed) sword.Destroy();
+        }
+    }
+
+    internal sealed class ShooterTraitFitTest : ITestScenario
+    {
+        public string Name => "Shooting traits reorder guns";
+        private Pawn careful;
+        private Pawn trigger;
+        private ThingWithComps lance;
+        private ThingWithComps shotgun;
+        private TraitDef trait;
+
+        public void Setup(Map map)
+        {
+            if (map == null) return;
+            trait = DefDatabase<TraitDef>.GetNamedSilentFail("ShootingAccuracy");
+            var lanceDef = DefDatabase<ThingDef>.GetNamedSilentFail("Gun_ChargeLance");
+            var shotgunDef = DefDatabase<ThingDef>.GetNamedSilentFail("Gun_ChainShotgun");
+            if (trait == null || lanceDef == null || shotgunDef == null) return;
+            careful = Shooter(map, "Careful", 1);
+            trigger = Shooter(map, "Trigger", -1);
+            lance = ThingMaker.MakeThing(lanceDef) as ThingWithComps;
+            shotgun = ThingMaker.MakeThing(shotgunDef) as ThingWithComps;
+        }
+
+        private Pawn Shooter(Map map, string name, int degree)
+        {
+            var pawn = TestHelpers.CreateTestPawn(map, new TestPawnConfig
+            {
+                Name = name,
+                Skills = new Dictionary<SkillDef, int> { { SkillDefOf.Shooting, 10 } }
+            });
+            pawn?.story?.traits?.GainTrait(new Trait(trait, degree));
+            return pawn;
+        }
+
+        public TestResult Run()
+        {
+            if (CECompat.IsLoaded)
+                return TestResult.Skip("Combat Extended loaded");
+            if (trait == null || lance == null || shotgun == null)
+                return TestResult.Skip("Trait or guns missing");
+            if (careful == null || trigger == null)
+                return TestResult.Failure("Setup incomplete");
+
+            float carefulRatio = Scoring.GetWeaponPropertyScore(careful, lance) / Scoring.GetWeaponPropertyScore(careful, shotgun);
+            float triggerRatio = Scoring.GetWeaponPropertyScore(trigger, lance) / Scoring.GetWeaponPropertyScore(trigger, shotgun);
+            if (carefulRatio <= triggerRatio * 1.2f)
+                return TestResult.Failure($"Careful shooter lance to chain shotgun {carefulRatio:F2}, trigger-happy {triggerRatio:F2}");
+            return TestResult.Pass();
+        }
+
+        public void Cleanup()
+        {
+            TestHelpers.SafeDestroyPawn(careful);
+            TestHelpers.SafeDestroyPawn(trigger);
+            if (lance != null && !lance.Destroyed) lance.Destroy();
+            if (shotgun != null && !shotgun.Destroyed) shotgun.Destroy();
         }
     }
 
@@ -483,8 +599,6 @@ namespace AutoArm.Testing.Scenarios
 
             better = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_AssaultRifle,
                 soldier.Position + new IntVec3(2, 0, 0), QualityCategory.Legendary);
-            if (better != null)
-                WeaponCache.AddWeaponToCache(better);
         }
 
         public TestResult Run()
@@ -580,7 +694,6 @@ namespace AutoArm.Testing.Scenarios
                     if (nearbyWeapon != null)
                     {
                         nearbyWeapon.SetForbidden(false, false);
-                        WeaponCache.AddWeaponToCache(nearbyWeapon);
                     }
                 }
             }
@@ -625,7 +738,6 @@ namespace AutoArm.Testing.Scenarios
 
             if (childPawn.Map != null && nearbyWeapon != null)
             {
-                WeaponCache.AddWeaponToCache(nearbyWeapon);
 
                 var weaponsInCache = TestHelpers.CachedWeapons(childPawn.Map).ToList();
                 if (!weaponsInCache.Contains(nearbyWeapon))
@@ -746,7 +858,6 @@ namespace AutoArm.Testing.Scenarios
                 if (weapon != null)
                 {
                     weapons.Add(weapon);
-                    WeaponCache.AddWeaponToCache(weapon);
                 }
             }
         }
@@ -822,7 +933,6 @@ namespace AutoArm.Testing.Scenarios
                     if (sword != null)
                     {
                         weapons.Add(sword);
-                        WeaponCache.AddWeaponToCache(sword);
                     }
                 }
                 if (rifleDef != null)
@@ -831,7 +941,6 @@ namespace AutoArm.Testing.Scenarios
                     if (rifle != null)
                     {
                         weapons.Add(rifle);
-                        WeaponCache.AddWeaponToCache(rifle);
                     }
                 }
             }
@@ -929,7 +1038,6 @@ namespace AutoArm.Testing.Scenarios
                     if (rifle != null)
                     {
                         weapons.Add(rifle);
-                        WeaponCache.AddWeaponToCache(rifle);
                     }
                 }
 
@@ -988,7 +1096,7 @@ namespace AutoArm.Testing.Scenarios
 
             if (meleePawn != null && weapons.Count > 0)
             {
-                var meleePos = meleePawn.Position + new IntVec3(2, 0, 0);
+                var meleePos = TestPositions.GetNearbyPosition(meleePawn.Position, 1.5f, 3f, meleePawn.Map);
                 var strongMeleeDef = AutoArmDefOf.MeleeWeapon_LongSword;
                 if (strongMeleeDef != null)
                 {
@@ -996,10 +1104,8 @@ namespace AutoArm.Testing.Scenarios
                     if (strongMelee != null)
                     {
                         weapons.Add(strongMelee);
-                        WeaponCache.AddWeaponToCache(strongMelee);
                     }
                 }
-                meleePawn.Position = meleePos;
 
                 var meleeJob = jobGiver.TestTryGiveJob(meleePawn);
                 if (!(meleeJob?.targetA.Thing is ThingWithComps meleeWeapon))

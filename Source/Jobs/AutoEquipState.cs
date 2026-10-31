@@ -15,10 +15,6 @@ namespace AutoArm.Jobs
 
         private static Dictionary<int, int> weaponsToForce = new Dictionary<int, int>();
 
-        private static int markedCount = 0;
-
-        private static int lastSummaryTick = -1;
-        private const int SummaryWindowTicks = 300;
 
         public static void MarkAsAutoEquip(Job job, Pawn pawn)
         {
@@ -26,23 +22,6 @@ namespace AutoArm.Jobs
                 return;
 
             autoEquipJobIds[job.loadID] = Find.TickManager?.TicksGame ?? 0;
-
-            if (AutoArmMod.settings?.debugLogging == true)
-            {
-                int now = Find.TickManager?.TicksGame ?? 0;
-                markedCount++;
-
-                if (lastSummaryTick < 0)
-                {
-                    lastSummaryTick = now;
-                }
-                else if (now - lastSummaryTick >= SummaryWindowTicks)
-                {
-                    AutoArmLogger.Debug(() => $"Auto equip jobs created: {markedCount} in last 5s");
-                    markedCount = 0;
-                    lastSummaryTick = now;
-                }
-            }
         }
 
         public static bool IsAutoEquip(Job job)
@@ -125,8 +104,6 @@ namespace AutoArm.Jobs
             autoEquipJobIds.Clear();
             previousWeaponLabels.Clear();
             weaponsToForce.Clear();
-            markedCount = 0;
-            lastSummaryTick = -1;
         }
 
         private static int liveSweepCounter;

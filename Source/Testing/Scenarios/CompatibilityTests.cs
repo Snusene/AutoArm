@@ -46,10 +46,6 @@ namespace AutoArm.Testing.Scenarios
                     sidearmWeapon = TestHelpers.CreateWeapon(map, meleeDef,
                         testPawn.Position + new IntVec3(2, 0, 0), QualityCategory.Good);
 
-                    if (sidearmWeapon != null)
-                    {
-                        WeaponCache.AddWeaponToCache(sidearmWeapon);
-                    }
                 }
             }
         }
@@ -60,6 +56,8 @@ namespace AutoArm.Testing.Scenarios
                 return TestResult.Skip("SimpleSidearms not loaded");
             if (testPawn == null || sidearmWeapon == null)
                 return TestResult.Failure("Test setup failed");
+            if (!SimpleSidearmsCompat.IsManagingPawn(testPawn))
+                return TestResult.Skip("SimpleSidearms not managing pawn");
 
             string reason;
             bool canPickup = SimpleSidearmsCompat.CanPickupSidearm(sidearmWeapon, testPawn, out reason);
@@ -140,10 +138,6 @@ namespace AutoArm.Testing.Scenarios
                     TestPositions.GetNearbyPosition(testPawn.Position, 2, 4, map),
                     QualityCategory.Legendary);
 
-                if (betterWeapon != null)
-                {
-                    WeaponCache.AddWeaponToCache(betterWeapon);
-                }
             }
         }
 
@@ -153,6 +147,8 @@ namespace AutoArm.Testing.Scenarios
                 return TestResult.Skip("SimpleSidearms not loaded");
             if (testPawn == null || betterWeapon == null)
                 return TestResult.Failure("Test setup failed");
+            if (!SimpleSidearmsCompat.IsManagingPawn(testPawn))
+                return TestResult.Skip("SimpleSidearms not managing pawn");
 
             string reason;
             if (!SimpleSidearmsCompat.CanPickupSidearm(betterWeapon, testPawn, out reason))
@@ -229,10 +225,6 @@ namespace AutoArm.Testing.Scenarios
                     TestPositions.GetNearbyPosition(testPawn.Position, 2, 4, map),
                     QualityCategory.Legendary);
 
-                if (betterWeapon != null)
-                {
-                    WeaponCache.AddWeaponToCache(betterWeapon);
-                }
             }
         }
 
@@ -305,10 +297,6 @@ namespace AutoArm.Testing.Scenarios
                     ceWeapon = TestHelpers.CreateWeapon(map, ceWeaponDef,
                         TestPositions.GetNearbyPosition(testPawn.Position, 2, 4, map));
 
-                    if (ceWeapon != null)
-                    {
-                        WeaponCache.AddWeaponToCache(ceWeapon);
-                    }
                 }
             }
         }
@@ -394,10 +382,6 @@ namespace AutoArm.Testing.Scenarios
             mapMelee = TestHelpers.CreateWeapon(map, AutoArmDefOf.MeleeWeapon_LongSword,
                 TestPositions.GetNearbyPosition(testPawn.Position, 2, 4, map),
                 QualityCategory.Legendary);
-            if (mapMelee != null)
-            {
-                WeaponCache.AddWeaponToCache(mapMelee);
-            }
         }
 
         public TestResult Run()
@@ -514,10 +498,6 @@ namespace AutoArm.Testing.Scenarios
                 testWeapon = TestHelpers.CreateWeapon(map, AutoArmDefOf.Gun_Autopistol,
                     testPawn.Position + new IntVec3(2, 0, 0));
 
-                if (testWeapon != null)
-                {
-                    WeaponCache.AddWeaponToCache(testWeapon);
-                }
             }
         }
 

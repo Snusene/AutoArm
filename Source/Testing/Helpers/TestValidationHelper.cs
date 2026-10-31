@@ -87,50 +87,6 @@ namespace AutoArm.Testing.Helpers
             return true;
         }
 
-        public static void ForceWeaponCacheRefresh(Map map)
-        {
-            if (map == null) return;
-
-            try
-            {
-                Caching.WeaponCache.ClearAllCaches();
-
-                var weapons = map.listerThings.ThingsInGroup(ThingRequestGroup.Weapon);
-                foreach (var weapon in weapons)
-                {
-                    if (weapon is ThingWithComps twc && twc.Spawned && !twc.Destroyed)
-                    {
-                        Caching.WeaponCache.AddWeaponToCache(twc);
-                    }
-                }
-
-                AutoArmLogger.Debug(() => $"[TEST] Force refreshed weapon cache for map {map.uniqueID} - {weapons.Count} weapons");
-            }
-            catch (System.Exception e)
-            {
-                AutoArmLogger.Warn("[TEST] Error force refreshing weapon cache", e);
-            }
-        }
-
-        public static void EnsureWeaponRegistered(ThingWithComps weapon)
-        {
-            if (weapon == null || !weapon.Spawned || weapon.Destroyed) return;
-
-            try
-            {
-                Caching.WeaponCache.AddWeaponToCache(weapon);
-
-
-                weapon.SetForbidden(false, false);
-
-                AutoArmLogger.Debug(() => $"[TEST] Ensured weapon {weapon.Label} is registered for testing");
-            }
-            catch (System.Exception e)
-            {
-                AutoArmLogger.Warn($"[TEST] Error registering weapon {weapon?.Label}", e);
-            }
-        }
-
         public static bool IsSimpleSidearmsWorking()
         {
             if (!SimpleSidearmsCompat.IsLoaded)

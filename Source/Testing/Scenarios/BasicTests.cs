@@ -57,16 +57,12 @@ namespace AutoArm.Testing.Scenarios
                             compQuality.SetQuality(QualityCategory.Excellent, ArtGenerationContext.Colony);
                         }
 
-                        WeaponCache.AddWeaponToCache(testWeapon);
 
                         var cachedWeapons = TestHelpers.CachedWeapons(map).ToList();
                         if (!cachedWeapons.Contains(testWeapon))
                         {
                             AutoArmLogger.Warn($"[TEST] UnarmedPawnTest: Created weapon not found in cache! Cache size: {cachedWeapons.Count}");
                             AutoArmLogger.Warn($"[TEST] Weapon spawned: {testWeapon.Spawned}, destroyed: {testWeapon.Destroyed}, map: {testWeapon.Map?.uniqueID}");
-                        }
-                        else
-                        {
                         }
                     }
                 }
@@ -262,10 +258,8 @@ namespace AutoArm.Testing.Scenarios
                     }
 
 
-                    WeaponCache.AddWeaponToCache(betterWeapon);
 
                     WeaponCache.EnsureCacheExists(map);
-                    WeaponCache.ValidateCacheIntegrity(map);
 
                     var nearbyWeapons = TestHelpers.CachedWeapons(map);
                     var nearbyWeaponsList = nearbyWeapons.ToList();
@@ -313,15 +307,6 @@ namespace AutoArm.Testing.Scenarios
             {
                 AutoArmLogger.Warn($"[TEST] WeaponUpgradeTest: Better weapon null or not spawned - null: {betterWeapon == null}, spawned: {betterWeapon?.Spawned ?? false}");
                 return TestResult.Failure($"Better weapon missing, null={betterWeapon == null}");
-            }
-
-            WeaponCache.EnsureCacheExists(testPawn.Map);
-            if (!WeaponCache.IsWeaponTracked(testPawn.Map, betterWeapon))
-            {
-                WeaponCache.AddWeaponToCache(betterWeapon);
-                WeaponCache.MarkCacheAsChanged(testPawn.Map);
-
-                AutoArmLogger.Debug(() => $"[TEST] WeaponUpgradeTest: Re-added {betterWeapon.Label} to weapon cache after preparation");
             }
 
             JobGiver_PickUpBetterWeapon.EnableTestMode(true);
@@ -515,10 +500,6 @@ namespace AutoArm.Testing.Scenarios
                 }
             }
 
-            foreach (var weapon in weapons)
-            {
-                WeaponCache.AddWeaponToCache(weapon);
-            }
         }
 
         private ThingWithComps CreateTestWeapon(Map map, ThingDef weaponDef, IntVec3 position, QualityCategory quality, float hpPercent)

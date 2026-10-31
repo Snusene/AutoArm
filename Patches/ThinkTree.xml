@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+	<Operation Class="PatchOperationAdd">
+		<xpath>Defs/ThinkTreeDef[defName="MainColonistBehaviorCore"]/thinkRoot/subNodes/li[@Class="ThinkNode_PrioritySorter"]/subNodes</xpath>
+		<value>
+			<li Class="AutoArm.ThinkNode_ConditionalWeaponStatus">
+				<subNodes>
+					<li Class="AutoArm.Jobs.JobGiver_PickUpBetterWeapon" />
+				</subNodes>
+			</li>
+		</value>
+	</Operation>
+</Patch>

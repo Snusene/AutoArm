@@ -27,11 +27,11 @@ namespace AutoArm
             "Kiiro_Stealth_Device", "Kiiro_Special_Item"
         };
 
-        private static readonly Dictionary<ThingDef, bool> isWeaponDefCache = new Dictionary<ThingDef, bool>(256);
+        private static sbyte[] weaponByIndex = new sbyte[0];
 
         public static void ClearWeaponDefCache()
         {
-            isWeaponDefCache.Clear();
+            Array.Clear(weaponByIndex, 0, weaponByIndex.Length);
         }
 
         public static bool IsWeapon(Thing thing)
@@ -51,11 +51,23 @@ namespace AutoArm
             if (def == null)
                 return false;
 
-            if (isWeaponDefCache.TryGetValue(def, out bool cached))
-                return cached;
+            int i = def.index;
+            if (i == ushort.MaxValue)
+                return ComputeIsWeapon(def);
+
+            if (i < weaponByIndex.Length)
+            {
+                sbyte known = weaponByIndex[i];
+                if (known != 0)
+                    return known > 0;
+            }
+            else
+            {
+                Array.Resize(ref weaponByIndex, Math.Max(i + 1, DefDatabase<ThingDef>.DefCount));
+            }
 
             bool result = ComputeIsWeapon(def);
-            isWeaponDefCache[def] = result;
+            weaponByIndex[i] = result ? (sbyte)1 : (sbyte)-1;
             return result;
         }
 

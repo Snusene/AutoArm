@@ -93,6 +93,7 @@
 	<AutoArm_ClickToJump>Нажмите для перехода к оружию</AutoArm_ClickToJump>
 
 	<AutoArm_ScoreBase>База (УВС × точ × БП): {0}</AutoArm_ScoreBase>
+	<AutoArm_ScoreShooterFit>Под стрелка: {0}</AutoArm_ScoreShooterFit>
 	<AutoArm_ScoreSkillBonus>Бонус навыка: {0}</AutoArm_ScoreSkillBonus>
 	<AutoArm_ScoreHunterBonus>Бонус охотника: {0}</AutoArm_ScoreHunterBonus>
 	<AutoArm_ScoreOutfitPolicy>Политика одежды: {0}</AutoArm_ScoreOutfitPolicy>

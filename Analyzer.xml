@@ -1,7 +1,6 @@
 <Analyzer>
 	<AutoArm>
 		<Types>
-			<li>AutoArm.Thing_SpawnSetup_Patch</li>
 			<li>AutoArm.Thing_DeSpawn_Patch</li>
 			<li>AutoArm.Thing_Destroy_WeaponCache_Patch</li>
 			<li>AutoArm.CompForbiddable_Forbidden_Set_Patch</li>
@@ -24,6 +23,8 @@
 			<li>AutoArm.AutoArmGameComponent:GameComponentTick</li>
 			<li>AutoArm.Caching.MemoryCleanupGameComponent:GameComponentTick</li>
 			<li>AutoArm.Caching.WeaponCache+AutoArmWeaponMapComponent:MapComponentTick</li>
+			<li>AutoArm.Caching.WeaponCache+AutoArmWeaponMapComponent:Added</li>
+			<li>AutoArm.Caching.WeaponCache+AutoArmWeaponMapComponent:Removed</li>
 			<li>AutoArm.ThinkNode_ConditionalWeaponStatus:GetPriority</li>
 			<li>AutoArm.Jobs.JobGiver_PickUpBetterWeapon:TryGiveJob</li>
 			<li>AutoArm.Thing_LabelPatches:Postfix</li>

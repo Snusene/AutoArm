@@ -24,8 +24,6 @@ namespace AutoArm.Caching
 
         public override void GameComponentTick()
         {
-            PawnValidation.FlushPendingInvalidationLogs();
-
             if (!Cleanup.ShouldRunCleanup())
                 return;
 

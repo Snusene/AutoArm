@@ -1381,6 +1381,8 @@ namespace AutoArm.UI
                 return "AutoArm_ScoreBlocked".Translate() + "\n" + totalLine + "\n";
 
             string s = "AutoArm_ScoreBase".Translate(breakdown.baseWeaponScore.ToString("F0")) + "\n";
+            if (Math.Abs(breakdown.shooterFit - 1f) > 0.005f)
+                s += "AutoArm_ScoreShooterFit".Translate($"×{breakdown.shooterFit:F2}") + "\n";
             s += "AutoArm_ScoreSkillBonus".Translate(breakdown.skillScore.ToString("F0")) + "\n";
             if (breakdown.hunterScore != 0f)
                 s += "AutoArm_ScoreHunterBonus".Translate(breakdown.hunterScore.ToString("F0")) + "\n";
